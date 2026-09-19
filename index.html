@@ -1,14 +1,69 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pong</title>
+    <meta name="description" content="A dependency-free Ping Pong game built to demonstrate clean browser-game architecture, deterministic physics, and testable JavaScript domain logic.">
+    <meta name="theme-color" content="#09111f">
+    <title>Ping Pong Architecture Lab</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <!-- Script -->
-    <script src="script.js"></script>
-</body>
+  </head>
+  <body>
+    <a class="skip-link" href="#game">Skip to game</a>
+
+    <main class="app-shell">
+      <header class="hero">
+        <p class="eyebrow">Vanilla JavaScript · Architecture showcase</p>
+        <h1>Ping Pong Architecture Lab</h1>
+        <p class="hero-copy">
+          A deliberately small browser game with explicit domain, application, and adapter boundaries.
+        </p>
+      </header>
+
+      <section id="game" class="game-card" aria-labelledby="game-title">
+        <div class="game-toolbar">
+          <div>
+            <h2 id="game-title">Match</h2>
+            <p class="status" data-game-status aria-live="polite">First to 7. Start when ready.</p>
+          </div>
+          <div class="actions" aria-label="Game controls">
+            <button type="button" data-action="start">Start</button>
+            <button type="button" data-action="pause" disabled>Pause</button>
+            <button type="button" data-action="reset" class="secondary">Reset</button>
+          </div>
+        </div>
+
+        <div class="canvas-frame">
+          <canvas
+            data-game-canvas
+            width="800"
+            height="520"
+            aria-label="Ping Pong game board. Move the lower paddle with the mouse, touch, left and right arrow keys, or A and D."
+            role="img"
+          ></canvas>
+        </div>
+
+        <div class="controls-note">
+          <span><strong>Move:</strong> pointer/touch, ← →, A D</span>
+          <span><strong>Pause:</strong> Space</span>
+          <span><strong>Goal:</strong> first to 7</span>
+        </div>
+      </section>
+
+      <section class="architecture-note" aria-labelledby="architecture-title">
+        <div>
+          <p class="eyebrow">Engineering focus</p>
+          <h2 id="architecture-title">Small product, explicit boundaries</h2>
+        </div>
+        <ul>
+          <li><strong>Domain:</strong> scoring, collisions, paddle rules, AI strategy.</li>
+          <li><strong>Application:</strong> state transitions and a fixed-timestep game loop.</li>
+          <li><strong>Adapters:</strong> browser input and Canvas rendering stay outside game rules.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script type="module" src="script.js"></script>
+  </body>
 </html>
