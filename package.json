@@ -1,13 +1,20 @@
 {
   "name": "ping-pong-js-game",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test",
-    "check": "npm test && node scripts/check-project.mjs"
+    "test": "npm run test:unit",
+    "test:unit": "node --test",
+    "test:e2e": "playwright test",
+    "lint": "eslint .",
+    "check": "npm run lint && npm run test:unit && node scripts/check-project.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "eslint": "10.10.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   }
 }

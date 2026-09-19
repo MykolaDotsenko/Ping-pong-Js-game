@@ -2,9 +2,9 @@
 
 ## Goal
 
-This project is intentionally small enough that its architecture can be understood in minutes.
+This repository is intentionally small enough that its architecture can be understood in minutes.
 
-The objective is not to imitate an enterprise backend in the browser. The objective is to make the important boundaries explicit so game rules can evolve independently from Canvas, DOM events, or frame timing.
+The objective is not to imitate an enterprise backend in the browser. The objective is to make the important change boundaries explicit so game rules can evolve independently from DOM, Canvas, physical input devices, and browser frame scheduling.
 
 ## Dependency direction
 
@@ -14,7 +14,10 @@ index.html
 script.js  ← composition root only
    |
    +--> adapters/input-controller.js
+   +--> adapters/dom-game-view.js
    +--> adapters/canvas-renderer.js
+   +--> adapters/browser-frame-scheduler.js
+   |
    +--> application/game-controller.js
                  |
                  +--> application/game-loop.js
@@ -24,138 +27,206 @@ script.js  ← composition root only
                            +--> domain/opponent.js
 ```
 
-Dependencies point inward toward the domain. The domain does not import browser APIs.
+Dependencies point inward.
+
+- adapters may depend on the core
+- application may depend on domain
+- domain has no browser dependency
+- application has no browser dependency
+- the core never imports adapters
+
+These rules are checked in CI by `scripts/check-project.mjs`.
 
 ## 1. Domain layer
 
-`src/domain/` owns rules that define the game:
+`src/domain/` owns the rules that define the game:
 
-- explicit phases: `ready`, `running`, `paused`, `game-over`
+- phases: `ready`, `running`, `paused`, `game-over`
 - score transitions and win condition
-- paddle boundaries
+- paddle bounds
 - ball movement and wall reflection
-- paddle collision and bounce angle
-- opponent movement strategy
+- swept paddle collision
+- bounce angle and speed progression
+- opponent target and speed policy
 
-The domain accepts plain data and returns new state. It does not draw, register listeners, query the DOM, or call `requestAnimationFrame`.
+The domain accepts plain data and returns new state. It does not draw, register listeners, query the DOM, schedule frames, or know which device produced an input command.
 
-That is why the important behavior can be tested with Node's built-in test runner and no browser.
+That makes the highest-value behavior directly testable with Node's built-in test runner.
 
 ## 2. Application layer
 
-`src/application/game-controller.js` coordinates use cases:
+`GameController` owns orchestration:
 
 - start
 - pause/resume
 - reset
-- update one simulation step
-- synchronize status text with current state
+- advance one simulation step
+- translate current state into presentation data
 
-`src/application/game-loop.js` isolates timing. It uses an accumulator and a fixed simulation step of 1/120 second.
+It communicates through small ports supplied by the composition root:
 
-### Why a fixed timestep?
+- `input.snapshot()`
+- `input.onCommand(...)`
+- `view.onCommand(...)`
+- `view.render(...)`
+- `renderer.render(...)`
+- frame scheduler injected into `FixedStepLoop`
 
-Rendering refresh rates differ between devices. Updating physics by "one unit per frame" makes game speed depend on whether the browser renders at 60 Hz, 120 Hz, or temporarily stalls.
+The controller therefore contains application policy without knowing whether the concrete UI is DOM, Canvas, keyboard, touch, or something else.
 
-The loop therefore:
+## 3. Fixed-timestep loop
 
-1. measures elapsed real time;
-2. caps unusually large frame gaps;
-3. advances the simulation in fixed increments;
-4. renders after the simulation catches up.
+`src/application/game-loop.js` owns deterministic simulation timing.
 
-Game rules become substantially easier to reason about and test.
+The loop receives a scheduler dependency instead of calling `requestAnimationFrame` directly.
 
-## 3. Adapters
+It:
 
-Browser-specific details stay at the edge.
+1. measures elapsed real time
+2. caps unusually large frame gaps
+3. accumulates elapsed time
+4. advances simulation in fixed 1/120-second increments
+5. renders after the simulation catches up
 
-### Input adapter
+This keeps game speed independent from 60 Hz vs 120 Hz displays and makes timing policy testable independently from the browser.
 
-`InputController` translates:
+## 4. Adapters
 
-- mouse/pointer/touch position
+Browser-specific concerns live in `src/adapters/`.
+
+### InputController
+
+Translates:
+
+- pointer / mouse / touch movement
 - Arrow Left / Arrow Right
 - A / D
+- Space
 
-into a small input snapshot consumed by the domain.
+into device-neutral movement snapshots and commands.
 
-The game rules do not know which physical device produced the command.
+### DomGameView
 
-### Canvas adapter
+Owns buttons and status text. It translates UI clicks into application commands and presentation data back into DOM state.
 
-`CanvasRenderer` converts domain state into pixels. It contains presentation choices only and never decides scoring, collisions, or winners.
+### CanvasRenderer
 
-A future DOM, SVG, WebGL, or test renderer could replace it without rewriting the rules.
+Converts game state into pixels. It never decides scoring, collision, or winning rules.
 
-## 4. Composition root
+### BrowserFrameScheduler
 
-`script.js` deliberately contains almost no behavior. It creates concrete adapters, injects them into the controller, and connects the application.
-
-This makes dependencies visible instead of hiding them in globals.
+Wraps `requestAnimationFrame` / `cancelAnimationFrame`. This small adapter keeps browser scheduling out of the application core.
 
 ## State ownership
 
 There is one authoritative game state owned by `GameController`.
 
-No renderer or input adapter mutates game state. Domain functions return new state objects, which avoids hidden cross-module mutation and keeps transitions inspectable.
+Adapters do not mutate game state. Domain functions return new state objects, keeping transitions explicit and inspectable.
 
 ## Physics decisions
 
-### Paddle bounce
+### Contact-position bounce
 
-The outgoing angle is derived from where the ball hits the paddle:
+Outgoing direction depends on where the ball meets the paddle:
 
-- center hit → mostly vertical return
-- edge hit → larger horizontal component
+- center → mostly vertical return
+- edge → greater horizontal component
 
-Ball speed increases slightly after paddle contact and is capped to prevent unbounded difficulty.
+Speed increases slightly after paddle contact and is capped so difficulty cannot grow without bound.
 
-### Collision crossing
+### Swept paddle collision
 
-Paddle collision compares the previous and current ball positions. This is safer than checking only whether the ball currently overlaps a paddle, especially as velocity increases.
+A simple overlap check can miss a paddle when a fast-moving ball travels from one side of the paddle plane to the other between simulation samples.
 
-## AI strategy
+The current implementation:
 
-The opponent is intentionally understandable rather than unbeatable.
+1. computes the ball's leading edge at the previous and current positions
+2. detects whether that segment crosses the paddle plane
+3. calculates normalized crossing time `t`
+4. interpolates the exact ball `x` at that crossing
+5. checks horizontal overlap at the crossing point
 
-When the ball travels toward it, the strategy estimates a target using current position plus projected movement. When the ball travels away, it drifts toward center. Movement is speed-capped, so prediction quality and physical ability remain separate concerns.
+This is intentionally smaller than a general-purpose continuous collision engine while solving the tunneling case relevant to this game.
+
+## Opponent strategy
+
+The opponent is deliberately understandable rather than unbeatable.
+
+When the ball travels toward it, the strategy blends the ball's current position with a projected position. When the ball travels away, the opponent returns toward center.
+
+Prediction and physical ability remain separate:
+
+- prediction chooses a target
+- speed cap limits how fast the paddle can reach it
+
+## Executable architecture constraints
+
+Documentation can become stale, so the project also encodes key architectural rules as checks.
+
+`scripts/check-project.mjs` verifies that:
+
+- expected modules exist
+- `script.js` remains a small composition root
+- domain/application files contain no browser-only APIs
+- application files do not import adapters
+- inline HTML event handlers are not introduced
+
+If a future change violates these constraints, CI fails.
+
+## Testing strategy
+
+### Unit tests
+
+The dependency-free unit suite targets deterministic rules:
+
+- state-machine transitions
+- scoring and win condition
+- double-score prevention
+- serve direction
+- paddle clamping
+- wall reflection
+- center and edge bounce behavior
+- speed cap
+- swept collision
+- opponent target and movement limits
+
+### Browser smoke tests
+
+Playwright checks the assembled system on desktop and mobile Chromium:
+
+- application boot
+- no page errors
+- state transitions through UI and keyboard
+- responsive Canvas visibility
+- pointer interaction
+
+The goal is not to duplicate every domain test in a browser. Browser tests cover integration seams; unit tests cover rule permutations.
 
 ## Deliberate omissions
 
 The project does not add:
 
 - React or another UI framework
-- a dependency injection library
 - Redux/global state tooling
+- a dependency-injection library
 - a physics engine
-- a service/repository abstraction with no external resource
-- a build pipeline
+- a repository/service abstraction with no external resource
+- a bundler
+- a backend
 
-Those tools would increase surface area without solving a requirement in this game.
-
-## Testing strategy
-
-The highest-value rules are tested directly:
-
-- state-machine transitions
-- paddle clamping
-- scoring
-- game-over transition
-- wall reflection
-- paddle bounce direction and speed
-
-The test suite uses `node:test`, so there are no test-framework dependencies to maintain.
+Those tools would increase surface area without solving current requirements.
 
 ## Extension points
 
-The current boundaries make several changes local:
+The boundaries make future changes local:
 
 - replace opponent strategy → `domain/opponent.js`
 - tune difficulty → `config.js`
-- replace Canvas → new renderer adapter
-- add a second human player → new input mapping + domain command
-- add sound → event-aware presentation adapter
-- add replay/debug snapshots → observe controller state without modifying physics
+- replace Canvas → another renderer adapter
+- replace DOM controls → another view adapter
+- add gamepad support → another input adapter
+- replace browser frame scheduling → another scheduler
+- add second human player → input mapping + domain command
+- add replay/debug snapshots → observe controller state without rewriting physics
 
-The architecture exists to make changes like these predictable, not to maximize the number of files.
+The architecture exists to make change predictable, not to maximize the number of files.

@@ -1,7 +1,7 @@
 import {
   bounceFromPaddle,
   clampPaddleCenter,
-  hasCrossedPaddle,
+  findPaddleCollision,
   reflectFromSideWalls,
 } from './physics.js';
 import { moveOpponent } from './opponent.js';
@@ -116,6 +116,7 @@ function awardPoint(state, scorer, config) {
   }
 
   const nextServe = nextServeBall(state, scorer, config);
+
   return {
     ...state,
     score,
@@ -141,36 +142,48 @@ function resolveCollisions(state, previousBall, config) {
   const playerY = config.height - config.paddle.inset - config.paddle.height;
   const opponentY = config.paddle.inset;
 
-  if (
-    ball.vy > 0
-    && hasCrossedPaddle({
+  if (ball.vy > 0) {
+    const collision = findPaddleCollision({
       previousBall,
       ball,
       paddleCenterX: state.player.x,
       paddleY: playerY,
       movingDown: true,
       config,
-    })
-  ) {
-    ball = {
-      ...bounceFromPaddle(ball, state.player.x, -1, config),
-      y: playerY - config.ball.radius,
-    };
-  } else if (
-    ball.vy < 0
-    && hasCrossedPaddle({
+    });
+
+    if (collision) {
+      ball = {
+        ...bounceFromPaddle(
+          { ...ball, x: collision.x },
+          state.player.x,
+          -1,
+          config,
+        ),
+        y: playerY - config.ball.radius,
+      };
+    }
+  } else if (ball.vy < 0) {
+    const collision = findPaddleCollision({
       previousBall,
       ball,
       paddleCenterX: state.opponent.x,
       paddleY: opponentY,
       movingDown: false,
       config,
-    })
-  ) {
-    ball = {
-      ...bounceFromPaddle(ball, state.opponent.x, 1, config),
-      y: opponentY + config.paddle.height + config.ball.radius,
-    };
+    });
+
+    if (collision) {
+      ball = {
+        ...bounceFromPaddle(
+          { ...ball, x: collision.x },
+          state.opponent.x,
+          1,
+          config,
+        ),
+        y: opponentY + config.paddle.height + config.ball.radius,
+      };
+    }
   }
 
   return { ...state, ball };

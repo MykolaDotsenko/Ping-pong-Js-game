@@ -1,9 +1,10 @@
 export class FixedStepLoop {
-  constructor({ stepSeconds, maxFrameSeconds, update, render }) {
+  constructor({ stepSeconds, maxFrameSeconds, update, render, scheduler }) {
     this.stepSeconds = stepSeconds;
     this.maxFrameSeconds = maxFrameSeconds;
     this.update = update;
     this.render = render;
+    this.scheduler = scheduler;
     this.running = false;
     this.lastTimestamp = null;
     this.accumulator = 0;
@@ -18,7 +19,7 @@ export class FixedStepLoop {
 
     this.running = true;
     this.lastTimestamp = null;
-    this.frameId = requestAnimationFrame(this.tick);
+    this.frameId = this.scheduler.request(this.tick);
   }
 
   stop() {
@@ -27,7 +28,7 @@ export class FixedStepLoop {
     this.accumulator = 0;
 
     if (this.frameId !== null) {
-      cancelAnimationFrame(this.frameId);
+      this.scheduler.cancel(this.frameId);
       this.frameId = null;
     }
   }
@@ -54,6 +55,6 @@ export class FixedStepLoop {
     }
 
     this.render(this.accumulator / this.stepSeconds);
-    this.frameId = requestAnimationFrame(this.tick);
+    this.frameId = this.scheduler.request(this.tick);
   }
 }

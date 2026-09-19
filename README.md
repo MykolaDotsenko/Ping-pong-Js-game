@@ -1,23 +1,36 @@
 # Ping Pong Architecture Lab
 
+[![Quality](https://github.com/MykolaDotsenko/Ping-pong-Js-game/actions/workflows/quality.yml/badge.svg)](https://github.com/MykolaDotsenko/Ping-pong-Js-game/actions/workflows/quality.yml)
+
 A dependency-free browser Ping Pong game built as a compact **software architecture case study**.
 
-The original 2024 single-file learning project has been refactored without replacing Vanilla JavaScript with a framework. The current version focuses on explicit boundaries, deterministic simulation, testable domain rules, and proportional architecture.
+The project deliberately stays on Vanilla JavaScript and Canvas so the engineering decisions remain visible: explicit dependency direction, browser-agnostic core logic, deterministic simulation, replaceable adapters, and automated verification.
+
+**[Live demo on GitHub Pages](https://mykoladotsenko.github.io/Ping-pong-Js-game/)**
+
+![Ping Pong Architecture Lab preview](./docs/preview.svg)
+
+## Why this project exists
+
+This is not an attempt to build the largest Pong implementation. It demonstrates how to apply proportional architecture to a small product without hiding complexity behind a framework.
+
+The original 2024 version used one global script for rendering, input, physics, AI, scoring, and lifecycle. The current version separates those concerns and makes the important rules independently testable.
 
 ## What it demonstrates
 
-- pure game/domain logic separated from browser APIs
-- explicit game state machine: `ready → running ↔ paused → game-over`
+- browser-agnostic **domain + application core**
+- explicit state machine: `ready → running ↔ paused → game-over`
 - fixed-timestep simulation independent from display refresh rate
-- previous/current-position collision checks to reduce high-speed tunneling
+- swept paddle collision using the exact crossing point
 - paddle-hit angle derived from contact position
 - speed-capped opponent strategy with lightweight prediction
-- pointer/touch and keyboard input through one adapter
-- Canvas rendering as a replaceable output adapter
+- input, DOM view, Canvas rendering, and frame scheduling as adapters
 - one authoritative state owner
-- dependency-free unit tests with Node's built-in test runner
-- GitHub Actions quality gate
-- accessible semantic application shell and reduced-motion support
+- ESLint static analysis
+- Node built-in unit tests for domain rules and edge cases
+- Playwright smoke tests on desktop and mobile Chromium
+- GitHub Actions quality gates
+- responsive semantic shell with keyboard, pointer, and touch controls
 
 ## Stack
 
@@ -26,9 +39,11 @@ The original 2024 single-file learning project has been refactored without repla
 - Vanilla JavaScript with native ES modules
 - Canvas 2D
 - Node.js built-in test runner
+- ESLint 10
+- Playwright Test 1.63
 - GitHub Actions
 
-There is intentionally **no React, game engine, bundler, state library, or runtime dependency**. For this product, those tools would hide rather than demonstrate the architectural decisions.
+There is intentionally **no React, game engine, state library, dependency-injection framework, or runtime dependency**. Those tools would add surface area without solving a requirement in this product.
 
 ## Architecture
 
@@ -37,30 +52,40 @@ Browser shell
     |
 script.js (composition root)
     |
-    +-- input adapter
-    +-- Canvas renderer adapter
-    +-- game controller
+    +-- InputController ------------ browser input adapter
+    +-- DomGameView ---------------- DOM output/command adapter
+    +-- CanvasRenderer ------------- Canvas output adapter
+    +-- BrowserFrameScheduler ------ timing adapter
+    |
+    +-- GameController ------------- application orchestration
             |
-            +-- fixed-step loop
+            +-- FixedStepLoop ------- deterministic timing policy
+            |
             +-- domain/game
                     |
                     +-- physics
                     +-- opponent strategy
 ```
 
-The dependency rule is simple: **browser details depend on game rules; game rules never depend on the browser**.
+**Dependency rule:** browser details depend on the core; the core never depends on browser APIs.
 
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for the rationale and trade-offs.
+CI enforces this boundary by scanning `src/domain/` and `src/application/` for browser-only APIs.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs.
 
 ## Project structure
 
 ```text
 .
 ├── .github/workflows/quality.yml
+├── docs/preview.svg
+├── e2e/game.spec.js
 ├── scripts/check-project.mjs
 ├── src
 │   ├── adapters
+│   │   ├── browser-frame-scheduler.js
 │   │   ├── canvas-renderer.js
+│   │   ├── dom-game-view.js
 │   │   └── input-controller.js
 │   ├── application
 │   │   ├── game-controller.js
@@ -72,28 +97,35 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the rationale and trade-offs.
 │   └── config.js
 ├── tests
 │   ├── game.test.js
+│   ├── game-loop.test.js
+│   ├── opponent.test.js
 │   └── physics.test.js
 ├── ARCHITECTURE.md
+├── eslint.config.js
 ├── index.html
 ├── package.json
+├── playwright.config.js
 ├── script.js
 └── style.css
 ```
 
 ## Run locally
 
-No install step is required for the game itself.
-
-Because the app uses native ES modules, serve the directory over HTTP:
+The game itself has no runtime installation step. Because it uses native ES modules, serve the directory over HTTP:
 
 ```bash
-python -m http.server 8000
+python3 -m http.server 8000
 ```
 
-Then open:
+Then open `http://localhost:8000`.
 
-```text
-http://localhost:8000
+For quality tooling:
+
+```bash
+npm install
+npm run check
+npx playwright install chromium
+npm run test:e2e
 ```
 
 ## Controls
@@ -105,28 +137,70 @@ http://localhost:8000
 
 First to 7 wins.
 
-## Quality checks
+## Verification strategy
 
-Node.js 20+:
+### Static and structural checks
 
-```bash
-npm test
-npm run check
-```
+`npm run check` runs:
 
-The checks cover game-state transitions, scoring, game over, paddle boundaries, wall reflection, paddle bounce behavior, required project structure, the ES-module entry point, and the rule that the composition root stays thin.
+1. ESLint static analysis
+2. dependency-free unit tests
+3. project-structure checks
+4. architecture-boundary checks
 
-## Why this architecture is intentionally small
+The architecture check fails if browser concerns such as `window`, `document`, Canvas APIs, event listeners, or animation-frame APIs leak into the domain/application core.
 
-A tiny game does not justify enterprise layers. The refactor adds only boundaries that solve a concrete problem:
+### Browser smoke tests
 
-- physics should not depend on Canvas;
-- input devices should not mutate game state directly;
-- refresh rate should not control simulation speed;
-- scoring and collision rules should be testable without a browser;
-- dependencies should be visible at the composition root.
+Playwright runs the real application in desktop and mobile Chromium and verifies:
 
-The result is more code than one global script, but each module has a reason to exist and an obvious change boundary.
+- the application boots without page errors
+- the Canvas and core UI are visible
+- Start transitions into a running match
+- Space pauses and resumes
+- Reset returns to the ready state
+- pointer interaction is accepted on the responsive Canvas
+
+### Domain edge cases
+
+Unit tests cover:
+
+- state-machine transitions
+- paused-state immutability
+- player bounds
+- point scoring without double-counting
+- game-over transition
+- serve direction
+- wall reflection
+- center/off-center paddle bounce
+- maximum speed cap
+- swept high-speed paddle crossing
+- opponent speed cap and legal bounds
+
+## Architecture trade-offs
+
+A tiny game does not justify enterprise layers. Every boundary here solves a concrete problem:
+
+- physics must be testable without Canvas
+- the application core must not know about the browser
+- input devices must not mutate state directly
+- refresh rate must not control simulation speed
+- browser frame scheduling must be replaceable
+- rendering must not decide scoring or collisions
+- dependencies must remain obvious at the composition root
+
+The project deliberately avoids repositories, factories, event buses, service locators, and other abstractions that would not reduce a real coupling.
+
+## Recruiter walkthrough
+
+If you have two minutes, inspect these files in order:
+
+1. [`script.js`](./script.js) — composition root and dependency wiring
+2. [`src/application/game-controller.js`](./src/application/game-controller.js) — orchestration without browser APIs
+3. [`src/domain/game.js`](./src/domain/game.js) — state transitions and scoring
+4. [`src/domain/physics.js`](./src/domain/physics.js) — swept collision and bounce rules
+5. [`scripts/check-project.mjs`](./scripts/check-project.mjs) — executable architecture constraints
+6. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification
 
 ## Author
 
