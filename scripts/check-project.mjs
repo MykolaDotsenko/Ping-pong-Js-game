@@ -12,8 +12,15 @@ const requiredFiles = [
   'src/application/game-controller.js',
   'src/adapters/input-controller.js',
   'src/adapters/canvas-renderer.js',
+  'src/adapters/dom-game-view.js',
+  'src/adapters/browser-frame-scheduler.js',
   'tests/game.test.js',
+  'tests/game-loop.test.js',
   'tests/physics.test.js',
+  'tests/opponent.test.js',
+  'e2e/game.spec.js',
+  'playwright.config.js',
+  'eslint.config.js',
   'ARCHITECTURE.md',
 ];
 
@@ -38,4 +45,39 @@ if (!script.includes('new GameController')) {
   throw new Error('script.js must stay a thin composition root.');
 }
 
-console.log('Project structure checks passed.');
+if (script.split('\n').length > 70) {
+  throw new Error('script.js is too large for a composition root.');
+}
+
+const browserOnlyTokens = [
+  'window.',
+  'document.',
+  'requestAnimationFrame',
+  'cancelAnimationFrame',
+  'getContext(',
+  'addEventListener(',
+];
+
+const coreFiles = [
+  'src/domain/game.js',
+  'src/domain/physics.js',
+  'src/domain/opponent.js',
+  'src/application/game-loop.js',
+  'src/application/game-controller.js',
+];
+
+for (const file of coreFiles) {
+  const source = await readFile(file, 'utf8');
+
+  for (const token of browserOnlyTokens) {
+    if (source.includes(token)) {
+      throw new Error(`${file} leaks browser concern "${token}" into the core.`);
+    }
+  }
+
+  if (file.startsWith('src/application/') && source.includes('/adapters/')) {
+    throw new Error(`${file} must not depend on adapters.`);
+  }
+}
+
+console.log('Project structure and architecture boundary checks passed.');

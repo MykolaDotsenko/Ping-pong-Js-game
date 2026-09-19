@@ -23,25 +23,44 @@ export function clampPaddleCenter(centerX, config) {
   return clamp(centerX, halfWidth, config.width - halfWidth);
 }
 
-export function hasCrossedPaddle({ previousBall, ball, paddleCenterX, paddleY, movingDown, config }) {
+export function findPaddleCollision({
+  previousBall,
+  ball,
+  paddleCenterX,
+  paddleY,
+  movingDown,
+  config,
+}) {
   const radius = config.ball.radius;
-  const bounds = paddleBounds(paddleCenterX, config);
-  const horizontalHit = ball.x + radius >= bounds.left && ball.x - radius <= bounds.right;
-
-  if (!horizontalHit) {
-    return false;
-  }
+  const collisionPlane = movingDown ? paddleY : paddleY + config.paddle.height;
+  const edgeOffset = movingDown ? radius : -radius;
+  const previousLeadingEdge = previousBall.y + edgeOffset;
+  const currentLeadingEdge = ball.y + edgeOffset;
+  const travel = currentLeadingEdge - previousLeadingEdge;
 
   if (movingDown) {
-    const previousBottom = previousBall.y + radius;
-    const currentBottom = ball.y + radius;
-    return previousBottom <= paddleY && currentBottom >= paddleY;
+    if (travel <= 0 || previousLeadingEdge > collisionPlane || currentLeadingEdge < collisionPlane) {
+      return null;
+    }
+  } else if (
+    travel >= 0
+    || previousLeadingEdge < collisionPlane
+    || currentLeadingEdge > collisionPlane
+  ) {
+    return null;
   }
 
-  const paddleBottom = paddleY + config.paddle.height;
-  const previousTop = previousBall.y - radius;
-  const currentTop = ball.y - radius;
-  return previousTop >= paddleBottom && currentTop <= paddleBottom;
+  const time = (collisionPlane - previousLeadingEdge) / travel;
+
+  if (time < 0 || time > 1) {
+    return null;
+  }
+
+  const x = previousBall.x + (ball.x - previousBall.x) * time;
+  const bounds = paddleBounds(paddleCenterX, config);
+  const overlapsHorizontally = x + radius >= bounds.left && x - radius <= bounds.right;
+
+  return overlapsHorizontally ? { time, x } : null;
 }
 
 export function bounceFromPaddle(ball, paddleCenterX, direction, config) {

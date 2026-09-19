@@ -9,7 +9,7 @@ import {
 import { FixedStepLoop } from './game-loop.js';
 
 export class GameController {
-  constructor({ config, renderer, input, view }) {
+  constructor({ config, renderer, input, view, scheduler }) {
     this.config = config;
     this.renderer = renderer;
     this.input = input;
@@ -21,15 +21,15 @@ export class GameController {
       maxFrameSeconds: config.maxFrameSeconds,
       update: (deltaSeconds) => this.update(deltaSeconds),
       render: () => this.render(),
+      scheduler,
     });
   }
 
   connect() {
+    this.input.onCommand((command) => this.handleCommand(command));
+    this.view.onCommand((command) => this.handleCommand(command));
     this.input.connect();
-    this.view.startButton.addEventListener('click', () => this.handleStart());
-    this.view.pauseButton.addEventListener('click', () => this.handlePause());
-    this.view.resetButton.addEventListener('click', () => this.handleReset());
-    window.addEventListener('keydown', (event) => this.handleGlobalKey(event));
+    this.view.connect();
     this.render();
     this.loop.start();
   }
@@ -45,43 +45,26 @@ export class GameController {
 
   render() {
     this.renderer.render(this.state);
-    this.view.status.textContent = this.statusText();
-    this.view.pauseButton.disabled = ![
-      GAME_PHASE.RUNNING,
-      GAME_PHASE.PAUSED,
-    ].includes(this.state.phase);
-    this.view.pauseButton.textContent = this.state.phase === GAME_PHASE.PAUSED
-      ? 'Resume'
-      : 'Pause';
+    this.view.render({
+      phase: this.state.phase,
+      status: this.statusText(),
+    });
   }
 
-  handleStart() {
-    this.state = startGame(this.state, this.config);
-    this.render();
-  }
-
-  handlePause() {
-    this.state = togglePause(this.state);
-    this.render();
-  }
-
-  handleReset() {
-    this.state = resetGame(this.config);
-    this.render();
-  }
-
-  handleGlobalKey(event) {
-    if (event.code !== 'Space') {
-      return;
+  handleCommand(command) {
+    if (command === 'reset') {
+      this.state = resetGame(this.config);
+    } else if (command === 'start') {
+      this.state = startGame(this.state, this.config);
+    } else if (command === 'pause') {
+      this.state = togglePause(this.state);
+    } else if (command === 'primary') {
+      this.state = [GAME_PHASE.READY, GAME_PHASE.GAME_OVER].includes(this.state.phase)
+        ? startGame(this.state, this.config)
+        : togglePause(this.state);
     }
 
-    event.preventDefault();
-
-    if ([GAME_PHASE.READY, GAME_PHASE.GAME_OVER].includes(this.state.phase)) {
-      this.handleStart();
-    } else {
-      this.handlePause();
-    }
+    this.render();
   }
 
   statusText() {

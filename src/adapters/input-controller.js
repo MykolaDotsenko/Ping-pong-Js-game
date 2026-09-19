@@ -6,6 +6,11 @@ export class InputController {
     this.rightPressed = false;
     this.pointerX = null;
     this.listeners = [];
+    this.commandHandler = () => {};
+  }
+
+  onCommand(handler) {
+    this.commandHandler = handler;
   }
 
   connect() {
@@ -30,15 +35,32 @@ export class InputController {
   }
 
   handleKey(event, isPressed) {
-    if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'a') {
+    const key = event.key.toLowerCase();
+
+    if (event.key === 'ArrowLeft' || key === 'a') {
       this.leftPressed = isPressed;
       event.preventDefault();
     }
 
-    if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'd') {
+    if (event.key === 'ArrowRight' || key === 'd') {
       this.rightPressed = isPressed;
       event.preventDefault();
     }
+
+    if (
+      event.code === 'Space'
+      && isPressed
+      && !event.repeat
+      && !this.isInteractiveTarget(event.target)
+    ) {
+      this.commandHandler('primary');
+      event.preventDefault();
+    }
+  }
+
+  isInteractiveTarget(target) {
+    const tagName = target?.tagName;
+    return ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(tagName);
   }
 
   handlePointer(event) {
@@ -48,9 +70,8 @@ export class InputController {
   }
 
   snapshot() {
-    const horizontalAxis = Number(this.rightPressed) - Number(this.leftPressed);
     return {
-      horizontalAxis,
+      horizontalAxis: Number(this.rightPressed) - Number(this.leftPressed),
       pointerX: this.pointerX,
     };
   }
