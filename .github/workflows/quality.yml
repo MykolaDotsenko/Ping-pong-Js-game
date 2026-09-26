@@ -100,3 +100,28 @@ jobs:
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
+
+      # A deploy can "succeed" and still change nothing when the Pages source
+      # in the repository settings is a branch instead of GitHub Actions, so
+      # print the configuration and prove the live site serves this commit.
+      - name: Report the Pages configuration
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${GITHUB_REPOSITORY}/pages" --jq '{build_type, status, source, html_url}'
+
+      - name: Verify the live site serves this commit
+        env:
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          expected=$(grep -o '<title>[^<]*</title>' index.html)
+          for attempt in 1 2 3 4 5 6; do
+            served=$(curl -fsSL "${PAGE_URL}?deployed=${GITHUB_SHA}" | grep -o '<title>[^<]*</title>' || true)
+            echo "attempt ${attempt}: ${served:-no title}"
+            if [ "${served}" = "${expected}" ]; then
+              echo "Live: ${PAGE_URL}"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::${PAGE_URL} still serves an older build. In Settings > Pages the source must be 'GitHub Actions'."
+          exit 1
