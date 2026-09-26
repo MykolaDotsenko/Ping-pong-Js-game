@@ -5,9 +5,9 @@ import { AudioOutput } from '../src/adapters/audio-output.js';
 import { MusicPlayer } from '../src/adapters/music-player.js';
 import { SoundBoard } from '../src/adapters/sound-board.js';
 
-function fakeParam() {
+function fakeParam(value = 0) {
   const param = {
-    value: 0,
+    value,
     events: [],
     setValueAtTime(value, time) {
       param.events.push(['set', value, time]);
@@ -31,6 +31,7 @@ class FakeAudioContext {
     this.currentTime = 10;
     this.destination = { name: 'speakers' };
     this.oscillators = [];
+    this.gains = [];
     this.resumes = 0;
     FakeAudioContext.created.push(this);
   }
@@ -42,7 +43,9 @@ class FakeAudioContext {
   }
 
   createGain() {
-    const gain = { gain: fakeParam(), connections: [], connect: (node) => gain.connections.push(node) };
+    // A browser's new gain node passes full level until something is scheduled on it.
+    const gain = { gain: fakeParam(1), connections: [], connect: (node) => gain.connections.push(node) };
+    this.gains.push(gain);
     return gain;
   }
 
@@ -114,6 +117,16 @@ test('hit pitch climbs as the rally grows', () => {
 
   assert.equal(pitches.length, 2);
   assert.ok(pitches[1] > pitches[0]);
+});
+
+test('every sound starts silent, so an oscillator starting a sample early cannot click', () => {
+  const { board, contexts } = setup();
+
+  board.handle([hit(5, 'player'), { type: 'game-over', winner: 'player' }]);
+
+  const envelopes = contexts[0].gains.slice(1);
+  assert.ok(envelopes.length > 5);
+  assert.ok(envelopes.every((gain) => gain.gain.value === 0.0001));
 });
 
 test('every event type has a sound, and milestone rallies add a chime', () => {

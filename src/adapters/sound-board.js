@@ -180,7 +180,9 @@ export class SoundBoard {
       oscillator.frequency.exponentialRampToValueAtTime(endFrequency, start + duration);
     }
 
-    // A fast attack and an exponential decay keep every sound short and click-free.
+    // A fast attack and an exponential decay keep every sound short and click-free. The gain
+    // starts silent, since a new gain node passes full level until its first scheduled value.
+    envelope.gain.value = 0.0001;
     envelope.gain.setValueAtTime(0.0001, start);
     envelope.gain.exponentialRampToValueAtTime(volume, start + 0.006);
     envelope.gain.exponentialRampToValueAtTime(0.0001, start + duration);

@@ -8,6 +8,7 @@ import { Haptics } from './src/adapters/haptics.js';
 import { InputController } from './src/adapters/input-controller.js';
 import { LocalPreferences } from './src/adapters/local-preferences.js';
 import { MusicPlayer } from './src/adapters/music-player.js';
+import { MUSIC_TRACKS } from './src/adapters/music-tracks.js';
 import { SoundBoard } from './src/adapters/sound-board.js';
 import { WakeLock } from './src/adapters/wake-lock.js';
 import { GameController } from './src/application/game-controller.js';
@@ -39,18 +40,22 @@ const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CO
 const haptics = new Haptics({ navigator: window.navigator, preferences });
 const device = new BrowserDevice({ navigator: window.navigator, document, location: window.location });
 const audio = new AudioOutput(window);
+const music = new MusicPlayer({ audio, timers: window, preferences });
 
 const controller = new GameController({
   catalog: MATCH_CATALOG,
   preferences,
   renderer,
   input: new InputController({ surface: arena, board: canvas, window, document, config: GAME_CONFIG }),
-  view: new DomGameView({ root: arena, board: canvas, preferences, canVibrate: haptics.supported, device, rushLives: RUSH_LIVES }),
+  view: new DomGameView({
+    root: arena, board: canvas, preferences, canVibrate: haptics.supported, device, rushLives: RUSH_LIVES,
+    tracks: MUSIC_TRACKS, previewTrack: (track) => music.preview(track),
+  }),
   scheduler,
   feedback: [
     renderer,
     new SoundBoard({ audio, preferences }),
-    new MusicPlayer({ audio, timers: window, preferences }),
+    music,
     haptics,
     new WakeLock(window.navigator),
   ],

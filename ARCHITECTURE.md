@@ -18,6 +18,7 @@ script.js  ← composition root; the only module that touches browser globals
    +--> adapters/canvas-renderer.js ──> adapters/canvas/*, adapters/effects.js
    +--> adapters/sound-board.js ──┐
    +--> adapters/music-player.js ─┴──> adapters/audio-output.js
+   |        └──> adapters/music-tracks.js
    +--> adapters/haptics.js
    +--> adapters/wake-lock.js
    +--> adapters/browser-device.js
@@ -171,7 +172,7 @@ While a match runs, the game loop drives every frame. After the match ends, the 
 
 ### SoundBoard and MusicPlayer
 
-Both implement `FeedbackPort` with Web Audio, and every sound is synthesized from oscillators at play time, with no audio files. The sound board plays effects: hit pitch climbs with the rally, every fifth hit adds a chime, and the countdown, power-ups, match point and a lost life each have their own cue. The music player runs a four-bar loop scheduled ahead of the clock, so timing stays exact whatever the frame rate; it starts with bass alone, adds a chord layer at three hits and a lead line at six, fades on pause, stops at the menu, and starts every match from the bass again. Both play through one audio context, owned by `AudioOutput`: browsers limit how many a page may open, so it is created once, on the first event, which always follows a click or key press, and resumed whenever the browser suspended it.
+Both implement `FeedbackPort` with Web Audio, and every sound is synthesized at play time from oscillators and generated noise, with no audio files. The sound board plays effects: hit pitch climbs with the rally, every fifth hit adds a chime, and the countdown, power-ups, match point and a lost life each have their own cue. The music player is a step sequencer that plays one of five original tracks, written as data in `music-tracks.js` (tempo, bar roots, bass, chords, lead and drum patterns). Notes are scheduled ahead of the clock, so timing stays exact whatever the frame rate; a track starts with bass and kick alone, adds the chords with snare and hi-hat at three hits and the lead at six, fades on pause, stops at the menu, and starts every match from the bass again. Drums are synthesized too: a falling sine for the kick and high-passed noise for the snare and hi-hat. Choosing a track in the menu or on the pause screen plays a four-second preview with every layer in; it never interrupts a match, and a track changed during a pause plays from its first bar on resume. Every envelope starts silent before its first scheduled value, because a new gain node passes full level until then and a source starting a sample early would click. Both play through one audio context, owned by `AudioOutput`: browsers limit how many a page may open, so it is created once, on the first event, which always follows a click or key press, and resumed whenever the browser suspended it.
 
 ### Haptics
 

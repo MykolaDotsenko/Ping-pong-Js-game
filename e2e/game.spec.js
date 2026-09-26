@@ -509,6 +509,39 @@ test('Escape and the pause screen expose music and sound switches', async ({ pag
 
   const pause = page.locator('[data-overlay="pause"]');
   await expect(pause).toBeVisible();
-  await expect(pause.getByRole('button', { name: 'Music' })).toBeVisible();
+  await expect(pause.getByRole('button', { name: 'Music', exact: true })).toBeVisible();
   await expect(pause.getByRole('button', { name: 'Sound' })).toBeVisible();
+});
+
+test('the track button cycles the music, plays a sample of each track and remembers the pick', async ({ page }) => {
+  // Count the notes the page schedules, to hear the preview without speakers.
+  await page.addInitScript(() => {
+    window.scheduledNotes = 0;
+    const create = window.AudioContext.prototype.createOscillator;
+    window.AudioContext.prototype.createOscillator = function createOscillator() {
+      window.scheduledNotes += 1;
+      return create.call(this);
+    };
+  });
+  await page.goto('/');
+
+  const menu = page.locator('[data-overlay="menu"]');
+  const track = menu.getByRole('button', { name: /^Music track:/ });
+  await expect(track).toHaveAccessibleName('Music track: Neon');
+
+  await track.click();
+  await expect(track).toHaveAccessibleName('Music track: Arena');
+  await expect.poll(() => page.evaluate(() => window.scheduledNotes)).toBeGreaterThan(0);
+
+  for (const name of ['Anthem', 'Contender', 'Iron', 'Neon', 'Arena']) {
+    await track.click();
+    await expect(track).toHaveAccessibleName(`Music track: ${name}`);
+  }
+
+  await page.reload();
+  await expect(menu.getByRole('button', { name: /^Music track:/ })).toHaveAccessibleName('Music track: Arena');
+
+  await playButton(page).click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-overlay="pause"]').getByRole('button', { name: 'Music track: Arena' })).toBeVisible();
 });

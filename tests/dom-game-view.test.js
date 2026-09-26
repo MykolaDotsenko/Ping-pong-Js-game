@@ -114,6 +114,8 @@ function createRoot({ modalDialogs = true } = {}) {
     ['hudSound', { 'data-setting': 'sound' }],
     ['menuSound', { 'data-setting': 'sound' }],
     ['music', { 'data-setting': 'music' }],
+    ['menuTrack', { 'data-track': '' }],
+    ['pauseTrack', { 'data-track': '' }],
     ['powerUps', { 'data-setting': 'powerUps', 'data-not-rush': '' }],
     ['vibration', { 'data-setting': 'vibration' }],
     ['solo', { 'data-mode': 'solo' }],
@@ -179,6 +181,7 @@ function createPreferences(initial = {}) {
     powerUps: true,
     sound: true,
     music: true,
+    track: 'neon',
     vibration: true,
     tutorialSeen: true,
     bestRally: 0,
@@ -211,16 +214,28 @@ function createDevice(overrides = {}) {
   };
 }
 
+const TRACKS = [{ id: 'neon', label: 'Neon' }, { id: 'arena', label: 'Arena' }, { id: 'iron', label: 'Iron' }];
+
 function setup({ canVibrate = true, preferences = createPreferences(), device = createDevice(), modalDialogs = true } = {}) {
   const dom = createRoot({ modalDialogs });
   const { board } = dom;
-  const view = new DomGameView({ root: dom.root, board, preferences, canVibrate, device, rushLives: 3 });
+  const previews = [];
+  const view = new DomGameView({
+    root: dom.root,
+    board,
+    preferences,
+    canVibrate,
+    device,
+    rushLives: 3,
+    tracks: TRACKS,
+    previewTrack: (track) => previews.push(track),
+  });
   const commands = [];
 
   view.onCommand((command) => commands.push({ command, focusedBefore: board.focusCalls.length }));
   view.connect();
 
-  return { view, dom, board, commands, preferences, device };
+  return { view, dom, board, commands, preferences, device, previews };
 }
 
 const click = (element) => element.dispatchEvent(new Event('click'));
@@ -354,6 +369,29 @@ test('setting toggles flip the preference and every matching switch', () => {
   assert.equal(preferences.get().music, false);
   assert.equal(preferences.get().powerUps, false);
   assert.equal(preferences.get().vibration, false);
+});
+
+test('the track button shows the saved track and every tap moves on, turns music on and plays a sample', () => {
+  const { dom, preferences, previews } = setup({ preferences: createPreferences({ track: 'arena', music: false }) });
+
+  assert.equal(dom.menuTrack.textContent, 'Arena');
+  assert.equal(dom.pauseTrack.getAttribute('aria-label'), 'Music track: Arena');
+
+  click(dom.menuTrack);
+  assert.equal(preferences.get().track, 'iron');
+  assert.equal(preferences.get().music, true, 'a picked track is meant to be heard');
+  assert.equal(dom.music.getAttribute('aria-pressed'), 'true');
+  assert.equal(dom.pauseTrack.textContent, 'Iron', 'both pickers follow');
+
+  click(dom.pauseTrack);
+  assert.equal(preferences.get().track, 'neon', 'wraps around to the first track');
+  assert.deepEqual(previews, ['iron', 'neon']);
+});
+
+test('an unknown saved track shows as the first one', () => {
+  const { dom } = setup({ preferences: createPreferences({ track: 'polka' }) });
+
+  assert.equal(dom.menuTrack.textContent, 'Neon');
 });
 
 test('the vibration switch is hidden where the device cannot vibrate', () => {
