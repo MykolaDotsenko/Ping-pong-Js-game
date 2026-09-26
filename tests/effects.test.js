@@ -190,3 +190,23 @@ test('updating with no elapsed time changes nothing', () => {
 
   assert.deepEqual(effects.particles, before);
 });
+
+test('a step backwards in time, from a misbehaving clock, changes nothing either', () => {
+  const effects = new Effects({ random: seededRandom() });
+
+  effects.burst(spark);
+  const before = structuredClone(effects.particles);
+  effects.update(-0.1);
+
+  assert.deepEqual(effects.particles, before);
+});
+
+test('shakes add up, but never beyond a firm jolt', () => {
+  const effects = new Effects({ random: seededRandom() });
+
+  effects.shake(1);
+  effects.shake(1);
+  effects.shake(1);
+
+  assert.equal(effects.shakeAmount, 1.2);
+});

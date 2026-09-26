@@ -166,3 +166,45 @@ test('start is idempotent and stop cancels the scheduled frame', () => {
   assert.equal(loop.running, false);
   assert.equal(loop.accumulator, 0);
 });
+
+test('a long gap between frames, such as a tab coming back, runs at most one frame of simulation', () => {
+  const scheduler = createScheduler();
+  const updates = [];
+  // Binary fractions, so the count is exact.
+  const loop = new FixedStepLoop({
+    stepSeconds: 1 / 64,
+    maxFrameSeconds: 1 / 16,
+    scheduler,
+    update: (deltaSeconds) => updates.push(deltaSeconds),
+    render: () => {},
+  });
+
+  loop.start();
+  loop.tick(1000);
+  loop.tick(6000); // five seconds later
+
+  assert.equal(updates.length, 4, 'capped at one sixteenth of a second, not 320 steps');
+});
+
+test('a stop drops a pending hit-stop, so the next match does not start frozen', () => {
+  const scheduler = createScheduler();
+  const updates = [];
+  const loop = new FixedStepLoop({
+    stepSeconds: 0.01,
+    maxFrameSeconds: 0.1,
+    scheduler,
+    update: (deltaSeconds) => updates.push(deltaSeconds),
+    render: () => {},
+  });
+
+  loop.start();
+  loop.tick(1000);
+  loop.hold(0.05);
+  loop.stop();
+  loop.start();
+  loop.tick(2000);
+  loop.tick(2020);
+
+  assert.equal(loop.holdSeconds, 0);
+  assert.equal(updates.length, 2);
+});

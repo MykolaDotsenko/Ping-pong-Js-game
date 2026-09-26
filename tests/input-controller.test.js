@@ -196,10 +196,21 @@ test('hiding the page pauses, showing it again does nothing', () => {
 
   document.visibilityState = 'hidden';
   document.dispatchEvent(new Event('visibilitychange'));
+  assert.deepEqual(commands, [GAME_COMMAND.PAUSE], 'paused as the page is hidden');
+
   document.visibilityState = 'visible';
   document.dispatchEvent(new Event('visibilitychange'));
+  assert.deepEqual(commands, [GAME_COMMAND.PAUSE], 'nothing more when it comes back');
+});
 
-  assert.deepEqual(commands, [GAME_COMMAND.PAUSE]);
+test('losing focus lets go of Player 2 keys too', () => {
+  const { input, window } = setup();
+
+  input.configure({ players: 2 });
+  press(window, { code: 'KeyJ' });
+  window.dispatchEvent(new Event('blur'));
+
+  assert.equal(input.snapshot().opponentAxis, 0);
 });
 
 test('disconnect removes every listener', () => {
@@ -258,6 +269,17 @@ test('lifting a finger keeps the paddle where it was and frees the paddle for th
 
   surface.dispatchEvent(pointerEvent('pointerdown', 350, { clientY: 100, pointerId: 9 }));
   assert.equal(input.snapshot().opponentPointerX, 500);
+});
+
+test('with two players, a mouse that let go of its paddle steers it no more by hovering', () => {
+  const { input, surface } = setup();
+
+  input.configure({ players: 2 });
+  surface.dispatchEvent(pointerEvent('pointerdown', 150, { clientY: 100, pointerId: 1 }));
+  surface.dispatchEvent(pointerEvent('pointerup', 150, { clientY: 100, pointerId: 1 }));
+  surface.dispatchEvent(pointerEvent('pointermove', 450, { clientY: 100, pointerId: 1 }));
+
+  assert.equal(input.snapshot().opponentPointerX, 100);
 });
 
 test('with two players a hovering mouse steers nothing, and clicking takes the half it clicks', () => {

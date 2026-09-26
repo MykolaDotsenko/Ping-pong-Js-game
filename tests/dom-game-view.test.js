@@ -591,6 +591,14 @@ test('the menu shows Solo win statistics, with the streak flame hidden from scre
   assert.equal(dom.stats.hidden, true);
 });
 
+test('win statistics stay hidden until a Solo match has been played', () => {
+  const { view, dom } = setup();
+
+  view.render(presentation({ stats: DEFAULT_STATS }));
+
+  assert.equal(dom.stats.hidden, true);
+});
+
 test('the result screen shows the winner, score, rally, difficulty and a new record', () => {
   const { view, dom } = setup({ preferences: createPreferences({ difficulty: 'hard' }) });
 

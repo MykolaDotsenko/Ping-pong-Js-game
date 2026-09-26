@@ -396,3 +396,40 @@ test('with two players the top paddle follows the second person instead of the c
   assert.ok(Math.abs(byAxis.opponent.x - (width / 2 - paddle.keyboardSpeed * step)) < 1e-9);
   assert.equal(idle.opponent.x, width / 2);
 });
+
+test('serves alternate sides, so neither player always receives on the same side', () => {
+  let state = runningState();
+  const directions = [];
+
+  for (let point = 0; point < 4; point += 1) {
+    state = advanceGame({ ...state, serveCountdown: 0, ball: ball({ x: 10, y: -radius - 1, vy: -300 }) }, step, idleInput, PLAIN);
+    directions.push(Math.sign(state.ball.vx));
+  }
+
+  assert.deepEqual(directions, [-1, 1, -1, 1]);
+});
+
+test('the longest rally is kept when a shorter one follows', () => {
+  const state = runningState({ rally: 2, longestRally: 9, ball: ball({ x: width / 2, y: playerPaddleY - radius - 2, vy: 400 }) });
+  const next = advanceGame(state, step, { ...idleInput, pointerX: width / 2 }, PLAIN);
+
+  assert.equal(next.rally, 3);
+  assert.equal(next.longestRally, 9);
+});
+
+test('a point is scored only once the whole ball has left the court', () => {
+  const leaving = runningState({ ball: ball({ x: 10, y: height + radius / 2, vy: 1 }) });
+
+  assert.equal(advanceGame(leaving, step, idleInput, PLAIN).score.opponent, 0);
+});
+
+test('a ball overlapping a front corner but sliding away from it is eased out without a hit', () => {
+  // Its center sits inside the rounded corner, and it moves off sideways faster than it falls.
+  const corner = { x: width / 2 + paddle.width / 2, y: playerPaddleY };
+  const state = runningState({ ball: ball({ x: corner.x + 5, y: corner.y - 5, vx: 600, vy: 100 }) });
+  const next = advanceGame(state, step, { ...idleInput, pointerX: width / 2 }, PLAIN);
+
+  assert.equal(next.events.some((event) => event.type === 'paddle-hit'), false);
+  assert.ok(next.ball.vy > 0, 'still falling toward the goal line');
+  assert.ok(Math.hypot(next.ball.x - corner.x, next.ball.y - corner.y) >= radius - 1e-9, 'clear of the corner');
+});

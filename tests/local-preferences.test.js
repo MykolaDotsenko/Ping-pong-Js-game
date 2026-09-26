@@ -172,3 +172,21 @@ test('after a save fails, the tab trusts its own newer values over what storage 
   assert.equal(preferences.get().sound, false, 'not reverted by the stale stored value');
   assert.equal(preferences.get().music, false);
 });
+
+test('after a save fails, another tab\'s save does not roll back this tab\'s newer values', () => {
+  const storage = createStorage({ [KEY]: JSON.stringify({ bestRally: 2 }) });
+  const tab = createTab(storage);
+  const write = storage.setItem;
+
+  storage.setItem = () => {
+    throw new Error('QuotaExceededError');
+  };
+  tab.preferences.set({ bestRally: 9 });
+
+  // Storage recovers in another tab, which saves an older record.
+  storage.setItem = write;
+  storage.setItem(KEY, JSON.stringify({ bestRally: 3 }));
+  tab.window.hearSave();
+
+  assert.equal(tab.preferences.get().bestRally, 9);
+});

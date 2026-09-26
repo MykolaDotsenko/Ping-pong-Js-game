@@ -8,6 +8,14 @@ test('the same seed always gives the same value and next seed', () => {
   assert.notEqual(nextRandom(42).value, nextRandom(43).value);
 });
 
+test('the generator is mulberry32, so a stored seed replays the same match in any version', () => {
+  const first = nextRandom(1);
+  const second = nextRandom(first.seed);
+
+  assert.deepEqual(first, { seed: 1831565814, value: 0.6270739405881613 });
+  assert.deepEqual(second, { seed: 3663131627, value: 0.002735721180215478 });
+});
+
 test('values stay in [0, 1) and spread across the range', () => {
   let seed = 1;
   const buckets = new Array(10).fill(0);

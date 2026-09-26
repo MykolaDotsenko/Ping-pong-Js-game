@@ -378,3 +378,44 @@ test('a preview never cuts into the music of a match, and stays silent with musi
   assert.equal(silent.player.playing, false);
   assert.equal(silent.timeouts.size, 0);
 });
+
+test('the loop moves through all its bars before it repeats', () => {
+  const { player, context } = setup();
+
+  player.handle(events('match-start'), running);
+  // Neon's third bar drops to F: 110 Hz four semitones down. It starts 32 steps in.
+  context().currentTime = 32 * (60 / 128 / 4);
+  player.schedule();
+
+  assert.ok(context().oscillators.some((oscillator) => Math.abs(oscillator.frequency.value - 110 * 2 ** (-4 / 12)) < 1e-6));
+  assert.ok(player.step < 64);
+});
+
+test('each bar plays its own chord: Arena turns major in its second half', () => {
+  const { player, context } = setup({ track: 'arena' });
+  const { root, bars } = player.track;
+  const stepSeconds = 60 / 140 / 4;
+  // Step 35 is the first chord of the third bar, over G: the bass on G and a G major chord.
+  const at = 0.05 + 35 * stepSeconds;
+  const semitones = (frequency) => Math.round(12 * Math.log2(frequency / root)) - bars[2];
+
+  player.handle(events('match-start'), running);
+  context().currentTime = at;
+  player.schedule();
+
+  const struck = context().oscillators.filter((oscillator) => Math.abs(oscillator.startedAt - at) < 1e-6);
+  assert.deepEqual(struck.map((oscillator) => semitones(oscillator.frequency.value)).sort((a, b) => a - b), [0, 12, 16, 19]);
+});
+
+test('resuming a match during a preview ends it and goes back to the saved track', () => {
+  const { player, timeouts, preferences } = setup({ track: 'anthem' });
+
+  player.handle(events('match-start'), running);
+  player.handle(events('paused'), { phase: 'paused' });
+  player.preview('iron');
+  player.handle(events('resumed'), running);
+
+  assert.equal(timeouts.size, 0, 'no fade-out left to cut the match music');
+  assert.equal(player.playing, true);
+  assert.equal(player.track.id, preferences.get().track);
+});
