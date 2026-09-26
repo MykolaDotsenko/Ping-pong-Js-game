@@ -71,7 +71,7 @@ export class DomGameView {
     this.rendered = null;
     /** @type {Presentation | null} */
     this.lastResult = null;
-    /** @type {Array<[HTMLElement, EventListener]>} */
+    /** @type {Array<[HTMLElement, string, EventListener]>} */
     this.listeners = [];
     /** @type {CommandHandler} */
     this.commandHandler = () => {};
@@ -157,11 +157,12 @@ export class DomGameView {
     }
 
     for (const button of this.findAll('[data-dismiss-tutorial]')) {
-      this.listen(button, () => {
-        this.preferences.set({ tutorialSeen: true });
-        this.showTutorial(false);
-      });
+      this.listen(button, () => this.showTutorial(false));
     }
+
+    // Escape closes the dialog natively, the button through showTutorial; either way the
+    // player has seen it.
+    this.listen(this.overlays.tutorial, () => this.markTutorialSeen(), 'close');
 
     for (const button of this.findAll('[data-share]')) {
       button.hidden = !this.device.canShare;
@@ -188,19 +189,20 @@ export class DomGameView {
   }
 
   disconnect() {
-    for (const [button, listener] of this.listeners) {
-      button.removeEventListener('click', listener);
+    for (const [target, type, listener] of this.listeners) {
+      target.removeEventListener(type, listener);
     }
     this.listeners = [];
   }
 
   /**
-   * @param {HTMLElement} button
+   * @param {HTMLElement} target
    * @param {EventListener} listener
+   * @param {string} [type]
    */
-  listen(button, listener) {
-    button.addEventListener('click', listener);
-    this.listeners.push([button, listener]);
+  listen(target, listener, type = 'click') {
+    target.addEventListener(type, listener);
+    this.listeners.push([target, type, listener]);
   }
 
   /** Reflects the chosen mode and difficulty on their buttons and the menu. */
@@ -242,12 +244,60 @@ export class DomGameView {
     }
   }
 
-  /** @param {boolean} visible */
+  /**
+   * Opens the tutorial as a modal dialog, which makes the page behind it inert and moves focus
+   * to its button, or closes it. Browsers without modal dialogs still show it.
+   *
+   * @param {boolean} visible
+   */
   showTutorial(visible) {
-    this.overlays.tutorial.hidden = !visible;
-    // Before the first render the menu is the ready screen, so it shows unless the tutorial covers it.
-    const ready = this.rendered === null || this.rendered.phase === GAME_PHASE.READY;
-    this.overlays.menu.hidden = visible || !ready;
+    const dialog = /** @type {HTMLDialogElement} */ (this.overlays.tutorial);
+    const open = dialog.hasAttribute('open');
+
+    if (visible && !open) {
+      if (typeof dialog.showModal === 'function') {
+        dialog.showModal();
+      } else {
+        dialog.setAttribute('open', '');
+      }
+    } else if (!visible && open) {
+      if (typeof dialog.close === 'function') {
+        dialog.close();
+      } else {
+        dialog.removeAttribute('open');
+      }
+
+      this.markTutorialSeen();
+    }
+  }
+
+  markTutorialSeen() {
+    if (!this.preferences.get().tutorialSeen) {
+      this.preferences.set({ tutorialSeen: true });
+    }
+  }
+
+  /**
+   * Keeps keyboard focus where the game can use it: on the pause and result screens' main
+   * button when they appear, and back on the board when play resumes. Focus elsewhere on the
+   * page, such as a link the player moved to, is left alone.
+   *
+   * @param {GamePhase} phase
+   */
+  guideFocus(phase) {
+    const document = this.root.ownerDocument;
+    const active = document?.activeElement;
+    const inGame = !active || active === document.body || this.root.contains(active);
+
+    if (!inGame) {
+      return;
+    }
+
+    if (phase === GAME_PHASE.PAUSED || phase === GAME_PHASE.GAME_OVER) {
+      this.find(`[data-focus="${phase === GAME_PHASE.PAUSED ? 'pause' : 'over'}"]`).focus({ preventScroll: true });
+    } else if (phase === GAME_PHASE.RUNNING && active !== this.board) {
+      this.board.focus({ preventScroll: true });
+    }
   }
 
   async shareResult() {
@@ -324,13 +374,17 @@ export class DomGameView {
    */
   showPhase(phase, mode) {
     const inMatch = phase === GAME_PHASE.RUNNING || phase === GAME_PHASE.PAUSED;
-    const tutorialOpen = !this.overlays.tutorial.hidden;
+    const phaseChanged = phase !== this.rendered?.phase;
 
     this.root.dataset.phase = phase;
     this.root.dataset.mode = mode;
-    this.overlays.menu.hidden = phase !== GAME_PHASE.READY || tutorialOpen;
+    this.overlays.menu.hidden = phase !== GAME_PHASE.READY;
     this.overlays.pause.hidden = phase !== GAME_PHASE.PAUSED;
     this.overlays.over.hidden = phase !== GAME_PHASE.GAME_OVER;
+
+    if (phaseChanged && this.rendered !== null) {
+      this.guideFocus(phase);
+    }
     this.pauseButton.toggleAttribute('disabled', !inMatch);
     this.pauseButton.setAttribute('aria-label', phase === GAME_PHASE.PAUSED ? 'Resume' : 'Pause');
     this.find('[data-label="opponent"]').textContent = mode === 'duo' ? 'P2' : mode === 'rush' ? 'CPU' : 'CPU';

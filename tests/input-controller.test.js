@@ -12,7 +12,14 @@ const board = {
 
 function setup() {
   const window = new EventTarget();
-  const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+  // openDialog stands for a <dialog open> somewhere on the page, such as the tutorial.
+  const document = Object.assign(new EventTarget(), {
+    visibilityState: 'visible',
+    openDialog: null,
+    querySelector(selector) {
+      return selector === 'dialog[open]' ? this.openDialog : null;
+    },
+  });
   const input = new InputController({ surface: new EventTarget(), board, window, document, config: { width: 800 } });
   const commands = [];
 
@@ -261,4 +268,33 @@ test('switching back to one player releases the second paddle', () => {
   input.configure({ players: 1 });
 
   assert.equal(input.snapshot().opponentPointerX, null);
+});
+
+test('while a dialog is open the game takes no keys or touches, so Space cannot start a match behind it', () => {
+  const { input, window, document, surface, commands } = setup();
+  document.openDialog = { tagName: 'DIALOG' };
+
+  const space = press(window, { code: 'Space', key: ' ' });
+  press(window, { code: 'Escape', key: 'Escape' });
+  press(window, { code: 'ArrowLeft', key: 'ArrowLeft' });
+  surface.dispatchEvent(pointerEvent('pointerdown', 300));
+
+  assert.deepEqual(commands, []);
+  assert.equal(space.defaultPrevented, false, 'Space stays with the dialog');
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: null, opponentAxis: 0, opponentPointerX: null });
+
+  // Once it closes, the same keys drive the game again.
+  document.openDialog = null;
+  press(window, { code: 'Space', key: ' ' });
+  assert.deepEqual(commands, [GAME_COMMAND.PRIMARY]);
+});
+
+test('a key released while a dialog is open is still let go, so it cannot get stuck', () => {
+  const { input, window, document } = setup();
+
+  press(window, { code: 'KeyD', key: 'd' });
+  document.openDialog = { tagName: 'DIALOG' };
+  release(window, { code: 'KeyD', key: 'd' });
+
+  assert.equal(input.snapshot().horizontalAxis, 0);
 });
