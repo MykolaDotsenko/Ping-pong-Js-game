@@ -65,6 +65,15 @@ test('a wall bounce reverses and weakens spin, so the ball curves away from the 
   assert.ok(reflected.spin < 0 && reflected.spin > -0.8);
 });
 
+test('the left wall reverses and weakens spin too, and leaves a ball already heading away alone', () => {
+  const reflected = reflectFromSideWalls(ball({ x: radius - 1, vx: -250, vy: 300, spin: 0.8 }), GAME_CONFIG);
+  assert.ok(reflected.spin < 0 && reflected.spin > -0.8);
+
+  // Rounding can leave a ball a hair inside the wall after it has already bounced.
+  const leaving = ball({ x: radius - 1, vx: 250, vy: 300 });
+  assert.strictEqual(reflectFromSideWalls(leaving, GAME_CONFIG), leaving);
+});
+
 test('a ball away from the walls is returned untouched', () => {
   const inside = ball({ vx: 250, vy: -300 });
 
@@ -260,32 +269,52 @@ test('a ball that starts inside the paddle is reported as overlapping, and place
   assert.equal(touch.x, halfPaddle + radius);
 });
 
+test('a ball whose center is already inside the paddle is pushed out through the nearest side', () => {
+  // Power-ups can widen a paddle over the ball. Its center 3 units inside the right end
+  // leaves by the right side, the shallowest way out, not through the face or the back.
+  const inside = { x: center + halfPaddle - 3, y: playerPaddleY + paddleConfig.height / 2 };
+  const found = contact(inside, { x: inside.x, y: inside.y + 2 });
+
+  assert.equal(found.time, 0);
+  assert.equal(found.overlapping, true);
+  assert.deepEqual({ x: found.normalX, y: found.normalY }, { x: 1, y: 0 });
+  near(found.x, halfPaddle + radius, 'pushed out one radius beyond the side');
+
+  const nearFace = contact({ x: center + 10, y: playerPaddleY + 2 }, { x: center + 10, y: playerPaddleY + 4 });
+  assert.deepEqual({ x: nearFace.normalX, y: nearFace.normalY }, { x: 0, y: -1 }, 'just under the face: out through the face');
+});
+
+test('a ball sliding along the face without moving into it is not caught', () => {
+  const resting = { x: center, y: playerPaddleY - radius };
+
+  assert.equal(contact(resting, { x: resting.x + 6, y: resting.y }), null);
+});
+
 test('a ball resting against the paddle is not caught again as it leaves', () => {
   const resting = { x: center + halfPaddle + radius, y: playerPaddleY + 8 };
 
   assert.equal(contact(resting, { x: resting.x + 5, y: resting.y + 3 }), null);
 });
 
-test('a glance off a still paddle side mirrors the sideways motion and keeps the downward motion', () => {
-  const glanced = glanceOffPaddle(ball({ vx: -300, vy: 400, spin: 0.6 }), { x: 1, y: 0 }, 0, ballConfig.maxSpeed);
+test('a glance off a paddle side mirrors the sideways motion and keeps the downward motion', () => {
+  const glanced = glanceOffPaddle(ball({ vx: -300, vy: 400, spin: 0.6 }), { x: 1, y: 0 });
 
   assert.deepEqual({ vx: glanced.vx, vy: glanced.vy, spin: glanced.spin }, { vx: 300, vy: 400, spin: 0 });
 });
 
-test('a paddle moving into the ball knocks it away faster, within the speed cap', () => {
-  const pushed = glanceOffPaddle(ball({ vx: 0, vy: 400 }), { x: 1, y: 0 }, 200, ballConfig.maxSpeed);
-  const whacked = glanceOffPaddle(ball({ vx: 0, vy: 400 }), { x: 1, y: 0 }, 20000, ballConfig.maxSpeed);
+test('a glance off a back corner sends the ball on toward the goal at the same speed', () => {
+  const normal = { x: Math.SQRT1_2, y: Math.SQRT1_2 };
+  const glanced = glanceOffPaddle(ball({ vx: -600, vy: 100 }), normal);
 
-  assert.equal(pushed.vx, 400);
-  assert.equal(whacked.vy, 400, 'progress toward the goal is kept');
-  near(Math.hypot(whacked.vx, whacked.vy), ballConfig.maxSpeed, 'the sideways part fills the rest of the cap');
+  assert.ok(glanced.vy > 100, 'never back into play');
+  near(Math.hypot(glanced.vx, glanced.vy), Math.hypot(600, 100), 'no speed gained or lost');
 });
 
-test('a glance off a back corner speeds the ball on toward the goal, never back into play', () => {
-  const normal = { x: Math.SQRT1_2, y: Math.SQRT1_2 };
-  const glanced = glanceOffPaddle(ball({ vx: -600, vy: 100 }), normal, 0, ballConfig.maxSpeed);
-  const slammed = glanceOffPaddle(ball({ vx: -100, vy: 900 }), normal, 20000, ballConfig.maxSpeed);
+test('even an absurd spin never turns the ball back toward its own side', () => {
+  // Half a turn in one step would send a falling ball straight back up with no sideways
+  // motion at all, which the angle limit alone would not catch.
+  const curved = curveBall(ball({ vx: 0, vy: 400, spin: Math.PI / 0.1 }), 0.1, GAME_CONFIG);
 
-  assert.ok(glanced.vy > 100);
-  assert.deepEqual({ vx: slammed.vx, vy: slammed.vy }, { vx: 0, vy: ballConfig.maxSpeed });
+  assert.ok(curved.vy > 0);
+  assert.equal(curved.spin, 0);
 });

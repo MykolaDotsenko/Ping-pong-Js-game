@@ -31,7 +31,7 @@ The original 2024 version used one global script for rendering, input, physics, 
 - **Juice:** sparks, shockwaves, screen shake, flashes, a speed-heated ball trail and victory fireworks, with synthesized sound effects, a synthesized backing track and vibration.
 - **Five backing tracks**, all original and synthesized in the browser: **Neon** (synthwave), **Arena** (arcade fighter techno), **Anthem** (a big synth-brass anthem), **Contender** (training-montage rock) and **Iron** (heavy industrial). The ♪ button in the menu or the pause screen switches track and plays a few seconds of it.
 - **Thumb rail:** on touch screens, a strip below the court steers the paddle, so your thumb never covers the play.
-- **Solid paddles:** the ball meets a paddle's face, corners and sides as solid shapes. Clip a front corner and it comes back from the edge; catch it on the side and it glances off, but it never passes through.
+- **Solid paddles:** the ball meets a paddle's face, corners and sides as solid shapes. Clip a front corner and it comes back from the edge; catch it on the side and it glances off, but it never passes through. Once you have missed, a paddle moved into the ball stops against it instead of dragging it along.
 - **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result. The heads-up display fits even a 320px-wide screen.
 - Mode, difficulty, power-ups, sound, music and its track, vibration, your best rally, your best Rush run and your Solo win record are remembered between visits, and stay in step across open tabs. Leaving a Solo match after its first point counts as a loss, so a streak is earned, not protected.
 
@@ -221,7 +221,7 @@ The dependency-free unit suite covers:
 - power-ups: spawning on schedule, each effect, wear-off through serve pauses, and the computer's blindness to a ghosted ball
 - the deterministic random source, so a seed replays a match
 - paddle control, the speed cap, spin from a moving paddle, curves that keep their speed and never stall a rally, and a full deterministic rally
-- paddle contact: faces, clipped corners, sides, a paddle swept into the ball, a ball squeezed against a wall, fast balls at any speed, and a property test over 60 bot matches in which the ball never overlaps a paddle
+- paddle contact: faces, clipped corners, sides, a paddle run into a missed ball or yanked toward a wall, a paddle that flashes across under the ball, fast balls at any speed, and a property test over 60 bot matches in which the ball never overlaps a paddle
 - the opponent's reach, wall-folded prediction, aim, speed-dependent misjudgement, and the ordering of the difficulty presets
 - the fixed-step loop with its time scale and hit-stop hold, and render interpolation
 - the controller: loop lifecycle, commands, the match built from mode and difficulty, slow motion and hit-stop, event dispatch to feedback adapters, the best-rally, best-Rush and win-streak records, and forfeits

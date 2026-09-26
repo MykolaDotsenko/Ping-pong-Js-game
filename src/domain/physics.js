@@ -201,21 +201,6 @@ function nearestSurface(p, box) {
 }
 
 /**
- * How far a point is from a paddle; a ball overlaps the paddle when its center is closer than
- * one radius.
- *
- * @param {Point} point
- * @param {number} paddleX the paddle's center
- * @param {number} paddleTop
- * @param {number} paddleWidth
- * @param {GameConfig} config
- */
-export function paddleClearance(point, paddleX, paddleTop, paddleWidth, config) {
-  const box = { left: paddleX - paddleWidth / 2, right: paddleX + paddleWidth / 2, top: paddleTop, bottom: paddleTop + config.paddle.height };
-  return nearestSurface(point, box).distance;
-}
-
-/**
  * Finds where a moving ball first touches a moving paddle during one step. It works in the
  * paddle's frame of reference, where the paddle stands still and the ball's path is a
  * straight segment, so fast balls cannot tunnel through and a paddle swept sideways into
@@ -265,28 +250,17 @@ export function findPaddleContact({ from, to, paddleFrom, paddleTo, paddleTop, p
 }
 
 /**
- * A glancing blow off a paddle's side or back corner: the ball bounces off the surface as
- * off a wall that may itself be moving, and keeps heading for the goal line. Its speed
- * stays within the cap without losing any of its progress toward the goal.
+ * A glancing blow off a paddle's side or back corner: the ball bounces off the surface as off
+ * a wall, at the same speed and without spin. A paddle never passes its own speed on this way;
+ * one that runs into the ball side-on stops against it instead.
  *
  * @param {Ball} ball
  * @param {{ x: number, y: number }} normal the paddle surface's outward normal
- * @param {number} paddleVx the paddle's velocity during the step
- * @param {number} maxSpeed
  * @returns {Ball}
  */
-export function glanceOffPaddle(ball, normal, paddleVx, maxSpeed) {
-  const along = (ball.vx - paddleVx) * normal.x + ball.vy * normal.y;
-  const vx = ball.vx - 2 * along * normal.x;
-  const vy = ball.vy - 2 * along * normal.y;
-  const cap = Math.max(maxSpeed, Math.hypot(ball.vx, ball.vy));
-
-  if (Math.abs(vy) >= cap) {
-    return { ...ball, vx: 0, vy: Math.sign(vy) * cap, spin: 0 };
-  }
-
-  const sideways = Math.sqrt(cap ** 2 - vy ** 2);
-  return { ...ball, vx: clamp(vx, -sideways, sideways), vy, spin: 0 };
+export function glanceOffPaddle(ball, normal) {
+  const along = ball.vx * normal.x + ball.vy * normal.y;
+  return { ...ball, vx: ball.vx - 2 * along * normal.x, vy: ball.vy - 2 * along * normal.y, spin: 0 };
 }
 
 /**

@@ -219,9 +219,9 @@ A simple overlap check misses a paddle when a fast ball travels past it between 
 
 `findPaddleContact` works in the paddle's frame of reference, where the paddle stands still and the ball's path over one step, the paddle's own motion included, is a straight segment. The ball's center must not enter the paddle rectangle grown by the ball's radius, whose corners are rounded: two crossed rectangles and four corner circles. The earliest entry into any of them is the first touch, and the surface normal there tells face, corner and side apart.
 
-- the face and the front corners return the ball, from the very edge when a corner is clipped, and the return leaves level with the face, so a paddle sliding on cannot catch it twice
-- the sides and back corners deflect it like a moving wall (`paddle-graze`), keeping its progress toward the goal, and the point still goes to the other side
-- a ball squeezed between a paddle and a side wall slips out behind the paddle
+- the face and the front corners return the ball, from the very edge when a corner is clipped, and the return leaves level with the face, so a paddle sliding on cannot catch it twice. The ball leaves from where it was struck: a tap moves the paddle to the finger at once, so the paddle may end the step far from that point
+- a ball that flies into a side or back corner bounces off it (`paddle-graze`), keeping its progress toward the goal, and the point still goes to the other side
+- a paddle that runs into the ball side-on stops against it and passes on none of its own speed, so a missed ball keeps its course however the player moves. An earlier version placed the ball beside the paddle where the paddle ended the step, and a tap across the court dragged a missed ball up to 360 units in one frame
 
 A property test plays 60 bot matches across every mode, over 100,000 steps with yanked paddles, and asserts that the ball never overlaps a paddle. The difficulty balance, measured with the same bots before and after the change, moved only within noise.
 
