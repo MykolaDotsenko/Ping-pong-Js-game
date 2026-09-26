@@ -32,7 +32,7 @@ The original 2024 version used one global script for rendering, input, physics, 
 - **Five backing tracks**, all original and synthesized in the browser: **Neon** (synthwave), **Arena** (arcade fighter techno), **Anthem** (a big synth-brass anthem), **Contender** (training-montage rock) and **Iron** (heavy industrial). The ♪ button in the menu or the pause screen switches track and plays a few seconds of it.
 - **Thumb rail:** on touch screens, a strip below the court steers the paddle, so your thumb never covers the play.
 - **Solid paddles:** the ball meets a paddle's face, corners and sides as solid shapes. Clip a front corner and it comes back from the edge; catch it on the side and it glances off, but it never passes through. Once you have missed, a paddle moved into the ball stops against it instead of dragging it along.
-- **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result. The heads-up display fits even a 320px-wide screen.
+- **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result. Every control is at least 44 by 44 pixels, the size a fingertip needs, even on a 320px-wide screen. Held sideways, the heads-up display becomes a column beside a full-height court, and the menus open as sheets across the screen.
 - Mode, difficulty, power-ups, sound, music and its track, vibration, your best rally, your best Rush run and your Solo win record are remembered between visits, and stay in step across open tabs. Leaving a Solo match after its first point counts as a loss, so a streak is earned, not protected.
 
 ## What it demonstrates
@@ -235,7 +235,7 @@ Playwright runs the real application in desktop and mobile Chromium. It reads th
 
 - the application boots without page errors, and Play, `Space`, `Esc` and the menus drive the state machine
 - the paddle follows the mouse, the keyboard takes over while the mouse rests on the board, and `A`/`D` work on a Cyrillic layout
-- on a phone, the court fills the screen, stays in view when a match starts, and the thumb rail steers the paddle; on a 320px-wide phone the heads-up display fits without sideways scrolling
+- on a phone, the court fills the screen, stays in view when a match starts, and the thumb rail steers the paddle; on a 320px-wide phone the heads-up display fits without sideways scrolling and every control of the menu and pause screen is fingertip-sized; held sideways, the HUD stands beside a full-height court and the menu sheet fits
 - the first serve counts down from three before the ball moves
 - the first visit opens the tutorial once as a modal dialog; `Space` closes it without starting a match, `Esc` closes it too, and either is remembered
 - Rush shows lives as hearts and ends when they run out; two players get their own halves of the board

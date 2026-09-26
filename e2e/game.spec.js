@@ -240,6 +240,64 @@ test.describe('on the narrowest phones', () => {
   });
 });
 
+/**
+ * The visible controls of the arena that measure under 44 by 44 CSS pixels, the least a
+ * fingertip needs, and those that spill out of the screen or overlap another.
+ */
+const touchProblems = (page) => page.evaluate(() => {
+  const controls = [...document.querySelectorAll('[data-arena] button, [data-arena] a[href]')]
+    .filter((element) => element.getClientRects().length > 0 && !element.closest('[hidden]'))
+    .map((element) => ({ name: (element.getAttribute('aria-label') ?? element.textContent).trim(), box: element.getBoundingClientRect() }));
+  const small = controls.filter(({ box }) => box.width < 43.5 || box.height < 43.5).map(({ name }) => name);
+  const outside = controls.filter(({ box }) => box.left < 0 || box.top < 0
+    || box.right > document.documentElement.clientWidth || box.bottom > window.innerHeight).map(({ name }) => name);
+  const overlapping = controls.flatMap((a, index) => controls.slice(index + 1)
+    .filter((b) => Math.min(a.box.right, b.box.right) - Math.max(a.box.left, b.box.left) > 1
+      && Math.min(a.box.bottom, b.box.bottom) - Math.max(a.box.top, b.box.top) > 1)
+    .map((b) => `${a.name} / ${b.name}`));
+  return { small, outside, overlapping };
+});
+
+const noTouchProblems = { small: [], outside: [], overlapping: [] };
+
+test.describe('on the smallest phone held upright', () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test('every control of the menu and the pause screen is fingertip-sized and on screen', async ({ page, hasTouch }) => {
+    test.skip(!hasTouch, 'phone layout');
+
+    await page.goto('/');
+    expect(await touchProblems(page)).toEqual(noTouchProblems);
+
+    await playButton(page).tap();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[data-overlay="pause"]')).toBeVisible();
+    expect(await touchProblems(page)).toEqual(noTouchProblems);
+  });
+});
+
+test.describe('on a phone held sideways', () => {
+  test.use({ viewport: { width: 915, height: 412 } });
+
+  test('the court takes the full height beside a column HUD, and the menu opens as a sheet that fits', async ({ page, hasTouch }) => {
+    test.skip(!hasTouch, 'phone layout');
+
+    await page.goto('/');
+    expect(await touchProblems(page)).toEqual(noTouchProblems);
+    const menuFits = await page.locator('[data-overlay="menu"]').evaluate((sheet) => sheet.scrollHeight <= sheet.clientHeight);
+    expect(menuFits).toBe(true);
+
+    await playButton(page).tap();
+    const layout = await page.evaluate(() => {
+      const box = (selector) => document.querySelector(selector).getBoundingClientRect();
+      return { hud: box('.hud'), board: box('.board'), height: window.innerHeight };
+    });
+    expect(layout.hud.right).toBeLessThanOrEqual(layout.board.left);
+    expect(layout.board.height / layout.height).toBeGreaterThan(0.8);
+    expect(await touchProblems(page)).toEqual(noTouchProblems);
+  });
+});
+
 test('starting a match on a phone keeps the whole court in view and locks scrolling', async ({ page, hasTouch }) => {
   test.skip(!hasTouch, 'phone layout');
 

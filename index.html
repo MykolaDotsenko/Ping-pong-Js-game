@@ -69,33 +69,37 @@
             <p class="match-point" data-match-point hidden>Match point</p>
 
             <div class="overlay overlay--menu" data-overlay="menu" role="region" aria-label="Game menu">
-              <div class="panel">
-                <p class="logo" aria-hidden="true">
-                  <span class="logo__word">PONG</span>
-                  <span class="logo__tag">Architecture Lab</span>
-                </p>
-                <div class="segmented segmented--modes" role="group" aria-label="Mode">
-                  <button type="button" data-mode="solo" aria-pressed="true"><strong>Solo</strong><small>vs computer</small></button>
-                  <button type="button" data-mode="rush" aria-pressed="false"><strong>Rush</strong><small data-rush-lives>3 lives</small></button>
-                  <button type="button" data-mode="duo" aria-pressed="false"><strong>2P</strong><small>one screen</small></button>
+              <div class="panel panel--menu">
+                <div class="panel__side">
+                  <p class="logo" aria-hidden="true">
+                    <span class="logo__word">PONG</span>
+                    <span class="logo__tag">Architecture Lab</span>
+                  </p>
+                  <p class="panel__meta" data-menu-meta>First to 7 · Best rally <strong>0</strong></p>
+                  <p class="panel__stats" data-stats hidden></p>
+                  <p class="panel__tip" data-mode-tip>Flick the paddle as you hit to curve the ball.</p>
                 </div>
-                <div class="segmented" role="group" aria-label="Difficulty" data-solo-only>
-                  <button type="button" data-difficulty="easy" aria-pressed="false">Easy</button>
-                  <button type="button" data-difficulty="normal" aria-pressed="true">Normal</button>
-                  <button type="button" data-difficulty="hard" aria-pressed="false">Hard</button>
-                </div>
-                <button type="button" class="cta" data-command="start">Play</button>
-                <p class="panel__meta" data-menu-meta>First to 7 · Best rally <strong>0</strong></p>
-                <p class="panel__stats" data-stats hidden></p>
-                <div class="toggles">
-                  <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-not-rush>Power-ups</button>
-                  <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
-                  <button type="button" class="track" data-track aria-label="Music track: Neon">Neon</button>
-                </div>
-                <p class="panel__tip" data-mode-tip>Flick the paddle as you hit to curve the ball.</p>
-                <div class="panel__row">
-                  <button type="button" class="ghost ghost--small" data-show-tutorial>How to play</button>
-                  <a class="panel__link" href="#about">How it's built</a>
+                <div class="panel__main">
+                  <div class="segmented segmented--modes" role="group" aria-label="Mode">
+                    <button type="button" data-mode="solo" aria-pressed="true"><strong>Solo</strong><small>vs computer</small></button>
+                    <button type="button" data-mode="rush" aria-pressed="false"><strong>Rush</strong><small data-rush-lives>3 lives</small></button>
+                    <button type="button" data-mode="duo" aria-pressed="false"><strong>2P</strong><small>one screen</small></button>
+                  </div>
+                  <div class="segmented" role="group" aria-label="Difficulty" data-solo-only>
+                    <button type="button" data-difficulty="easy" aria-pressed="false">Easy</button>
+                    <button type="button" data-difficulty="normal" aria-pressed="true">Normal</button>
+                    <button type="button" data-difficulty="hard" aria-pressed="false">Hard</button>
+                  </div>
+                  <button type="button" class="cta" data-command="start">Play</button>
+                  <div class="toggles">
+                    <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-not-rush>Power-ups</button>
+                    <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
+                    <button type="button" class="track" data-track aria-label="Music track: Neon">Neon</button>
+                  </div>
+                  <div class="panel__row">
+                    <button type="button" class="ghost ghost--small" data-show-tutorial>How to play</button>
+                    <a class="panel__link" href="#about">How it's built</a>
+                  </div>
                 </div>
               </div>
             </div>
@@ -157,7 +161,6 @@
         <p id="controls-help" class="help">
           <span class="help__keys">Move <kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> · <kbd>Space</kbd> start / pause · <kbd>Esc</kbd> pause</span>
           <span class="help__duo">Player 2: <kbd>J</kbd> <kbd>L</kbd> or the top half of the screen</span>
-          <span class="help__rotate">Turn your phone upright for the full-size court</span>
         </p>
         <p class="visually-hidden" data-game-status aria-live="polite">First to 7. Start when ready.</p>
       </section>
