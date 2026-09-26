@@ -9,6 +9,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4173',
     trace: 'retain-on-failure',
+    // Screen shake and flashes would move pixels that the tests read; one test opts back in.
+    reducedMotion: 'reduce',
   },
   webServer: {
     command: 'python3 -m http.server 4173 --bind 127.0.0.1',

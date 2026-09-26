@@ -1,7 +1,7 @@
 // Regenerates docs/preview.png from the running application: `npm run docs:preview`.
 //
-// The page runs on a paused fake clock, so the captured moment is identical on every run.
-// Optional environment variables:
+// The page runs on a paused fake clock with a seeded random source for the effects, so the
+// captured moment is identical on every run. Optional environment variables:
 //   CHROMIUM_PATH    a Chromium other than the one `npx playwright install chromium` provides
 //   PREVIEW_AT_MS    match time to capture, to pick another moment after UI or physics changes
 //   PREVIEW_OUTPUT   where to write the image
@@ -14,10 +14,10 @@ const port = 4176;
 const url = `http://127.0.0.1:${port}/`;
 const output = process.env.PREVIEW_OUTPUT ?? 'docs/preview.png';
 
-// A short, real rally: after the serve pause the player returns the ball off the paddle's
-// edge, the computer answers, and the frame is taken as the ball comes back.
-const PLAYER_X_FRACTION = 0.545;
-const CAPTURE_AFTER_MS = Number(process.env.PREVIEW_AT_MS ?? 3900);
+// A real rally: after the three-second countdown the paddle, waiting in the middle, returns the
+// computer's shot, and the frame is taken just after that hit, with sparks flying and the
+// rally counter up.
+const CAPTURE_AT_MS = Number(process.env.PREVIEW_AT_MS ?? 7400);
 
 async function waitForServer() {
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -44,28 +44,30 @@ try {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH });
 
   try {
-    const page = await browser.newPage({ viewport: { width: 1200, height: 1400 }, deviceScaleFactor: 2 });
+    const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1.25 });
+    await page.addInitScript(() => {
+      let seed = 7;
+      Math.random = () => {
+        seed = (seed * 16807) % 2147483647;
+        return (seed - 1) / 2147483646;
+      };
+    });
+    // A returning player, so the menu shows rather than the tutorial.
+    await page.addInitScript(() => {
+      // Runs in the browser, where globalThis is the window.
+      globalThis.localStorage.setItem('ping-pong-lab:preferences', JSON.stringify({ tutorialSeen: true }));
+    });
     await page.clock.install({ time: 0 });
     await page.goto(url);
     await page.clock.pauseAt(60 * 60 * 1000);
+    // Let the menu's entrance animation settle, so the click lands on a still button.
+    await delay(500);
 
-    const board = page.locator('[data-game-canvas]');
-    await page.getByRole('button', { name: 'Start' }).click();
-    const box = await board.boundingBox();
-    await board.hover({ position: { x: box.width * PLAYER_X_FRACTION, y: box.height / 2 } });
-    await page.clock.runFor(CAPTURE_AFTER_MS);
-
-    const card = await page.locator('.game-card').boundingBox();
-    const margin = 16;
-    await page.screenshot({
-      path: output,
-      clip: {
-        x: card.x - margin,
-        y: card.y - margin,
-        width: card.width + margin * 2,
-        height: card.height + margin * 2,
-      },
-    });
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
+    // Park the mouse beside the board, so the paddle stays where it starts.
+    await page.mouse.move(40, 450);
+    await page.clock.runFor(CAPTURE_AT_MS);
+    await page.screenshot({ path: output });
     console.log(`Saved ${output}`);
   } finally {
     await browser.close();

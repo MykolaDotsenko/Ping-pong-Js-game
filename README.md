@@ -2,11 +2,11 @@
 
 [![Quality](https://github.com/MykolaDotsenko/Ping-pong-Js-game/actions/workflows/quality.yml/badge.svg)](https://github.com/MykolaDotsenko/Ping-pong-Js-game/actions/workflows/quality.yml)
 
-A dependency-free browser Ping Pong game built as a compact **software architecture case study**.
+A neon arcade Ping Pong for phones and desktops, built without dependencies as a compact **software architecture case study**.
 
-The project deliberately stays on Vanilla JavaScript and Canvas so the engineering decisions remain visible: explicit dependency direction, browser-agnostic core logic, deterministic simulation, replaceable adapters, and automated verification.
+The project deliberately stays on Vanilla JavaScript, Canvas and Web Audio so the engineering decisions remain visible: explicit dependency direction, browser-agnostic core logic, deterministic simulation, replaceable adapters, and automated verification.
 
-**[Live demo on GitHub Pages](https://mykoladotsenko.github.io/Ping-pong-Js-game/)**
+**[Play the live demo](https://mykoladotsenko.github.io/Ping-pong-Js-game/)**. On a phone, add it to your home screen for full-screen play.
 
 ![A live match in Ping Pong Architecture Lab](./docs/preview.png)
 
@@ -14,41 +14,57 @@ The preview is a real frame of a live match, captured from the running app by `n
 
 ## Why this project exists
 
-This is not an attempt to build the largest Pong implementation. It demonstrates how to apply proportional architecture to a small product without hiding complexity behind a framework.
+This is not an attempt to build the largest Pong implementation. It demonstrates how to apply proportional architecture to a small product without hiding complexity behind a framework, and how far a small, well-structured core can be pushed in feel and polish.
 
 The original 2024 version used one global script for rendering, input, physics, AI, scoring, and lifecycle. The current version separates those concerns and makes the important rules independently testable.
+
+## The game
+
+- **Three ways to play.** **Solo** against the computer, first to 7. **Rush**, a survival run with three lives against a computer that returns everything but a curve, where the ball only gets faster and your score is the number of hits. **2P**, two people on one phone, each steering their own end of the court.
+- **Portrait neon court** that fills a phone held upright and reads as a vertical arcade cabinet on desktop.
+- **Curve shots:** flick the paddle as it meets the ball and the ball bends in that direction. The computer cannot predict a curve.
+- **Power-ups** appear mid-rally and go to whoever hit the ball last: **Wide** enlarges your paddle, **Shrink** shrinks the other side's, **Turbo** launches the ball at top speed, and **Ghost** hides the ball in the other side's half. They can be switched off.
+- **A computer that plays like a person:** it reacts only once the ball comes within its reach, aims its returns away from you, and misjudges fast balls more.
+- **Three difficulties** — Easy, Normal, Hard — tuned by simulating matches against human-like bots.
+- **Drama:** a 3-2-1 countdown before the first serve, a **Match point** banner, slow motion as a match-point ball closes on a paddle, a split-second freeze on hard hits, and callouts for a **CURVE!**, a **SMASH!** or an **EDGE!** catch.
+- **Rallies that build:** every hit speeds the ball up, the rally counter pulses, long rallies heat the ball into a "fever" glow, and the music adds a layer at 3 hits and another at 6.
+- **Juice:** sparks, shockwaves, screen shake, flashes, a speed-heated ball trail and victory fireworks, with synthesized sound effects, a synthesized backing track and vibration.
+- **Thumb rail:** on touch screens, a strip below the court steers the paddle, so your thumb never covers the play.
+- **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result.
+- Mode, difficulty, power-ups, sound, music, vibration, your best rally, your best Rush run and your Solo win record are remembered between visits.
 
 ## What it demonstrates
 
 - browser-agnostic **domain + application core**, kept deterministic (no clock, no randomness)
 - explicit state machine: `ready → running ↔ paused → game-over`
-- a short pause before every serve, drawn as a ring closing in on the ball
+- **domain events** (`paddle-hit`, `point`, `match-point`, `pickup`, `game-over`, …) emitted by the simulation and turned into sound, music, vibration and visual effects by independent adapters
+- **rules as data:** a match and a Rush run share one simulation; the rules object decides how a point counts
+- a **deterministic random source** kept in the game state, so power-ups vary between matches while the same seed replays a match exactly
+- a fixed-step loop with a **time scale and hit-stop hold**, so slow motion and freeze frames never touch the simulation's step size
 - fixed-timestep simulation with render interpolation, independent from display refresh rate
 - a render loop that runs only during a match; idle screens cost no frames
-- swept paddle collision using the exact crossing point
-- paddle-hit angle derived from contact position
-- speed-capped opponent strategy with lightweight prediction
+- swept paddle collision using the exact crossing point, contact-position bounce angles, and spin that bends the path without changing speed
 - typed ports: adapter contracts written as JSDoc and checked by the TypeScript compiler, with no build step
-- input, DOM view, Canvas rendering, and frame scheduling as adapters that receive browser globals by injection
-- one authoritative state owner
+- adapters that receive browser globals by injection, so input, view, sound, vibration and storage are unit-tested in Node
+- a Canvas renderer built for phones: pre-rendered glow sprites and background layers, additive blending, and a capped pixel ratio
 - layer boundaries enforced by ESLint, with tests proving the rules still reject violations
-- unit tests for domain rules, the application controller, and the input and view adapters, behind a coverage gate
-- Playwright tests on desktop and mobile Chromium that assert on the rendered canvas
-- responsive semantic shell with keyboard, pointer, and touch controls and a sharp canvas on high-density screens
+- unit tests behind a coverage gate, and Playwright tests on desktop and mobile Chromium that assert on the rendered canvas
+- an installable web app (manifest and icons) with safe-area-aware, reduced-motion-aware styling
 
 ## Stack
 
 - semantic HTML5
-- modern CSS
+- modern CSS (container queries, `:has()`, `dvh` units, safe-area insets)
 - Vanilla JavaScript with native ES modules
-- Canvas 2D
+- Canvas 2D and Web Audio
+- Web App Manifest
 - Node.js built-in test runner and coverage
 - ESLint 10
 - TypeScript 7, for JSDoc type-checking only
 - Playwright Test 1.63
 - GitHub Actions
 
-There is intentionally **no React, game engine, state library, dependency-injection framework, bundler, or runtime dependency**. Those tools would add surface area without solving a requirement in this product. TypeScript only checks the JavaScript that ships; nothing is compiled.
+There is intentionally **no React, game engine, audio library, state library, dependency-injection framework, bundler, or runtime dependency**. Those tools would add surface area without solving a requirement in this product. TypeScript only checks the JavaScript that ships; nothing is compiled, and every sound is synthesized at play time.
 
 ## Architecture
 
@@ -57,10 +73,16 @@ Browser shell
     |
 script.js (composition root: the only place that touches browser globals)
     |
-    +-- InputController ------------ browser input adapter
-    +-- DomGameView ---------------- DOM output/command adapter
-    +-- CanvasRenderer ------------- Canvas output adapter
-    +-- BrowserFrameScheduler ------ timing adapter
+    +-- InputController ------------ pointer, touch rail and keyboard input
+    +-- DomGameView ---------------- HUD, menus and settings around the board
+    +-- CanvasRenderer ------------- neon rendering and visual effects
+    +-- SoundBoard ----------------- synthesized sound effects (Web Audio)
+    +-- MusicPlayer ---------------- synthesized backing track that builds with the rally
+    +-- Haptics -------------------- vibration
+    +-- WakeLock ------------------- keeps the screen on during a match
+    +-- BrowserDevice -------------- sharing and full screen
+    +-- LocalPreferences ----------- mode, difficulty, settings and records
+    +-- BrowserFrameScheduler ------ timing
     |
     +-- GameController ------------- application orchestration
             |
@@ -68,10 +90,11 @@ script.js (composition root: the only place that touches browser globals)
             +-- FixedStepLoop ------- deterministic timing policy
             +-- interpolateState ---- smooth rendering between steps
             |
-            +-- domain/game
+            +-- domain/game --------- state machine, rules, scoring, events
                     |
-                    +-- physics
-                    +-- opponent strategy
+                    +-- physics ----- collisions, bounce angles, spin
+                    +-- opponent ---- reach, prediction, aim, misjudgement
+                    +-- power-ups --- pickups, effects, a seeded random source
 ```
 
 **Dependency rule:** browser details depend on the core; the core never depends on browser APIs.
@@ -87,15 +110,24 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 ├── .github/workflows/quality.yml
 ├── docs/preview.png
 ├── e2e/game.spec.js
+├── icons/                      app icons, rendered from icon.svg
 ├── scripts
 │   ├── capture-preview.mjs
-│   └── check-project.mjs
+│   ├── check-project.mjs
+│   └── render-icons.mjs
 ├── src
 │   ├── adapters
+│   │   ├── browser-device.js
 │   │   ├── browser-frame-scheduler.js
 │   │   ├── canvas-renderer.js
 │   │   ├── dom-game-view.js
-│   │   └── input-controller.js
+│   │   ├── effects.js
+│   │   ├── haptics.js
+│   │   ├── input-controller.js
+│   │   ├── local-preferences.js
+│   │   ├── music-player.js
+│   │   ├── sound-board.js
+│   │   └── wake-lock.js
 │   ├── application
 │   │   ├── game-controller.js
 │   │   ├── game-loop.js
@@ -105,22 +137,16 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 │   │   ├── game.js
 │   │   ├── opponent.js
 │   │   ├── physics.js
+│   │   ├── power-ups.js
+│   │   ├── random.js
 │   │   └── types.js
 │   └── config.js
-├── tests
-│   ├── architecture-rules.test.js
-│   ├── dom-game-view.test.js
-│   ├── game.test.js
-│   ├── game-controller.test.js
-│   ├── game-loop.test.js
-│   ├── input-controller.test.js
-│   ├── interpolation.test.js
-│   ├── opponent.test.js
-│   └── physics.test.js
+├── tests                       one file per module, plus architecture-rules.test.js
 ├── ARCHITECTURE.md
 ├── LICENSE
 ├── eslint.config.js
 ├── index.html
+├── manifest.webmanifest
 ├── package.json
 ├── package-lock.json
 ├── playwright.config.js
@@ -137,7 +163,7 @@ The game itself has no runtime installation step. Because it uses native ES modu
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000`.
+Then open `http://localhost:8000`. To try it on a phone, open the same address from a device on your network.
 
 For quality tooling:
 
@@ -147,20 +173,19 @@ npm run check
 npx playwright install chromium
 npm run test:e2e
 npm run docs:preview   # regenerate docs/preview.png after UI changes
+npm run docs:icons     # regenerate the app icons from icons/icon.svg
 ```
 
 ## Controls
 
-- pointer / mouse / touch — move the player paddle; a tap moves it straight to that spot
-- `←` / `→` — keyboard movement
-- `A` / `D` — keyboard movement, matched by physical key so it works on any layout, including Ukrainian and AZERTY
-- `Space` — start or pause/resume
+- **Touch:** drag on the court or on the thumb rail below it; a tap moves the paddle straight to that spot. In 2P, the bottom half of the court steers the bottom paddle and the top half the top one, and each finger keeps the paddle it started on.
+- **Mouse:** move over the court
+- **Keyboard:** `←` / `→` or `A` / `D` to move (by physical key, so any layout works, including Ukrainian and AZERTY), `Space` to start or pause, `Esc` to pause. Player 2 uses `J` / `L` or the numpad `4` / `6`.
+- **Curve:** flick the paddle sideways as it meets the ball
 
-Whichever device you used last steers the paddle, so the keyboard works even while the mouse rests on the board. Clicking a button hands focus back to the board, so `Space` keeps working. The match pauses by itself when the window loses focus or the tab is hidden. Browser shortcuts such as `Ctrl+A` are never intercepted.
+Whichever device you used last steers the paddle, so the keyboard works even while the mouse rests on the board. Clicking a button hands focus back to the board, so `Space` keeps working. The match pauses by itself when the window loses focus or the tab is hidden, and the page cannot scroll away while you play. Browser shortcuts such as `Ctrl+A` are never intercepted.
 
-Before every serve the ball waits at the center for a moment while a ring closes in on it; both paddles can already move.
-
-First to 7 wins.
+First to 7 wins in Solo and 2P; in Rush, three misses end the run.
 
 ## Verification strategy
 
@@ -177,49 +202,45 @@ First to 7 wins.
 
 The dependency-free unit suite covers:
 
-- state-machine transitions, including idempotent auto-pause
-- scoring, win condition, and double-score prevention
-- serve direction and the serve countdown, which paddles move through and pausing preserves
-- paddle clamping, keyboard speed, and direct pointer placement
-- wall reflection on both sides
-- center/off-center paddle bounce and the speed cap
-- swept collision toward both paddles
-- a full deterministic rally that exercises both paddles until the ball reaches top speed
-- opponent target, dead zone, and speed limit
-- the fixed-step loop, including stopping from inside an update
-- render interpolation, including serves that must not be blended
-- the controller: loop lifecycle per phase, commands, status text, and the final frame of a match
-- the input adapter: layouts, modifier shortcuts, device switching, taps, and focus loss
-- the view adapter: focus hand-off, phase-dependent controls, and quiet live-region updates
+- the state machine, scoring, serves, the 3-2-1 countdown, match point, and the events every transition emits
+- the Rush rules (lives, hits, no win condition for the computer) and two-player steering of the top paddle
+- power-ups: spawning on schedule, each effect, wear-off through serve pauses, and the computer's blindness to a ghosted ball
+- the deterministic random source, so a seed replays a match
+- paddle control, collisions toward both paddles, the speed cap, spin from a moving paddle, curves that keep their speed and never stall a rally, and a full deterministic rally
+- the opponent's reach, wall-folded prediction, aim, speed-dependent misjudgement, and the ordering of the difficulty presets
+- the fixed-step loop with its time scale and hit-stop hold, and render interpolation
+- the controller: loop lifecycle, commands, the match built from mode and difficulty, slow motion and hit-stop, event dispatch to feedback adapters, and the best-rally, best-Rush and win-streak records
+- the adapters: input (layouts, shortcuts, device switching, the thumb rail, focus loss), the view (overlays, settings, focus hand-off, quiet live-region updates), effects, sound, vibration and stored preferences
 - the architecture rules themselves
 
 ### Browser tests
 
-Playwright runs the real application in desktop and mobile Chromium. It reads the paddle and ball positions from the canvas pixels, so the tests assert on what the player actually sees. They verify:
+Playwright runs the real application in desktop and mobile Chromium. It reads the paddle and ball positions from the canvas pixels, so the tests assert on what the player actually sees, and time-sensitive checks run on a paused fake clock. They verify:
 
-- the application boots without page errors
-- Start, Pause, Reset, and `Space` drive the state machine, including `Space` right after a mouse click
-- the paddle follows the mouse, and the keyboard takes over while the mouse rests on the board
-- `A`/`D` steer when the keyboard layout produces Cyrillic characters
-- a tap moves the paddle on touch screens
-- the ball waits at the center before the serve, timed exactly on a paused fake clock
-- losing window focus pauses the match
-- idle screens request no animation frames and leave the live region untouched
-- the canvas backing store matches the screen's device pixels
+- the application boots without page errors, and Play, `Space`, `Esc` and the menus drive the state machine
+- the paddle follows the mouse, the keyboard takes over while the mouse rests on the board, and `A`/`D` work on a Cyrillic layout
+- on a phone, the court fills the screen, stays in view when a match starts, and the thumb rail steers the paddle
+- the first serve counts down from three before the ball moves
+- the first visit opens the tutorial once, and dismissing it is remembered
+- Rush shows lives as hearts and ends when they run out; two players get their own halves of the board
+- mode, difficulty, power-up and sound choices survive a reload
+- a lost match ends on the result screen, with full effects and no page errors, and Play again starts a new one
+- losing window focus pauses the match, and idle screens request no animation frames
+- the canvas matches device pixels up to twice the CSS size, and the app is installable
 
 ## Architecture trade-offs
 
-A tiny game does not justify enterprise layers. Every boundary here solves a concrete problem:
+A small game does not justify enterprise layers. Every boundary here solves a concrete problem:
 
-- physics must be testable without Canvas
+- physics and the opponent must be testable without Canvas
 - the application core must not know about the browser
 - input devices must not mutate state directly
 - refresh rate must not control simulation speed
-- browser frame scheduling must be replaceable
+- sound, vibration and visual effects must react to the game without the game knowing they exist
 - rendering must not decide scoring or collisions
 - dependencies must remain obvious at the composition root
 
-The project deliberately avoids repositories, factories, event buses, service locators, and other abstractions that would not reduce a real coupling.
+The project deliberately avoids repositories, factories, event buses, service locators, and other abstractions that would not reduce a real coupling. Game events are plain data on the state, handed to a list of feedback adapters.
 
 ## Recruiter walkthrough
 
@@ -227,9 +248,9 @@ If you have two minutes, inspect these files in order:
 
 1. [`script.js`](./script.js) — composition root and dependency wiring
 2. [`src/application/ports.js`](./src/application/ports.js) — the contracts adapters implement
-3. [`src/application/game-controller.js`](./src/application/game-controller.js) — orchestration without browser APIs
-4. [`src/domain/game.js`](./src/domain/game.js) — state transitions and scoring
-5. [`src/domain/physics.js`](./src/domain/physics.js) — swept collision and bounce rules
+3. [`src/domain/game.js`](./src/domain/game.js) — state transitions, scoring and game events
+4. [`src/domain/opponent.js`](./src/domain/opponent.js) — a beatable, human-like computer opponent
+5. [`src/adapters/canvas-renderer.js`](./src/adapters/canvas-renderer.js) — how events become visual effects
 6. [`eslint.config.js`](./eslint.config.js) — executable architecture constraints
 7. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification
 

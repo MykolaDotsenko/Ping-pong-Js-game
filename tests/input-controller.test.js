@@ -4,17 +4,16 @@ import assert from 'node:assert/strict';
 import { InputController } from '../src/adapters/input-controller.js';
 import { GAME_COMMAND } from '../src/application/ports.js';
 
-// The board is 800 units wide and displayed 400px wide, 100px from the left edge.
-class FakeSurface extends EventTarget {
-  getBoundingClientRect() {
-    return { left: 100, width: 400 };
-  }
-}
+// The pointer surface (board plus thumb rail) listens for events; the board, 800 units wide
+// and displayed 400px wide 100px from the left edge, maps them onto the court.
+const board = {
+  getBoundingClientRect: () => ({ left: 100, width: 400, top: 50, height: 640 }),
+};
 
 function setup() {
   const window = new EventTarget();
   const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
-  const input = new InputController({ surface: new FakeSurface(), window, document, config: { width: 800 } });
+  const input = new InputController({ surface: new EventTarget(), board, window, document, config: { width: 800 } });
   const commands = [];
 
   input.onCommand((command) => commands.push(command));
@@ -34,8 +33,8 @@ function keyEvent(type, init) {
   });
 }
 
-function pointerEvent(type, clientX) {
-  return Object.assign(new Event(type), { clientX });
+function pointerEvent(type, clientX, { clientY = 600, pointerId = 1 } = {}) {
+  return Object.assign(new Event(type), { clientX, clientY, pointerId });
 }
 
 function press(target, init) {
@@ -114,6 +113,27 @@ test('Space sends the primary command unless it repeats or a control has focus',
   assert.deepEqual(commands, [GAME_COMMAND.PRIMARY]);
 });
 
+test('Escape toggles pause, once per press', () => {
+  const { window, commands } = setup();
+
+  press(window, { code: 'Escape', key: 'Escape' });
+  press(window, { code: 'Escape', key: 'Escape', repeat: true });
+
+  assert.deepEqual(commands, [GAME_COMMAND.TOGGLE_PAUSE]);
+});
+
+test('taps on controls, or icons inside them, do not move the paddle', () => {
+  const { input } = setup();
+  const insideButton = { closest: (selector) => (selector.includes('button') ? {} : null) };
+  const plainElement = { closest: () => null };
+
+  input.handlePointer({ clientX: 150, target: insideButton }, true);
+  assert.equal(input.snapshot().pointerX, null);
+
+  input.handlePointer({ clientX: 150, target: plainElement }, true);
+  assert.equal(input.snapshot().pointerX, 100);
+});
+
 test('the most recently used device steers the paddle', () => {
   const { input, window, surface } = setup();
 
@@ -121,7 +141,7 @@ test('the most recently used device steers the paddle', () => {
   assert.equal(input.snapshot().pointerX, 400);
 
   press(window, { code: 'ArrowLeft' });
-  assert.deepEqual(input.snapshot(), { horizontalAxis: -1, pointerX: null });
+  assert.deepEqual(input.snapshot(), { horizontalAxis: -1, pointerX: null, opponentAxis: 0, opponentPointerX: null });
   release(window, { code: 'ArrowLeft' });
 
   // A move without horizontal travel, such as a vertical nudge, keeps the keyboard in charge.
@@ -160,7 +180,7 @@ test('losing window focus releases held input and pauses', () => {
   surface.dispatchEvent(pointerEvent('pointermove', 250));
   window.dispatchEvent(new Event('blur'));
 
-  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: null });
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: null, opponentAxis: 0, opponentPointerX: null });
   assert.deepEqual(commands, [GAME_COMMAND.PAUSE]);
 });
 
@@ -184,6 +204,61 @@ test('disconnect removes every listener', () => {
   surface.dispatchEvent(pointerEvent('pointerdown', 300));
   window.dispatchEvent(new Event('blur'));
 
-  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: null });
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: null, opponentAxis: 0, opponentPointerX: null });
   assert.deepEqual(commands, []);
+});
+
+test('with two players, each half of the board and its own keys steer a different paddle', () => {
+  const { input, window, surface } = setup();
+
+  input.configure({ players: 2 });
+
+  // A finger on the top half takes the top paddle; another on the bottom half takes the bottom one.
+  surface.dispatchEvent(pointerEvent('pointerdown', 150, { clientY: 100, pointerId: 7 }));
+  surface.dispatchEvent(pointerEvent('pointerdown', 450, { clientY: 600, pointerId: 8 }));
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: 700, opponentAxis: 0, opponentPointerX: 100 });
+
+  // Each finger keeps its paddle even when it drifts across the middle.
+  surface.dispatchEvent(pointerEvent('pointermove', 200, { clientY: 500, pointerId: 7 }));
+  assert.equal(input.snapshot().opponentPointerX, 200);
+  assert.equal(input.snapshot().pointerX, 700);
+
+  // Player 2's keys move the top paddle; Player 1's keys still move the bottom one.
+  press(window, { code: 'KeyJ' });
+  press(window, { code: 'ArrowRight' });
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 1, pointerX: null, opponentAxis: -1, opponentPointerX: null });
+  release(window, { code: 'KeyJ' });
+  release(window, { code: 'ArrowRight' });
+});
+
+test('with one player, Player 2 keys and the top half do nothing special', () => {
+  const { input, window, surface } = setup();
+
+  press(window, { code: 'KeyJ' });
+  surface.dispatchEvent(pointerEvent('pointerdown', 150, { clientY: 100 }));
+
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: 100, opponentAxis: 0, opponentPointerX: null });
+  release(window, { code: 'KeyJ' });
+});
+
+test('lifting a finger keeps the paddle where it was and frees the paddle for the next touch', () => {
+  const { input, surface } = setup();
+
+  input.configure({ players: 2 });
+  surface.dispatchEvent(pointerEvent('pointerdown', 150, { clientY: 100, pointerId: 7 }));
+  surface.dispatchEvent(pointerEvent('pointerup', 150, { clientY: 100, pointerId: 7 }));
+  assert.equal(input.snapshot().opponentPointerX, 100);
+
+  surface.dispatchEvent(pointerEvent('pointerdown', 350, { clientY: 100, pointerId: 9 }));
+  assert.equal(input.snapshot().opponentPointerX, 500);
+});
+
+test('switching back to one player releases the second paddle', () => {
+  const { input, surface } = setup();
+
+  input.configure({ players: 2 });
+  surface.dispatchEvent(pointerEvent('pointerdown', 150, { clientY: 100, pointerId: 7 }));
+  input.configure({ players: 1 });
+
+  assert.equal(input.snapshot().opponentPointerX, null);
 });

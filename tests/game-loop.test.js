@@ -22,6 +22,53 @@ function createScheduler() {
   };
 }
 
+test('a time scale below one slows the simulation without changing the step size', () => {
+  const scheduler = createScheduler();
+  const updates = [];
+  const loop = new FixedStepLoop({
+    stepSeconds: 0.01,
+    maxFrameSeconds: 0.1,
+    scheduler,
+    update: (deltaSeconds) => updates.push(deltaSeconds),
+    render: () => {},
+  });
+
+  loop.start();
+  loop.timeScale = 0.5;
+  loop.tick(1000);
+  loop.tick(1040); // 40 ms of real time, 20 ms of simulated time
+
+  assert.deepEqual(updates, [0.01, 0.01]);
+
+  loop.stop();
+  assert.equal(loop.timeScale, 1);
+});
+
+test('a hold freezes the simulation for a moment while frames keep rendering', () => {
+  const scheduler = createScheduler();
+  const updates = [];
+  const renders = [];
+  const loop = new FixedStepLoop({
+    stepSeconds: 0.01,
+    maxFrameSeconds: 0.1,
+    scheduler,
+    update: (deltaSeconds) => updates.push(deltaSeconds),
+    render: (alpha) => renders.push(alpha),
+  });
+
+  loop.start();
+  loop.tick(1000);
+  loop.hold(0.03);
+  loop.hold(0.02); // a shorter hold never cuts a longer one short
+  loop.tick(1020); // entirely inside the hold
+  assert.deepEqual(updates, []);
+  assert.equal(renders.length, 2);
+
+  loop.tick(1040); // 10 ms of hold left, then 10 ms of simulation
+  assert.deepEqual(updates, [0.01]);
+  assert.equal(loop.holdSeconds, 0);
+});
+
 test('fixed-step loop advances deterministic updates and exposes interpolation', () => {
   const scheduler = createScheduler();
   const updates = [];

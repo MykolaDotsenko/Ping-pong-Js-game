@@ -1,12 +1,16 @@
 import {
   bounceFromPaddle,
   clampPaddleCenter,
+  contactOffset,
+  curveBall,
   findPaddleCollision,
+  movePaddle,
   reflectFromSideWalls,
 } from './physics.js';
 import { moveOpponent } from './opponent.js';
+import { collectPowerUps, initialPowerUpState, paddleWidth, tickEffects, tickPowerUps } from './power-ups.js';
 
-/** @import { Ball, GameConfig, GameState, InputSnapshot, Side } from './types.js' */
+/** @import { Ball, GameConfig, GameEvent, GameState, InputSnapshot, Side } from './types.js' */
 
 export const GAME_PHASE = Object.freeze({
   READY: 'ready',
@@ -14,6 +18,9 @@ export const GAME_PHASE = Object.freeze({
   PAUSED: 'paused',
   GAME_OVER: 'game-over',
 });
+
+/** Shared by every transition that produced no events, so quiet steps allocate nothing. */
+export const NO_EVENTS = Object.freeze(/** @type {GameEvent[]} */ ([]));
 
 /**
  * @param {GameConfig} config
@@ -31,34 +38,44 @@ function createServeBall(config, verticalDirection = 1, horizontalDirection = 1)
     y: config.height / 2,
     vx: horizontalSpeed,
     vy: verticalSpeed,
+    spin: 0,
   };
 }
 
 /**
  * @param {GameConfig} config
+ * @param {number} [seed] for the deterministic random source; the same seed replays the same match
  * @returns {GameState}
  */
-export function createInitialState(config) {
+export function createInitialState(config, seed = 1) {
   return {
     phase: GAME_PHASE.READY,
-    player: { x: config.width / 2 },
-    opponent: { x: config.width / 2 },
+    player: { x: config.width / 2, vx: 0 },
+    opponent: { x: config.width / 2, vx: 0 },
     ball: createServeBall(config, 1, 1),
     score: { player: 0, opponent: 0 },
+    hits: { player: 0, opponent: 0 },
+    lives: config.rules.kind === 'rush' ? config.rules.lives : 0,
     lastPoint: null,
     serveNumber: 0,
-    serveCountdown: config.serveDelaySeconds,
+    serveCountdown: config.startDelaySeconds,
+    rally: 0,
+    longestRally: 0,
+    ...initialPowerUpState(seed, config),
+    events: NO_EVENTS,
   };
 }
 
 /**
+ * Resumes a paused match, or starts a fresh one from any idle state.
+ *
  * @param {GameState} state
  * @param {GameConfig} config
  * @returns {GameState}
  */
 export function startGame(state, config) {
   if (state.phase === GAME_PHASE.PAUSED) {
-    return { ...state, phase: GAME_PHASE.RUNNING };
+    return { ...state, phase: GAME_PHASE.RUNNING, events: [{ type: 'resumed' }] };
   }
 
   if (state.phase === GAME_PHASE.RUNNING) {
@@ -66,17 +83,21 @@ export function startGame(state, config) {
   }
 
   return {
-    ...createInitialState(config),
+    ...createInitialState(config, state.seed),
     phase: GAME_PHASE.RUNNING,
+    events: [{ type: 'match-start' }],
   };
 }
 
 /**
+ * Back to the menu.
+ *
  * @param {GameConfig} config
+ * @param {number} [seed] for the next match
  * @returns {GameState}
  */
-export function resetGame(config) {
-  return createInitialState(config);
+export function resetGame(config, seed = 1) {
+  return { ...createInitialState(config, seed), events: [{ type: 'menu' }] };
 }
 
 /**
@@ -88,7 +109,7 @@ export function resetGame(config) {
  */
 export function pauseGame(state) {
   if (state.phase === GAME_PHASE.RUNNING) {
-    return { ...state, phase: GAME_PHASE.PAUSED };
+    return { ...state, phase: GAME_PHASE.PAUSED, events: [{ type: 'paused' }] };
   }
 
   return state;
@@ -100,7 +121,7 @@ export function pauseGame(state) {
  */
 export function togglePause(state) {
   if (state.phase === GAME_PHASE.PAUSED) {
-    return { ...state, phase: GAME_PHASE.RUNNING };
+    return { ...state, phase: GAME_PHASE.RUNNING, events: [{ type: 'resumed' }] };
   }
 
   return pauseGame(state);
@@ -119,6 +140,54 @@ export function getWinner(state) {
 }
 
 /**
+ * The side at match point: one point from winning. Null when nobody is, or in Rush.
+ *
+ * @param {GameState} state
+ * @param {GameConfig} config
+ * @returns {Side | null}
+ */
+export function matchPointSide(state, config) {
+  if (config.rules.kind !== 'match' || state.phase === GAME_PHASE.GAME_OVER) {
+    return null;
+  }
+
+  const target = config.rules.winningScore - 1;
+
+  if (state.score.player >= target) {
+    return 'player';
+  }
+
+  return state.score.opponent >= target ? 'opponent' : null;
+}
+
+/**
+ * Moves a paddle toward a pointer, or along an axis at keyboard speed, and records how fast
+ * it moved, which a hit turns into spin.
+ *
+ * @param {GameState} state
+ * @param {Side} side
+ * @param {number | null} pointerX
+ * @param {number} axis
+ * @param {number} deltaSeconds
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
+function steerPaddle(state, side, pointerX, axis, deltaSeconds, config) {
+  const paddle = state[side];
+  let target = paddle.x;
+
+  if (Number.isFinite(pointerX)) {
+    target = /** @type {number} */ (pointerX);
+  } else if (axis) {
+    target = paddle.x + axis * config.paddle.keyboardSpeed * deltaSeconds;
+  }
+
+  const x = clampPaddleCenter(target, config, paddleWidth(state, side, config));
+
+  return { ...state, [side]: movePaddle(paddle, x, deltaSeconds, config) };
+}
+
+/**
  * @param {GameState} state
  * @param {number} targetX
  * @param {GameConfig} config
@@ -129,7 +198,7 @@ export function setPlayerPosition(state, targetX, config) {
     ...state,
     player: {
       ...state.player,
-      x: clampPaddleCenter(targetX, config),
+      x: clampPaddleCenter(targetX, config, paddleWidth(state, 'player', config)),
     },
   };
 }
@@ -168,51 +237,145 @@ function nextServeBall(state, scorer, config) {
 
 /**
  * @param {GameState} state
- * @param {Side} scorer
- * @param {GameConfig} config
+ * @param {GameEvent[]} events
  * @returns {GameState}
  */
-function awardPoint(state, scorer, config) {
-  const score = {
-    ...state.score,
-    [scorer]: state.score[scorer] + 1,
-  };
+function withEvents(state, events) {
+  return { ...state, events: events.length > 0 ? events : NO_EVENTS };
+}
 
-  if (score[scorer] >= config.winningScore) {
-    return {
-      ...state,
-      score,
-      phase: GAME_PHASE.GAME_OVER,
-      lastPoint: scorer,
-      ball: { ...state.ball, vx: 0, vy: 0 },
-    };
+/**
+ * @param {GameState} state
+ * @param {Side} winner
+ * @param {GameEvent[]} events
+ * @returns {GameState}
+ */
+function endMatch(state, winner, events) {
+  events.push({ type: 'game-over', winner });
+
+  return withEvents({
+    ...state,
+    phase: GAME_PHASE.GAME_OVER,
+    lastPoint: winner,
+    ball: { ...state.ball, vx: 0, vy: 0, spin: 0 },
+    serveCountdown: 0,
+    rally: 0,
+    pickups: [],
+    turbo: 0,
+  }, events);
+}
+
+/**
+ * @param {GameState} state
+ * @param {Side} scorer
+ * @param {GameConfig} config
+ * @param {GameEvent[]} events
+ * @returns {GameState}
+ */
+function awardPoint(state, scorer, config, events) {
+  const score = { ...state.score, [scorer]: state.score[scorer] + 1 };
+  const { rules } = config;
+  let { lives } = state;
+
+  events.push({
+    type: 'point',
+    scorer,
+    x: Math.min(Math.max(state.ball.x, 0), config.width),
+    y: scorer === 'player' ? 0 : config.height,
+  });
+
+  if (rules.kind === 'rush') {
+    // Only the player's misses count: each one costs a life, and the last one ends the run.
+    if (scorer === 'opponent') {
+      lives -= 1;
+      events.push({ type: 'life-lost', lives });
+
+      if (lives === 0) {
+        return endMatch({ ...state, score, lives }, 'opponent', events);
+      }
+    }
+  } else {
+    if (score[scorer] >= rules.winningScore) {
+      return endMatch({ ...state, score }, scorer, events);
+    }
+
+    if (score[scorer] === rules.winningScore - 1) {
+      events.push({ type: 'match-point', side: scorer });
+    }
   }
 
   const nextServe = nextServeBall(state, scorer, config);
 
-  return {
+  return withEvents({
     ...state,
     score,
+    lives,
     lastPoint: scorer,
     ball: nextServe.ball,
     serveNumber: nextServe.serveNumber,
     serveCountdown: config.serveDelaySeconds,
+    rally: 0,
+    pickups: [],
+    turbo: 0,
+  }, events);
+}
+
+/**
+ * @param {Ball} ball
+ * @param {number} deltaSeconds
+ * @returns {Ball}
+ */
+function moveBall(ball, deltaSeconds) {
+  return {
+    ...ball,
+    x: ball.x + ball.vx * deltaSeconds,
+    y: ball.y + ball.vy * deltaSeconds,
   };
 }
 
 /**
  * @param {GameState} state
- * @param {number} deltaSeconds
+ * @param {Side} side
+ * @param {{ time: number, x: number }} collision
+ * @param {GameConfig} config
+ * @param {GameEvent[]} events
  * @returns {GameState}
  */
-function moveBall(state, deltaSeconds) {
+function hitPaddle(state, side, collision, config, events) {
+  const paddle = state[side];
+  const width = paddleWidth(state, side, config);
+  const isPlayer = side === 'player';
+  const faceY = isPlayer
+    ? config.height - config.paddle.inset - config.paddle.height - config.ball.radius
+    : config.paddle.inset + config.paddle.height + config.ball.radius;
+  const bounced = bounceFromPaddle(
+    { ...state.ball, x: collision.x },
+    paddle.x,
+    isPlayer ? -1 : 1,
+    config,
+    paddle.vx,
+    width,
+  );
+  const ball = { ...bounced, y: faceY };
+  const rally = state.rally + 1;
+
+  events.push({
+    type: 'paddle-hit',
+    side,
+    x: collision.x,
+    y: faceY,
+    speed: Math.hypot(ball.vx, ball.vy),
+    spin: ball.spin,
+    offset: contactOffset(collision.x, paddle.x, width),
+    rally,
+  });
+
   return {
     ...state,
-    ball: {
-      ...state.ball,
-      x: state.ball.x + state.ball.vx * deltaSeconds,
-      y: state.ball.y + state.ball.vy * deltaSeconds,
-    },
+    ball,
+    rally,
+    longestRally: Math.max(state.longestRally, rally),
+    hits: { ...state.hits, [side]: state.hits[side] + 1 },
   };
 }
 
@@ -220,62 +383,65 @@ function moveBall(state, deltaSeconds) {
  * @param {GameState} state
  * @param {Ball} previousBall
  * @param {GameConfig} config
+ * @param {GameEvent[]} events
  * @returns {GameState}
  */
-function resolveCollisions(state, previousBall, config) {
-  let ball = reflectFromSideWalls(state.ball, config);
-  const playerY = config.height - config.paddle.inset - config.paddle.height;
-  const opponentY = config.paddle.inset;
+function resolveCollisions(state, previousBall, config, events) {
+  const ball = reflectFromSideWalls(state.ball, config);
 
-  if (ball.vy > 0) {
-    const collision = findPaddleCollision({
-      previousBall,
-      ball,
-      paddleCenterX: state.player.x,
-      paddleY: playerY,
-      movingDown: true,
-      config,
-    });
+  if (ball !== state.ball) {
+    events.push({ type: 'wall-bounce', x: ball.x, y: ball.y, speed: Math.hypot(ball.vx, ball.vy) });
+  }
 
-    if (collision) {
-      ball = {
-        ...bounceFromPaddle(
-          { ...ball, x: collision.x },
-          state.player.x,
-          -1,
-          config,
-        ),
-        y: playerY - config.ball.radius,
-      };
-    }
-  } else if (ball.vy < 0) {
-    const collision = findPaddleCollision({
-      previousBall,
-      ball,
-      paddleCenterX: state.opponent.x,
-      paddleY: opponentY,
-      movingDown: false,
-      config,
-    });
+  const next = { ...state, ball };
+  const movingDown = ball.vy > 0;
+  const side = movingDown ? 'player' : 'opponent';
+  const collision = findPaddleCollision({
+    previousBall,
+    ball,
+    paddleCenterX: next[side].x,
+    paddleY: movingDown
+      ? config.height - config.paddle.inset - config.paddle.height
+      : config.paddle.inset,
+    movingDown,
+    config,
+    paddleWidth: paddleWidth(next, side, config),
+  });
 
-    if (collision) {
-      ball = {
-        ...bounceFromPaddle(
-          { ...ball, x: collision.x },
-          state.opponent.x,
-          1,
-          config,
-        ),
-        y: opponentY + config.paddle.height + config.ball.radius,
-      };
+  return collision ? hitPaddle(next, side, collision, config, events) : next;
+}
+
+/**
+ * Runs the pre-serve wait. The first serve of a match counts down aloud from three.
+ *
+ * @param {GameState} state
+ * @param {number} deltaSeconds
+ * @param {GameConfig} config
+ * @param {GameEvent[]} events
+ * @returns {GameState}
+ */
+function waitForServe(state, deltaSeconds, config, events) {
+  const remaining = state.serveCountdown;
+  const serveCountdown = Math.max(0, remaining - deltaSeconds);
+
+  if (state.serveNumber === 0) {
+    const started = remaining === config.startDelaySeconds;
+
+    if ((started || Math.ceil(serveCountdown) < Math.ceil(remaining)) && serveCountdown > 0) {
+      events.push({ type: 'countdown', value: Math.ceil(serveCountdown) });
     }
   }
 
-  return { ...state, ball };
+  if (serveCountdown === 0) {
+    events.push({ type: 'serve', x: state.ball.x, y: state.ball.y });
+  }
+
+  return withEvents({ ...state, serveCountdown }, events);
 }
 
 /**
  * Advances the simulation by one fixed step. Does nothing unless the match is running.
+ * The returned state lists the events of this step, such as hits, bounces and points.
  *
  * @param {GameState} state
  * @param {number} deltaSeconds
@@ -288,35 +454,33 @@ export function advanceGame(state, deltaSeconds, input, config) {
     return state;
   }
 
-  let nextState = state;
-
-  if (Number.isFinite(input.pointerX)) {
-    nextState = setPlayerPosition(nextState, /** @type {number} */ (input.pointerX), config);
-  } else {
-    nextState = movePlayerByAxis(nextState, input.horizontalAxis, deltaSeconds, config);
-  }
-
-  nextState = moveOpponent(nextState, deltaSeconds, config);
+  /** @type {GameEvent[]} */
+  const events = [];
+  let nextState = steerPaddle(state, 'player', input.pointerX, input.horizontalAxis, deltaSeconds, config);
+  nextState = config.opponent.controller === 'human'
+    ? steerPaddle(nextState, 'opponent', input.opponentPointerX, input.opponentAxis, deltaSeconds, config)
+    : moveOpponent(nextState, deltaSeconds, config);
 
   if (nextState.serveCountdown > 0) {
-    // The ball waits at the center before each serve; both paddles can already move.
-    return {
-      ...nextState,
-      serveCountdown: Math.max(0, nextState.serveCountdown - deltaSeconds),
-    };
+    // The ball waits at the center before each serve; both paddles can already move,
+    // and any power-up effect keeps wearing off.
+    return waitForServe(tickEffects(nextState, deltaSeconds), deltaSeconds, config, events);
   }
 
+  nextState = tickPowerUps(nextState, deltaSeconds, config, events);
+
   const previousBall = nextState.ball;
-  nextState = moveBall(nextState, deltaSeconds);
-  nextState = resolveCollisions(nextState, previousBall, config);
+  nextState = { ...nextState, ball: moveBall(curveBall(previousBall, deltaSeconds, config), deltaSeconds) };
+  nextState = resolveCollisions(nextState, previousBall, config, events);
+  nextState = collectPowerUps(nextState, config, events);
 
   if (nextState.ball.y - config.ball.radius > config.height) {
-    return awardPoint(nextState, 'opponent', config);
+    return awardPoint(nextState, 'opponent', config, events);
   }
 
   if (nextState.ball.y + config.ball.radius < 0) {
-    return awardPoint(nextState, 'player', config);
+    return awardPoint(nextState, 'player', config, events);
   }
 
-  return nextState;
+  return withEvents(nextState, events);
 }

@@ -1,32 +1,99 @@
-import { GAME_COMMAND } from '../application/ports.js';
+import { DIFFICULTIES, GAME_COMMAND, MODES } from '../application/ports.js';
 import { GAME_PHASE } from '../domain/game.js';
 
 /**
- * @import { CommandHandler, GameCommand, Presentation, ViewPort } from '../application/ports.js'
+ * @import { GamePhase, Side } from '../domain/types.js'
+ * @import {
+ *   CommandHandler,
+ *   Difficulty,
+ *   GameCommand,
+ *   Mode,
+ *   Presentation,
+ *   PreferencesPort,
+ *   ViewPort,
+ * } from '../application/ports.js'
  */
 
-/** @implements {ViewPort} */
+/** @type {readonly string[]} */
+const COMMANDS = Object.values(GAME_COMMAND);
+const DIFFICULTY_LABELS = Object.freeze({ easy: 'Easy', normal: 'Normal', hard: 'Hard' });
+const MODE_TIPS = Object.freeze({
+  solo: 'Flick the paddle as you hit to curve the ball.',
+  rush: 'The ball only gets faster. Curve it past the computer to keep your lives.',
+  duo: 'Player 1 steers from the bottom half, Player 2 from the top.',
+});
+const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps']);
+
+/**
+ * @typedef {typeof TOGGLE_SETTINGS[number]} ToggleSetting
+ * @typedef {object} Device
+ * @property {boolean} canShare
+ * @property {boolean} canFullscreen
+ * @property {(text: string) => Promise<'shared' | 'copied' | 'failed'>} share
+ * @property {() => Promise<void>} toggleFullscreen
+ */
+
+/**
+ * The HTML around the board: the HUD, the menu with its modes and settings, the tutorial,
+ * pause and result overlays. Controls declare what they do with data attributes:
+ * data-command sends a game command, data-mode and data-difficulty pick the next match,
+ * and data-setting toggles a preference such as sound.
+ *
+ * @implements {ViewPort}
+ */
 export class DomGameView {
   /**
-   * @param {object} elements
-   * @param {HTMLButtonElement} elements.startButton
-   * @param {HTMLButtonElement} elements.pauseButton
-   * @param {HTMLButtonElement} elements.resetButton
-   * @param {HTMLElement} elements.status
-   * @param {HTMLElement} elements.board receives focus after a control is used
+   * @param {object} options
+   * @param {HTMLElement} options.root element containing the whole game UI
+   * @param {HTMLElement} options.board receives focus after a command, so Space and arrows reach the game
+   * @param {PreferencesPort} options.preferences
+   * @param {boolean} options.canVibrate hides the vibration setting where it would do nothing
+   * @param {Device} options.device sharing and full screen, hidden where unsupported
    */
-  constructor({ startButton, pauseButton, resetButton, status, board }) {
-    this.startButton = startButton;
-    this.pauseButton = pauseButton;
-    this.resetButton = resetButton;
-    this.status = status;
+  constructor({ root, board, preferences, canVibrate, device }) {
+    this.root = root;
     this.board = board;
+    this.preferences = preferences;
+    this.canVibrate = canVibrate;
+    this.device = device;
+    this.status = this.find('[data-game-status]');
+    this.scores = { player: this.find('[data-score="player"]'), opponent: this.find('[data-score="opponent"]') };
+    this.overlays = {
+      menu: this.find('[data-overlay="menu"]'),
+      tutorial: this.find('[data-overlay="tutorial"]'),
+      pause: this.find('[data-overlay="pause"]'),
+      over: this.find('[data-overlay="over"]'),
+    };
+    this.pauseButton = this.find('[data-hud-pause]');
+    this.lives = this.find('[data-lives]');
+    this.matchPoint = this.find('[data-match-point]');
     /** @type {Presentation | null} */
     this.rendered = null;
-    /** @type {Array<[HTMLButtonElement, EventListener]>} */
+    /** @type {Presentation | null} */
+    this.lastResult = null;
+    /** @type {Array<[HTMLElement, EventListener]>} */
     this.listeners = [];
     /** @type {CommandHandler} */
     this.commandHandler = () => {};
+  }
+
+  /**
+   * @param {string} selector
+   * @returns {HTMLElement}
+   */
+  find(selector) {
+    const element = this.root.querySelector(selector);
+
+    if (!element) {
+      throw new Error(`Ping Pong could not start because ${selector} is missing from the page.`);
+    }
+
+    return /** @type {HTMLElement} */ (element);
+  }
+
+  /** @param {string} selector */
+  findAll(selector) {
+    return /** @type {HTMLElement[]} */ ([...this.root.querySelectorAll(selector)]);
   }
 
   /** @param {CommandHandler} handler */
@@ -35,9 +102,89 @@ export class DomGameView {
   }
 
   connect() {
-    this.bind(this.startButton, GAME_COMMAND.START);
-    this.bind(this.pauseButton, GAME_COMMAND.TOGGLE_PAUSE);
-    this.bind(this.resetButton, GAME_COMMAND.RESET);
+    for (const button of this.findAll('[data-command]')) {
+      const command = button.dataset.command ?? '';
+
+      if (COMMANDS.includes(command)) {
+        this.listen(button, () => {
+          // Bring the whole court into view, since scrolling locks while a match runs.
+          this.root.scrollIntoView?.({ block: 'nearest' });
+          // Hand focus back to the board. A focused button would otherwise swallow Space
+          // (re-activating itself) instead of letting it pause or resume the match.
+          this.board.focus({ preventScroll: true });
+          this.commandHandler(/** @type {GameCommand} */ (command));
+        });
+      }
+    }
+
+    for (const button of this.findAll('[data-mode]')) {
+      const mode = MODES.find((candidate) => candidate === button.dataset.mode);
+
+      if (mode) {
+        this.listen(button, () => {
+          this.preferences.set({ mode });
+          this.showChoices();
+          // The menu's status line and layout depend on the mode, so redraw it right away.
+          this.commandHandler(GAME_COMMAND.RESET);
+        });
+      }
+    }
+
+    for (const button of this.findAll('[data-difficulty]')) {
+      const level = DIFFICULTIES.find((difficulty) => difficulty === button.dataset.difficulty);
+
+      if (level) {
+        this.listen(button, () => {
+          this.preferences.set({ difficulty: level });
+          this.showChoices();
+        });
+      }
+    }
+
+    for (const button of this.findAll('[data-setting]')) {
+      const setting = TOGGLE_SETTINGS.find((candidate) => candidate === button.dataset.setting);
+
+      if (setting) {
+        this.listen(button, () => {
+          this.preferences.set({ [setting]: !this.preferences.get()[setting] });
+          this.showSettings();
+        });
+      }
+    }
+
+    for (const button of this.findAll('[data-show-tutorial]')) {
+      this.listen(button, () => this.showTutorial(true));
+    }
+
+    for (const button of this.findAll('[data-dismiss-tutorial]')) {
+      this.listen(button, () => {
+        this.preferences.set({ tutorialSeen: true });
+        this.showTutorial(false);
+      });
+    }
+
+    for (const button of this.findAll('[data-share]')) {
+      button.hidden = !this.device.canShare;
+      this.listen(button, () => this.shareResult());
+    }
+
+    for (const button of this.findAll('[data-fullscreen]')) {
+      button.hidden = !this.device.canFullscreen;
+      this.listen(button, () => {
+        this.device.toggleFullscreen();
+      });
+    }
+
+    for (const element of this.findAll('[data-setting="vibration"]')) {
+      element.hidden = !this.canVibrate;
+    }
+
+    this.showChoices();
+    this.showSettings();
+
+    // First visit: explain the controls before the first match. Otherwise make sure the
+    // tutorial is closed, whatever state the markup arrived in.
+    this.showTutorial(!this.preferences.get().tutorialSeen);
   }
 
   disconnect() {
@@ -48,36 +195,217 @@ export class DomGameView {
   }
 
   /**
-   * @param {HTMLButtonElement} button
-   * @param {GameCommand} command
+   * @param {HTMLElement} button
+   * @param {EventListener} listener
    */
-  bind(button, command) {
-    const listener = () => {
-      // Hand focus back to the board. A focused button would otherwise swallow Space
-      // (re-activating itself) instead of letting it pause or resume the match.
-      this.board.focus({ preventScroll: true });
-      this.commandHandler(command);
-    };
-
+  listen(button, listener) {
     button.addEventListener('click', listener);
     this.listeners.push([button, listener]);
   }
 
+  /** Reflects the chosen mode and difficulty on their buttons and the menu. */
+  showChoices() {
+    const { mode, difficulty } = this.preferences.get();
+
+    for (const button of this.findAll('[data-mode]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
+    }
+
+    for (const button of this.findAll('[data-difficulty]')) {
+      button.setAttribute('aria-pressed', String(button.dataset.difficulty === difficulty));
+    }
+
+    for (const element of this.findAll('[data-solo-only]')) {
+      element.hidden = mode !== 'solo';
+    }
+
+    for (const element of this.findAll('[data-not-rush]')) {
+      element.hidden = mode === 'rush';
+    }
+
+    for (const element of this.findAll('[data-mode-tip]')) {
+      element.textContent = MODE_TIPS[mode];
+    }
+
+    this.root.dataset.mode = mode;
+  }
+
+  showSettings() {
+    const preferences = this.preferences.get();
+
+    for (const button of this.findAll('[data-setting]')) {
+      const setting = TOGGLE_SETTINGS.find((candidate) => candidate === button.dataset.setting);
+
+      if (setting) {
+        button.setAttribute('aria-pressed', String(preferences[setting]));
+      }
+    }
+  }
+
+  /** @param {boolean} visible */
+  showTutorial(visible) {
+    this.overlays.tutorial.hidden = !visible;
+    // Before the first render the menu is the ready screen, so it shows unless the tutorial covers it.
+    const ready = this.rendered === null || this.rendered.phase === GAME_PHASE.READY;
+    this.overlays.menu.hidden = visible || !ready;
+  }
+
+  async shareResult() {
+    const result = this.lastResult;
+    const note = this.find('[data-share-note]');
+
+    if (!result) {
+      return;
+    }
+
+    const text = result.mode === 'rush'
+      ? `I survived ${result.hits.player} hits in Rush mode of Ping Pong Architecture Lab. Beat that!`
+      : `I ${result.winner === 'player' ? 'won' : 'lost'} ${result.score.player}:${result.score.opponent} on ${DIFFICULTY_LABELS[result.difficulty]} in Ping Pong Architecture Lab. Longest rally: ${result.longestRally}.`;
+    const outcome = await this.device.share(text);
+
+    note.textContent = { shared: '', copied: 'Copied to clipboard', failed: 'Sharing is not available here' }[outcome];
+  }
+
   /** @param {Presentation} presentation */
-  render({ phase, status }) {
+  render(presentation) {
     // render() runs every frame during a match. Only touch the DOM when something changed:
     // the status element is an aria-live region, and rewriting it could spam screen readers.
-    if (this.rendered?.status !== status) {
-      this.status.textContent = status;
+    const previous = this.rendered;
+
+    if (presentation.phase !== previous?.phase || presentation.mode !== previous?.mode) {
+      this.showPhase(presentation.phase, presentation.mode);
     }
 
-    if (this.rendered?.phase !== phase) {
-      const inMatch = phase === GAME_PHASE.RUNNING || phase === GAME_PHASE.PAUSED;
-      this.startButton.disabled = inMatch;
-      this.pauseButton.disabled = !inMatch;
-      this.pauseButton.textContent = phase === GAME_PHASE.PAUSED ? 'Resume' : 'Pause';
+    if (presentation.status !== previous?.status) {
+      this.status.textContent = presentation.status;
     }
 
-    this.rendered = { phase, status };
+    for (const side of /** @type {Side[]} */ (['player', 'opponent'])) {
+      const score = presentation.mode === 'rush' ? presentation.hits : presentation.score;
+      const value = score[side];
+      const previousValue = previous ? (previous.mode === 'rush' ? previous.hits : previous.score)[side] : null;
+
+      if (value !== previousValue) {
+        this.scores[side].textContent = String(value);
+
+        if (previous && previousValue !== null && value > previousValue) {
+          restartAnimation(this.scores[side], 'is-popping');
+        }
+      }
+    }
+
+    if (presentation.lives !== previous?.lives || presentation.maxLives !== previous?.maxLives) {
+      this.showLives(presentation.lives, presentation.maxLives);
+    }
+
+    if (presentation.matchPoint !== previous?.matchPoint) {
+      this.matchPoint.hidden = presentation.matchPoint === null;
+      this.matchPoint.dataset.side = presentation.matchPoint ?? '';
+    }
+
+    if (presentation.bestRally !== previous?.bestRally || presentation.bestRush !== previous?.bestRush || presentation.mode !== previous?.mode) {
+      this.showMenuMeta(presentation);
+    }
+
+    if (presentation.stats !== previous?.stats || presentation.mode !== previous?.mode) {
+      this.showStats(presentation);
+    }
+
+    if (presentation.phase === GAME_PHASE.GAME_OVER && previous?.phase !== GAME_PHASE.GAME_OVER) {
+      this.showResult(presentation);
+    }
+
+    this.rendered = presentation;
   }
+
+  /**
+   * @param {GamePhase} phase
+   * @param {Mode} mode
+   */
+  showPhase(phase, mode) {
+    const inMatch = phase === GAME_PHASE.RUNNING || phase === GAME_PHASE.PAUSED;
+    const tutorialOpen = !this.overlays.tutorial.hidden;
+
+    this.root.dataset.phase = phase;
+    this.root.dataset.mode = mode;
+    this.overlays.menu.hidden = phase !== GAME_PHASE.READY || tutorialOpen;
+    this.overlays.pause.hidden = phase !== GAME_PHASE.PAUSED;
+    this.overlays.over.hidden = phase !== GAME_PHASE.GAME_OVER;
+    this.pauseButton.toggleAttribute('disabled', !inMatch);
+    this.pauseButton.setAttribute('aria-label', phase === GAME_PHASE.PAUSED ? 'Resume' : 'Pause');
+    this.find('[data-label="opponent"]').textContent = mode === 'duo' ? 'P2' : mode === 'rush' ? 'CPU' : 'CPU';
+    this.find('[data-label="player"]').textContent = mode === 'duo' ? 'P1' : mode === 'rush' ? 'Hits' : 'You';
+
+    if (phase !== GAME_PHASE.READY) {
+      this.find('[data-share-note]').textContent = '';
+    }
+  }
+
+  /**
+   * @param {number} lives
+   * @param {number} maxLives
+   */
+  showLives(lives, maxLives) {
+    this.lives.hidden = maxLives === 0;
+    this.lives.textContent = '';
+
+    for (let i = 0; i < maxLives; i += 1) {
+      const heart = this.lives.ownerDocument.createElement('span');
+      heart.className = i < lives ? 'lives__heart' : 'lives__heart lives__heart--lost';
+      heart.textContent = '♥';
+      this.lives.appendChild(heart);
+    }
+  }
+
+  /** @param {Presentation} presentation */
+  showMenuMeta({ mode, bestRally, bestRush }) {
+    for (const element of this.findAll('[data-menu-meta]')) {
+      element.innerHTML = mode === 'rush'
+        ? `3 lives · Best run <strong data-best-rush>${bestRush}</strong> hits`
+        : `First to 7 · Best rally <strong data-best-rally>${bestRally}</strong>`;
+    }
+  }
+
+  /** @param {Presentation} presentation */
+  showStats({ mode, stats }) {
+    for (const element of this.findAll('[data-stats]')) {
+      const show = mode === 'solo' && stats.matches > 0;
+      element.hidden = !show;
+
+      if (show) {
+        const rate = Math.round((stats.wins / stats.matches) * 100);
+        const streak = stats.streak >= 2 ? ` · ${stats.streak} in a row 🔥` : '';
+        element.textContent = `${stats.wins}/${stats.matches} won (${rate}%)${streak}`;
+      }
+    }
+  }
+
+  /** @param {Presentation} presentation */
+  showResult(presentation) {
+    const { winner, score, hits, longestRally, newBest, newBestRush, mode, difficulty } = presentation;
+    const title = this.find('[data-over-title]');
+    const rush = mode === 'rush';
+
+    this.lastResult = presentation;
+    title.textContent = rush ? 'Run over' : winner === 'player' ? 'Victory' : 'Defeat';
+    title.dataset.winner = rush ? 'opponent' : (winner ?? '');
+    this.find('[data-over-score]').textContent = rush ? `${hits.player} hits` : `${score.player} : ${score.opponent}`;
+    this.find('[data-over-rally]').textContent = String(longestRally);
+    this.find('[data-over-difficulty]').textContent = rush ? 'Rush' : mode === 'duo' ? 'Two players' : DIFFICULTY_LABELS[difficulty];
+    this.find('[data-over-best]').hidden = !newBest;
+    this.find('[data-over-best-rush]').hidden = !newBestRush;
+  }
+}
+
+/**
+ * Replays a CSS animation by removing and re-adding its class. Reduced-motion styles can
+ * switch the animation off without any script changes.
+ *
+ * @param {HTMLElement} element
+ * @param {string} className
+ */
+function restartAnimation(element, className) {
+  element.classList.remove(className);
+  void element.offsetWidth;
+  element.classList.add(className);
 }

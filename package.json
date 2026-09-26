@@ -1,6 +1,6 @@
 {
   "name": "ping-pong-js-game",
-  "version": "2.3.0",
+  "version": "3.1.0",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
     "check": "npm run lint && npm run typecheck && npm run test:coverage && node scripts/check-project.mjs",
-    "docs:preview": "node scripts/capture-preview.mjs"
+    "docs:preview": "node scripts/capture-preview.mjs",
+    "docs:icons": "node scripts/render-icons.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
