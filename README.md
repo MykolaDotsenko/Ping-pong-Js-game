@@ -62,7 +62,7 @@ The original 2024 version used one global script for rendering, input, physics, 
 - ESLint 10
 - TypeScript 7, for JSDoc type-checking only
 - Playwright Test 1.63
-- GitHub Actions
+- GitHub Actions, for the checks and for deploying `main` to GitHub Pages
 
 There is intentionally **no React, game engine, audio library, state library, dependency-injection framework, bundler, or runtime dependency**. Those tools would add surface area without solving a requirement in this product. TypeScript only checks the JavaScript that ships; nothing is compiled, and every sound is synthesized at play time.
 
@@ -107,7 +107,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 
 ```text
 .
-├── .github/workflows/quality.yml
+├── .github/workflows/quality.yml   checks on every push and PR; deploys main to GitHub Pages
 ├── docs/preview.png
 ├── e2e/game.spec.js
 ├── icons/                      app icons, rendered from icon.svg
@@ -252,7 +252,7 @@ If you have two minutes, inspect these files in order:
 4. [`src/domain/opponent.js`](./src/domain/opponent.js) — a beatable, human-like computer opponent
 5. [`src/adapters/canvas-renderer.js`](./src/adapters/canvas-renderer.js) — how events become visual effects
 6. [`eslint.config.js`](./eslint.config.js) — executable architecture constraints
-7. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification
+7. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification, then the GitHub Pages deploy once `main` is green
 
 ## License
 
