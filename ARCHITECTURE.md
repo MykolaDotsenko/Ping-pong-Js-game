@@ -15,9 +15,9 @@ script.js  ← composition root; the only module that touches browser globals
    |
    +--> adapters/input-controller.js
    +--> adapters/dom-game-view.js
-   +--> adapters/canvas-renderer.js ──> adapters/effects.js
-   +--> adapters/sound-board.js
-   +--> adapters/music-player.js
+   +--> adapters/canvas-renderer.js ──> adapters/canvas/*, adapters/effects.js
+   +--> adapters/sound-board.js ──┐
+   +--> adapters/music-player.js ─┴──> adapters/audio-output.js
    +--> adapters/haptics.js
    +--> adapters/wake-lock.js
    +--> adapters/browser-device.js
@@ -59,7 +59,7 @@ These rules are enforced by ESLint per directory (`eslint.config.js`). `tests/ar
 - power-ups: when one appears, what it does to whom, and how long it lasts
 - a second human on the top paddle, when the rules say the opponent is human
 - paddle bounds and smoothed paddle velocity
-- ball movement, wall reflection, swept paddle collision, bounce angles and speed progression
+- ball movement, wall reflection, swept contact between the ball and a paddle's face, corners and sides, bounce angles and speed progression
 - spin, and the curve it puts on the ball
 - the computer opponent
 
@@ -77,7 +77,7 @@ Power-ups need chance: what kind appears, where, and when. The core is forbidden
 
 ### Game events
 
-Every transition lists what happened in `state.events`: `match-start`, `paused`, `resumed`, `serve`, `paddle-hit`, `wall-bounce`, `point` and `game-over`, each with the data an effect needs (where, how fast, which side, the rally count). Quiet steps share one frozen empty list, so they allocate nothing.
+Every transition lists what happened in `state.events`: `match-start`, `menu`, `paused`, `resumed`, `countdown`, `serve`, `paddle-hit`, `paddle-graze`, `wall-bounce`, `pickup-spawn`, `pickup`, `point`, `match-point`, `life-lost` and `game-over`, each with the data an effect needs (where, how fast, which side, the rally count). Quiet steps share one frozen empty list, so they allocate nothing.
 
 Events are plain data on the state rather than callbacks or an event bus. The domain stays pure, tests assert on events directly, and any number of adapters can react without the domain knowing they exist.
 
@@ -91,7 +91,8 @@ Events are plain data on the state rather than callbacks or an event bus. The do
 - build the match from the mode, difficulty and options chosen in the preferences when a new match starts, never mid-match (`buildMatchConfig`)
 - tell the input adapter how many people are steering
 - drama: a short hit-stop on hard hits, and slow motion while a match-point ball closes on a paddle
-- keep the best rally, the best Rush run and the Solo win statistics, and flag a record worth celebrating
+- keep the best rally (a Solo record), the best Rush run and the Solo win statistics, and flag a record worth celebrating; records are read fresh from the preferences, which another tab may have raised
+- count leaving a Solo match after its first point as a loss, so quitting cannot protect a winning streak
 - run the frame loop only while a match is running
 - translate current state into presentation data
 
@@ -144,11 +145,19 @@ Translates pointer, touch, and keyboard input into device-neutral movement snaps
 
 ### DomGameView
 
-Owns the HUD, the menu with its modes, the tutorial, pause and result overlays, and the settings. Controls declare their meaning in markup — `data-command`, `data-mode`, `data-difficulty`, `data-setting` — so the view binds them generically. It shows the tutorial once, on a first visit, and hands sharing and full screen to `BrowserDevice`, hiding those buttons where the browser lacks the feature. After a command it brings the court fully into view and hands focus back to the board, so `Space` controls the game instead of re-activating the focused button. It only writes to the DOM when the presentation changes, which keeps the `aria-live` status region from being rewritten every frame.
+Owns the HUD, the menu with its modes, the tutorial, pause and result overlays, and the settings. Controls declare their meaning in markup — `data-command`, `data-mode`, `data-difficulty`, `data-setting` — so the view binds them generically. It hands sharing and full screen to `BrowserDevice`, hiding those buttons where the browser lacks the feature. It only writes to the DOM when the presentation changes, which keeps the `aria-live` status region from being rewritten every frame, and it never repeats the rules from memory: the menu line is built from the rules in the presentation.
+
+Focus is managed deliberately:
+
+- the tutorial is a native `<dialog>` opened with `showModal()`, once on a first visit: the page behind it is inert, focus starts on its button and `Escape` closes it; `InputController` ignores game keys and touches while any dialog is open, so `Space` presses the dialog's button instead of starting a match behind it
+- the pause and result screens are labelled dialogs whose main button takes focus when they appear; play hands focus back to the board, unless the player had moved it elsewhere on the page
+- after a command button, focus returns to the board, so `Space` controls the game instead of re-activating the button
 
 ### CanvasRenderer and Effects
 
 The renderer converts game state into pixels and implements `FeedbackPort`: game events become sparks, shockwave rings, screen shake, flashes, paddle squash, a grid pulse and victory fireworks, simulated by `Effects`, a small presentation-only particle system with injectable randomness.
+
+`canvas-renderer.js` only owns the canvas, its size and its frames. What a frame contains lives in `src/adapters/canvas/`: `theme.js` (colors and shared helpers), `court.js` (the pre-rendered court and glow sprites), `scene.js` (ball, trail, paddles, power-ups, the Ghost fog), `hud.js` (countdown, rally counter, callouts), `ball-trail.js` and `event-effects.js` (the visual side of each game event). Each is unit-tested against a recording 2D context.
 
 It is built for phones:
 
@@ -162,7 +171,7 @@ While a match runs, the game loop drives every frame. After the match ends, the 
 
 ### SoundBoard and MusicPlayer
 
-Both implement `FeedbackPort` with Web Audio, and every sound is synthesized from oscillators at play time, with no audio files. The sound board plays effects: hit pitch climbs with the rally, every fifth hit adds a chime, and the countdown, power-ups, match point and a lost life each have their own cue. The music player runs a four-bar loop scheduled ahead of the clock, so timing stays exact whatever the frame rate; it starts with bass alone, adds a chord layer at three hits and a lead line at six, fades on pause, and stops at the menu. The audio context is created on the first event, which always follows a click or key press, as browsers require.
+Both implement `FeedbackPort` with Web Audio, and every sound is synthesized from oscillators at play time, with no audio files. The sound board plays effects: hit pitch climbs with the rally, every fifth hit adds a chime, and the countdown, power-ups, match point and a lost life each have their own cue. The music player runs a four-bar loop scheduled ahead of the clock, so timing stays exact whatever the frame rate; it starts with bass alone, adds a chord layer at three hits and a lead line at six, fades on pause, stops at the menu, and starts every match from the bass again. Both play through one audio context, owned by `AudioOutput`: browsers limit how many a page may open, so it is created once, on the first event, which always follows a click or key press, and resumed whenever the browser suspended it.
 
 ### Haptics
 
@@ -170,11 +179,13 @@ Implements `FeedbackPort` with `navigator.vibrate`: short pulses for the player'
 
 ### WakeLock and BrowserDevice
 
-`WakeLock` implements `FeedbackPort` with the Screen Wake Lock API: a thumb on a rail sends no key or scroll events, so without it the phone would dim mid-rally. It holds the lock only while a match runs. `BrowserDevice` wraps the Web Share API, with the clipboard as a fallback, and the Fullscreen API.
+`WakeLock` implements `FeedbackPort` with the Screen Wake Lock API: a thumb on a rail sends no key or scroll events, so without it the phone would dim mid-rally. It holds the lock only while a match runs, and keeps at most one request in flight, so a pause and resume during a request cannot leave a second lock unreleased. `BrowserDevice` wraps the Web Share API, with the clipboard as a fallback, and the Fullscreen API. Closing the share sheet is respected rather than turned into a silent copy, and a copy is reported only when it happened.
 
 ### LocalPreferences
 
 Implements `PreferencesPort` over `localStorage`, validating everything it reads. Storage that is missing or throws, as in private browsing, falls back to in-memory values, so the game never breaks over storage.
+
+The game may be open in several tabs. Each tab follows the others' saves through the `storage` event, and merges its own changes into what is stored at that moment, so one tab never writes back another's older records. After a save fails, a tab trusts its own newer values over storage.
 
 ### BrowserFrameScheduler
 
@@ -201,19 +212,17 @@ Speed increases slightly after paddle contact and is capped so difficulty cannot
 
 A paddle's velocity is smoothed over a few steps, so a deliberate flick reads as speed while a single jittery sample does not. At impact, that velocity becomes spin. Spin turns the ball's direction toward its sign each step without changing its speed, fades over time, reverses at a wall so the ball curves away from it, and never leans the ball further from vertical than the steepest bounce angle, so a curve cannot stall a rally.
 
-### Swept paddle collision
+### Swept paddle contact
 
-A simple overlap check can miss a paddle when a fast-moving ball travels from one side of the paddle plane to the other between simulation samples.
+A simple overlap check misses a paddle when a fast ball travels past it between simulation samples. An earlier version solved that by testing only the moment the ball's leading edge crossed the paddle's face plane, but then a ball that reached the plane just wide of the paddle and drifted into its corner or side, or a paddle swept sideways into a ball beside it, went straight through: 4 to 6% of missed points in bot simulations.
 
-The current implementation:
+`findPaddleContact` works in the paddle's frame of reference, where the paddle stands still and the ball's path over one step, the paddle's own motion included, is a straight segment. The ball's center must not enter the paddle rectangle grown by the ball's radius, whose corners are rounded: two crossed rectangles and four corner circles. The earliest entry into any of them is the first touch, and the surface normal there tells face, corner and side apart.
 
-1. computes the ball's leading edge at the previous and current positions
-2. detects whether that segment crosses the paddle plane
-3. calculates normalized crossing time `t`
-4. interpolates the exact ball `x` at that crossing
-5. checks horizontal overlap at the crossing point
+- the face and the front corners return the ball, from the very edge when a corner is clipped, and the return leaves level with the face, so a paddle sliding on cannot catch it twice
+- the sides and back corners deflect it like a moving wall (`paddle-graze`), keeping its progress toward the goal, and the point still goes to the other side
+- a ball squeezed between a paddle and a side wall slips out behind the paddle
 
-This is intentionally smaller than a general-purpose continuous collision engine while solving the tunneling case relevant to this game.
+A property test plays 60 bot matches across every mode, over 100,000 steps with yanked paddles, and asserts that the ball never overlaps a paddle. The difficulty balance, measured with the same bots before and after the change, moved only within noise.
 
 ## Opponent strategy
 
@@ -238,6 +247,7 @@ Documentation can become stale, so the project encodes its rules as checks that 
 - `eslint.config.js` — layer boundaries, no host globals or clock or randomness in the core, browser globals only in the composition root
 - `tests/architecture-rules.test.js` — proves those lint rules still catch violations
 - `tsconfig.json` + `npm run typecheck` — adapters satisfy the port contracts
+- `scripts/coverage-gate.mjs` — coverage over the whole of `src/` and over every file on its own
 - `scripts/check-project.mjs` — expected modules and assets exist, `script.js` stays a small composition root, no inline HTML event handlers
 
 ## Testing strategy
@@ -246,12 +256,12 @@ Documentation can become stale, so the project encodes its rules as checks that 
 
 The dependency-free unit suite targets deterministic rules and the logic of the adapters:
 
-- domain: state machine and events, the match and Rush rules, scoring and match point, the countdown and serve pauses, paddle control for one or two people, collisions toward both paddles, spin and curves, the speed cap, the opponent, power-ups, the random source, and a full rally
-- application: loop lifecycle with time scale and hold, interpolation, commands, the match built per mode, drama, feedback dispatch, and the rally, Rush and win-streak records
-- adapters: input with two-player halves, the view with modes and the tutorial, effects and callouts, sound, vibration and preferences, driven through fake event targets, fake audio contexts and fake storage thanks to injected globals
-- architecture: the lint rules themselves
+- domain: state machine and events, the match and Rush rules, scoring and match point, the countdown and serve pauses, paddle control for one or two people, paddle contact on faces, corners and sides with a no-overlap property test, spin and curves, the speed cap, the opponent, power-ups, the random source, and a full rally
+- application: loop lifecycle with time scale and hold, interpolation, commands, the match built per mode, drama, feedback dispatch, the rally, Rush and win-streak records, and forfeits
+- adapters: input with two-player halves and dialogs, the view with modes, the modal tutorial and focus, the canvas renderer and its modules, effects and callouts, sound and music on one audio context, vibration, the wake lock, sharing and full screen, and preferences across tabs, driven through fake event targets, a recording 2D context, fake audio contexts and fake storage thanks to injected globals
+- architecture: the lint rules themselves, and that every module loads without a browser
 
-A coverage gate (95% lines, 90% branches and functions over `src/`) keeps it that way. The canvas renderer is covered by the browser tests.
+`tests/modules-load.test.js` loads every module under `src/`, so a file no test exercises counts at 0% instead of being left out. The coverage gate then holds the whole of `src/` to 95% lines and 90% branches and functions, and every file on its own to 90% lines, 85% branches and 80% functions, so no module can hide behind the average.
 
 ### Browser tests
 
@@ -261,7 +271,9 @@ Playwright checks the assembled system on desktop and mobile Chromium. Instead o
 - mouse steering, the keyboard taking over from a resting mouse, and layout-independent keys
 - the phone layout, the thumb rail, and the court staying in view with scrolling locked during a match
 - the three-second countdown before the first serve
-- the first-visit tutorial, Rush lives running out, and two players steering their own halves of the board
+- the first-visit tutorial as a modal dialog: `Space` closes it without starting a match, `Escape` closes it too, and either is remembered
+- Rush lives running out, and two players steering their own halves of the board
+- the heads-up display fitting a 320px-wide phone without sideways scrolling
 - preferences surviving a reload, and the result screen after a full match
 - auto-pause on focus loss, and an idle render loop outside of a match
 - a canvas backing store that matches device pixels, and an installable manifest
@@ -288,13 +300,12 @@ The boundaries make future changes local:
 
 - tune or add difficulties → `config.js`
 - add a mode → a `Rules` variant in `domain/types.js` and a preset in `config.js`
-- add a power-up → a kind in `domain/power-ups.js`, its look in the renderer, its sound in the sound board
+- add a power-up → a kind in `domain/power-ups.js`, its look in `adapters/canvas/theme.js`, its sound in the sound board
 - change the opponent's personality → `domain/opponent.js`
-- new effects or sounds for an event → the renderer's or sound board's `handle`, without touching the game
-- randomize serves → inject a seeded random source, keeping the core deterministic
+- new effects or sounds for an event → `adapters/canvas/event-effects.js` or the sound board, without touching the game
+- randomize serves → draw from the seeded random source already in the state, keeping the core deterministic
 - replace Canvas → another `RendererPort` adapter
 - add gamepad support → another `InputPort` adapter
-- add a second human player → input mapping + domain command
 - add replay/debug snapshots → record the event stream without rewriting physics
 
 The architecture exists to make change predictable, not to maximize the number of files.

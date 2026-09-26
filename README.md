@@ -23,15 +23,16 @@ The original 2024 version used one global script for rendering, input, physics, 
 - **Three ways to play.** **Solo** against the computer, first to 7. **Rush**, a survival run with three lives against a computer that returns everything but a curve, where the ball only gets faster and your score is the number of hits. **2P**, two people on one phone, each steering their own end of the court.
 - **Portrait neon court** that fills a phone held upright and reads as a vertical arcade cabinet on desktop.
 - **Curve shots:** flick the paddle as it meets the ball and the ball bends in that direction. The computer cannot predict a curve.
-- **Power-ups** appear mid-rally and go to whoever hit the ball last: **Wide** enlarges your paddle, **Shrink** shrinks the other side's, **Turbo** launches the ball at top speed, and **Ghost** hides the ball in the other side's half. They can be switched off.
+- **Power-ups** appear mid-rally and go to whoever hit the ball last: **Wide** enlarges your paddle, **Shrink** shrinks the other side's, **Turbo** turns your shot into one blistering ball until it is returned, and **Ghost** hides the ball in the other side's half. They can be switched off.
 - **A computer that plays like a person:** it reacts only once the ball comes within its reach, aims its returns away from you, and misjudges fast balls more.
 - **Three difficulties** — Easy, Normal, Hard — tuned by simulating matches against human-like bots.
 - **Drama:** a 3-2-1 countdown before the first serve, a **Match point** banner, slow motion as a match-point ball closes on a paddle, a split-second freeze on hard hits, and callouts for a **CURVE!**, a **SMASH!** or an **EDGE!** catch.
 - **Rallies that build:** every hit speeds the ball up, the rally counter pulses, long rallies heat the ball into a "fever" glow, and the music adds a layer at 3 hits and another at 6.
 - **Juice:** sparks, shockwaves, screen shake, flashes, a speed-heated ball trail and victory fireworks, with synthesized sound effects, a synthesized backing track and vibration.
 - **Thumb rail:** on touch screens, a strip below the court steers the paddle, so your thumb never covers the play.
-- **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result.
-- Mode, difficulty, power-ups, sound, music, vibration, your best rally, your best Rush run and your Solo win record are remembered between visits.
+- **Solid paddles:** the ball meets a paddle's face, corners and sides as solid shapes. Clip a front corner and it comes back from the edge; catch it on the side and it glances off, but it never passes through.
+- **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result. The heads-up display fits even a 320px-wide screen.
+- Mode, difficulty, power-ups, sound, music, vibration, your best rally, your best Rush run and your Solo win record are remembered between visits, and stay in step across open tabs. Leaving a Solo match after its first point counts as a loss, so a streak is earned, not protected.
 
 ## What it demonstrates
 
@@ -43,12 +44,14 @@ The original 2024 version used one global script for rendering, input, physics, 
 - a fixed-step loop with a **time scale and hit-stop hold**, so slow motion and freeze frames never touch the simulation's step size
 - fixed-timestep simulation with render interpolation, independent from display refresh rate
 - a render loop that runs only during a match; idle screens cost no frames
-- swept paddle collision using the exact crossing point, contact-position bounce angles, and spin that bends the path without changing speed
+- swept ball-against-paddle contact in the paddle's frame of reference: no tunnelling at any speed, solid corners and sides, and a property test that finds no overlap in over 100,000 simulated steps; plus contact-position bounce angles and spin that bends the path without changing speed
 - typed ports: adapter contracts written as JSDoc and checked by the TypeScript compiler, with no build step
 - adapters that receive browser globals by injection, so input, view, sound, vibration and storage are unit-tested in Node
 - a Canvas renderer built for phones: pre-rendered glow sprites and background layers, additive blending, and a capped pixel ratio
 - layer boundaries enforced by ESLint, with tests proving the rules still reject violations
-- unit tests behind a coverage gate, and Playwright tests on desktop and mobile Chromium that assert on the rendered canvas
+- unit tests behind an honest coverage gate: every module is loaded, so an untested file counts at 0%, and each file must clear its own floor, not just the average
+- accessible overlays: a native modal tutorial with managed focus, labelled pause and result dialogs, and decorative glyphs hidden from screen readers
+- Playwright tests on desktop and mobile Chromium that assert on the rendered canvas
 - an installable web app (manifest and icons) with safe-area-aware, reduced-motion-aware styling
 
 ## Stack
@@ -75,9 +78,9 @@ script.js (composition root: the only place that touches browser globals)
     |
     +-- InputController ------------ pointer, touch rail and keyboard input
     +-- DomGameView ---------------- HUD, menus and settings around the board
-    +-- CanvasRenderer ------------- neon rendering and visual effects
-    +-- SoundBoard ----------------- synthesized sound effects (Web Audio)
-    +-- MusicPlayer ---------------- synthesized backing track that builds with the rally
+    +-- CanvasRenderer ------------- neon rendering and visual effects (canvas/*)
+    +-- SoundBoard ----------------- synthesized sound effects  ─┐
+    +-- MusicPlayer ---------------- a backing track that builds ┴─ AudioOutput (one context)
     +-- Haptics -------------------- vibration
     +-- WakeLock ------------------- keeps the screen on during a match
     +-- BrowserDevice -------------- sharing and full screen
@@ -92,7 +95,7 @@ script.js (composition root: the only place that touches browser globals)
             |
             +-- domain/game --------- state machine, rules, scoring, events
                     |
-                    +-- physics ----- collisions, bounce angles, spin
+                    +-- physics ----- swept paddle contact, bounce angles, spin
                     +-- opponent ---- reach, prediction, aim, misjudgement
                     +-- power-ups --- pickups, effects, a seeded random source
 ```
@@ -114,9 +117,18 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 ├── scripts
 │   ├── capture-preview.mjs
 │   ├── check-project.mjs
+│   ├── coverage-gate.mjs
 │   └── render-icons.mjs
 ├── src
 │   ├── adapters
+│   │   ├── canvas
+│   │   │   ├── ball-trail.js
+│   │   │   ├── court.js
+│   │   │   ├── event-effects.js
+│   │   │   ├── hud.js
+│   │   │   ├── scene.js
+│   │   │   └── theme.js
+│   │   ├── audio-output.js
 │   │   ├── browser-device.js
 │   │   ├── browser-frame-scheduler.js
 │   │   ├── canvas-renderer.js
@@ -141,7 +153,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 │   │   ├── random.js
 │   │   └── types.js
 │   └── config.js
-├── tests                       one file per module, plus architecture-rules.test.js
+├── tests                       unit tests per module, collision and module-load checks, support/ fakes
 ├── ARCHITECTURE.md
 ├── LICENSE
 ├── eslint.config.js
@@ -179,13 +191,13 @@ npm run docs:icons     # regenerate the app icons from icons/icon.svg
 ## Controls
 
 - **Touch:** drag on the court or on the thumb rail below it; a tap moves the paddle straight to that spot. In 2P, the bottom half of the court steers the bottom paddle and the top half the top one, and each finger keeps the paddle it started on.
-- **Mouse:** move over the court
+- **Mouse:** move over the court; in 2P, press and drag
 - **Keyboard:** `←` / `→` or `A` / `D` to move (by physical key, so any layout works, including Ukrainian and AZERTY), `Space` to start or pause, `Esc` to pause. Player 2 uses `J` / `L` or the numpad `4` / `6`.
 - **Curve:** flick the paddle sideways as it meets the ball
 
-Whichever device you used last steers the paddle, so the keyboard works even while the mouse rests on the board. Clicking a button hands focus back to the board, so `Space` keeps working. The match pauses by itself when the window loses focus or the tab is hidden, and the page cannot scroll away while you play. Browser shortcuts such as `Ctrl+A` are never intercepted.
+Whichever device you used last steers the paddle, so the keyboard works even while the mouse rests on the board. Clicking a button hands focus back to the board, so `Space` keeps working. While the tutorial is open, `Space`, `Enter` and `Esc` belong to it: the game behind it takes no keys or touches. The match pauses by itself when the window loses focus or the tab is hidden, and the page cannot scroll away while you play. Browser shortcuts such as `Ctrl+A` are never intercepted.
 
-First to 7 wins in Solo and 2P; in Rush, three misses end the run.
+First to 7 wins in Solo and 2P; in Rush, three misses end the run. The menu reads these rules from the match configuration.
 
 ## Verification strategy
 
@@ -195,7 +207,7 @@ First to 7 wins in Solo and 2P; in Rush, three misses end the run.
 
 1. ESLint, including the per-directory architecture boundaries
 2. TypeScript type-checking of the JSDoc-annotated sources
-3. unit tests with a coverage gate (95% lines, 90% branches and functions)
+3. unit tests with a coverage gate: 95% lines and 90% branches and functions over all of `src/`, and at least 90% lines, 85% branches and 80% functions in every single file
 4. project-structure checks
 
 ### Unit tests
@@ -206,12 +218,13 @@ The dependency-free unit suite covers:
 - the Rush rules (lives, hits, no win condition for the computer) and two-player steering of the top paddle
 - power-ups: spawning on schedule, each effect, wear-off through serve pauses, and the computer's blindness to a ghosted ball
 - the deterministic random source, so a seed replays a match
-- paddle control, collisions toward both paddles, the speed cap, spin from a moving paddle, curves that keep their speed and never stall a rally, and a full deterministic rally
+- paddle control, the speed cap, spin from a moving paddle, curves that keep their speed and never stall a rally, and a full deterministic rally
+- paddle contact: faces, clipped corners, sides, a paddle swept into the ball, a ball squeezed against a wall, fast balls at any speed, and a property test over 60 bot matches in which the ball never overlaps a paddle
 - the opponent's reach, wall-folded prediction, aim, speed-dependent misjudgement, and the ordering of the difficulty presets
 - the fixed-step loop with its time scale and hit-stop hold, and render interpolation
-- the controller: loop lifecycle, commands, the match built from mode and difficulty, slow motion and hit-stop, event dispatch to feedback adapters, and the best-rally, best-Rush and win-streak records
-- the adapters: input (layouts, shortcuts, device switching, the thumb rail, focus loss), the view (overlays, settings, focus hand-off, quiet live-region updates), effects, sound, vibration and stored preferences
-- the architecture rules themselves
+- the controller: loop lifecycle, commands, the match built from mode and difficulty, slow motion and hit-stop, event dispatch to feedback adapters, the best-rally, best-Rush and win-streak records, and forfeits
+- the adapters: input (layouts, shortcuts, device switching, the thumb rail, focus loss, dialogs), the view (overlays, the modal tutorial, focus, settings, rules from config, quiet live-region updates), the canvas renderer and its modules on a recording 2D context, effects, sound and music on one audio context, vibration, the wake lock, sharing and full screen, and preferences across tabs
+- the architecture rules themselves, and that every module loads without a browser
 
 ### Browser tests
 
@@ -219,9 +232,9 @@ Playwright runs the real application in desktop and mobile Chromium. It reads th
 
 - the application boots without page errors, and Play, `Space`, `Esc` and the menus drive the state machine
 - the paddle follows the mouse, the keyboard takes over while the mouse rests on the board, and `A`/`D` work on a Cyrillic layout
-- on a phone, the court fills the screen, stays in view when a match starts, and the thumb rail steers the paddle
+- on a phone, the court fills the screen, stays in view when a match starts, and the thumb rail steers the paddle; on a 320px-wide phone the heads-up display fits without sideways scrolling
 - the first serve counts down from three before the ball moves
-- the first visit opens the tutorial once, and dismissing it is remembered
+- the first visit opens the tutorial once as a modal dialog; `Space` closes it without starting a match, `Esc` closes it too, and either is remembered
 - Rush shows lives as hearts and ends when they run out; two players get their own halves of the board
 - mode, difficulty, power-up and sound choices survive a reload
 - a lost match ends on the result screen, with full effects and no page errors, and Play again starts a new one
@@ -250,9 +263,10 @@ If you have two minutes, inspect these files in order:
 2. [`src/application/ports.js`](./src/application/ports.js) — the contracts adapters implement
 3. [`src/domain/game.js`](./src/domain/game.js) — state transitions, scoring and game events
 4. [`src/domain/opponent.js`](./src/domain/opponent.js) — a beatable, human-like computer opponent
-5. [`src/adapters/canvas-renderer.js`](./src/adapters/canvas-renderer.js) — how events become visual effects
-6. [`eslint.config.js`](./eslint.config.js) — executable architecture constraints
-7. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification, then the GitHub Pages deploy once `main` is green
+5. [`src/domain/physics.js`](./src/domain/physics.js) — swept paddle contact in the paddle's frame of reference
+6. [`src/adapters/canvas/event-effects.js`](./src/adapters/canvas/event-effects.js) — how events become visual effects
+7. [`eslint.config.js`](./eslint.config.js) — executable architecture constraints
+8. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification, then the GitHub Pages deploy once `main` is green
 
 ## License
 
