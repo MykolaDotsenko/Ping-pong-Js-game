@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -61,3 +62,41 @@ jobs:
           name: playwright-traces
           path: test-results/
           retention-days: 7
+
+  # The site is static and served straight from the repository root, so a
+  # deploy is just a copy of the runtime files. It only happens on main, and
+  # only after both check jobs above are green for that commit.
+  deploy:
+    name: Deploy to GitHub Pages
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [quality, browser-smoke]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Assemble the static site
+        run: |
+          mkdir site
+          cp -r index.html style.css script.js favicon.png manifest.webmanifest src icons site/
+          find site -type f | sort
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
