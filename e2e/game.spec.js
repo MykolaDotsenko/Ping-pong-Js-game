@@ -33,6 +33,30 @@ function readPlayerX(page) {
   }, { boardWidth: width, boardRowY: rowY });
 }
 
+/** Reads the ball's center, in board units, as the centroid of the ball-colored canvas pixels. */
+function readBall(page) {
+  return board(page).evaluate((canvas, boardWidth) => {
+    const scale = canvas.width / boardWidth;
+    const { data } = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+    let count = 0;
+    let sumX = 0;
+    let sumY = 0;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const isBall = Math.abs(data[i] - 94) < 12 && Math.abs(data[i + 1] - 234) < 12 && Math.abs(data[i + 2] - 212) < 12;
+
+      if (isBall) {
+        const pixel = i / 4;
+        count += 1;
+        sumX += pixel % canvas.width;
+        sumY += Math.floor(pixel / canvas.width);
+      }
+    }
+
+    return count === 0 ? null : { x: sumX / count / scale, y: sumY / count / scale };
+  }, GAME_CONFIG.width);
+}
+
 // A point on the board relative to its top-left corner; hover() and tap() scroll it into view.
 async function boardPoint(page, xFraction) {
   const box = await board(page).boundingBox();
@@ -103,6 +127,26 @@ test('a tap on the board moves the paddle on touch screens', async ({ page, hasT
 
   await board(page).tap(await boardPoint(page, 0.25));
   await expect.poll(() => readPlayerX(page)).toBeCloseTo(0.25 * GAME_CONFIG.width, -1);
+});
+
+test('the ball waits at the center before the serve', async ({ page }) => {
+  // A paused fake clock makes the timing exact, however fast the machine is. The installed
+  // clock keeps flowing until paused, so pause far enough ahead to never be in the past.
+  await page.clock.install({ time: 0 });
+  await page.goto('/');
+  await page.clock.pauseAt(60 * 60 * 1000);
+  await page.getByRole('button', { name: 'Start' }).click();
+
+  const delayMs = GAME_CONFIG.serveDelaySeconds * 1000;
+  const center = { x: GAME_CONFIG.width / 2, y: GAME_CONFIG.height / 2 };
+
+  await page.clock.runFor(delayMs / 2);
+  const waiting = await readBall(page);
+  expect(Math.abs(waiting.x - center.x)).toBeLessThan(2);
+  expect(Math.abs(waiting.y - center.y)).toBeLessThan(2);
+
+  await page.clock.runFor(delayMs / 2 + 300);
+  expect((await readBall(page)).y).toBeGreaterThan(center.y + 50);
 });
 
 test('losing window focus pauses a running match', async ({ page }) => {

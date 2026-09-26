@@ -47,6 +47,7 @@ export function createInitialState(config) {
     score: { player: 0, opponent: 0 },
     lastPoint: null,
     serveNumber: 0,
+    serveCountdown: config.serveDelaySeconds,
   };
 }
 
@@ -195,6 +196,7 @@ function awardPoint(state, scorer, config) {
     lastPoint: scorer,
     ball: nextServe.ball,
     serveNumber: nextServe.serveNumber,
+    serveCountdown: config.serveDelaySeconds,
   };
 }
 
@@ -295,6 +297,14 @@ export function advanceGame(state, deltaSeconds, input, config) {
   }
 
   nextState = moveOpponent(nextState, deltaSeconds, config);
+
+  if (nextState.serveCountdown > 0) {
+    // The ball waits at the center before each serve; both paddles can already move.
+    return {
+      ...nextState,
+      serveCountdown: Math.max(0, nextState.serveCountdown - deltaSeconds),
+    };
+  }
 
   const previousBall = nextState.ball;
   nextState = moveBall(nextState, deltaSeconds);

@@ -5,6 +5,7 @@ export const GAME_CONFIG = Object.freeze({
   width: 800,
   height: 520,
   winningScore: 7,
+  serveDelaySeconds: 0.9,
   fixedStepSeconds: 1 / 120,
   maxFrameSeconds: 0.1,
   paddle: Object.freeze({

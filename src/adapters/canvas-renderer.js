@@ -97,6 +97,10 @@ export class CanvasRenderer {
     this.drawPaddle(state.player.x, height - paddle.inset - paddle.height);
     this.drawBall(state.ball.x, state.ball.y, ball.radius);
 
+    if (state.serveCountdown > 0) {
+      this.drawServeRing(state.ball.x, state.ball.y, state.serveCountdown / this.config.serveDelaySeconds);
+    }
+
     if (state.phase === GAME_PHASE.READY) {
       this.drawOverlay('Ready', 'Press Start or Space');
     } else if (state.phase === GAME_PHASE.PAUSED) {
@@ -163,6 +167,24 @@ export class CanvasRenderer {
     ctx.beginPath();
     ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+
+  /**
+   * A ring that closes in on the waiting ball and reaches it at the moment of the serve.
+   *
+   * @param {number} x
+   * @param {number} y
+   * @param {number} remaining fraction of the serve delay still to wait, from 0 to 1
+   */
+  drawServeRing(x, y, remaining) {
+    const ctx = this.context;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(94, 234, 212, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, this.config.ball.radius + 4 + 22 * remaining, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 
