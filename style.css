@@ -623,6 +623,26 @@ kbd {
   box-shadow: 0 0 3cqw rgba(var(--player-rgb), 0.6);
 }
 
+/* The music track picker: each tap moves to the next track and plays a sample of it. */
+.track {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.6cqw;
+  padding: 2cqw 3.2cqw;
+  border: 1px solid rgba(var(--player-rgb), 0.45);
+  border-radius: 999px;
+  font-size: 3.4cqw;
+  font-weight: 700;
+  color: var(--text);
+  background: rgba(15, 18, 40, 0.6);
+}
+
+.track::before {
+  content: "♪" / "";
+  color: var(--player);
+  text-shadow: 0 0 2cqw rgba(var(--player-rgb), 0.8);
+}
+
 .badge {
   margin: 0;
   padding: 1.4cqw 3.4cqw;

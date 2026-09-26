@@ -10,6 +10,7 @@ import { GAME_PHASE } from '../domain/game.js';
  *   Mode,
  *   Presentation,
  *   PreferencesPort,
+ *   TrackId,
  *   ViewPort,
  * } from '../application/ports.js'
  */
@@ -37,7 +38,7 @@ const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'p
  * The HTML around the board: the HUD, the menu with its modes and settings, the tutorial,
  * pause and result overlays. Controls declare what they do with data attributes:
  * data-command sends a game command, data-mode and data-difficulty pick the next match,
- * and data-setting toggles a preference such as sound.
+ * data-setting toggles a preference such as sound, and data-track picks the next music track.
  *
  * @implements {ViewPort}
  */
@@ -50,14 +51,18 @@ export class DomGameView {
    * @param {boolean} options.canVibrate hides the vibration setting where it would do nothing
    * @param {Device} options.device sharing and full screen, hidden where unsupported
    * @param {number} options.rushLives shown on the Rush button before that mode is chosen
+   * @param {readonly { id: TrackId, label: string }[]} options.tracks the music tracks, in the order the track button cycles
+   * @param {(track: TrackId) => void} options.previewTrack plays a short sample of the chosen track
    */
-  constructor({ root, board, preferences, canVibrate, device, rushLives }) {
+  constructor({ root, board, preferences, canVibrate, device, rushLives, tracks, previewTrack }) {
     this.root = root;
     this.board = board;
     this.preferences = preferences;
     this.canVibrate = canVibrate;
     this.device = device;
     this.rushLives = rushLives;
+    this.tracks = tracks;
+    this.previewTrack = previewTrack;
     this.status = this.find('[data-game-status]');
     this.scores = { player: this.find('[data-score="player"]'), opponent: this.find('[data-score="opponent"]') };
     this.overlays = {
@@ -152,6 +157,10 @@ export class DomGameView {
           this.showSettings();
         });
       }
+    }
+
+    for (const button of this.findAll('[data-track]')) {
+      this.listen(button, () => this.nextTrack());
     }
 
     for (const button of this.findAll('[data-show-tutorial]')) {
@@ -250,6 +259,27 @@ export class DomGameView {
         button.setAttribute('aria-pressed', String(preferences[setting]));
       }
     }
+
+    const track = this.currentTrack();
+
+    for (const button of this.findAll('[data-track]')) {
+      button.textContent = track.label;
+      button.setAttribute('aria-label', `Music track: ${track.label}`);
+    }
+  }
+
+  currentTrack() {
+    const { track } = this.preferences.get();
+    return this.tracks.find((candidate) => candidate.id === track) ?? this.tracks[0];
+  }
+
+  /** Moves to the next track, turns the music on so it can be heard, and plays a sample. */
+  nextTrack() {
+    const next = this.tracks[(this.tracks.indexOf(this.currentTrack()) + 1) % this.tracks.length];
+
+    this.preferences.set({ track: next.id, music: true });
+    this.showSettings();
+    this.previewTrack(next.id);
   }
 
   /**

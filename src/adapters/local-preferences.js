@@ -1,4 +1,4 @@
-import { DIFFICULTIES, MODES } from '../application/ports.js';
+import { DIFFICULTIES, MODES, TRACK_IDS } from '../application/ports.js';
 
 /** @import { MatchStats, Preferences, PreferencesPort } from '../application/ports.js' */
 
@@ -14,6 +14,7 @@ const DEFAULTS = Object.freeze({
   powerUps: true,
   sound: true,
   music: true,
+  track: 'neon',
   vibration: true,
   tutorialSeen: false,
   bestRally: 0,
@@ -58,6 +59,7 @@ function sanitize(stored) {
     powerUps: bool(stored.powerUps, DEFAULTS.powerUps),
     sound: bool(stored.sound, DEFAULTS.sound),
     music: bool(stored.music, DEFAULTS.music),
+    track: TRACK_IDS.find((track) => track === stored.track) ?? DEFAULTS.track,
     vibration: bool(stored.vibration, DEFAULTS.vibration),
     tutorialSeen: bool(stored.tutorialSeen, DEFAULTS.tutorialSeen),
     bestRally: count(stored.bestRally),

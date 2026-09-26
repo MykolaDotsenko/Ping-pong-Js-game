@@ -27,10 +27,17 @@ export const DIFFICULTIES = Object.freeze(['easy', 'normal', 'hard']);
 export const MODES = Object.freeze(['solo', 'rush', 'duo']);
 
 /**
+ * The backing tracks, in the order the track button cycles through them.
+ * @type {readonly TrackId[]}
+ */
+export const TRACK_IDS = Object.freeze(['neon', 'arena', 'anthem', 'contender', 'iron']);
+
+/**
  * @typedef {(typeof GAME_COMMAND)[keyof typeof GAME_COMMAND]} GameCommand
  * @typedef {(command: GameCommand) => void} CommandHandler
  * @typedef {'easy' | 'normal' | 'hard'} Difficulty
  * @typedef {'solo' | 'rush' | 'duo'} Mode Solo against the computer, a Rush survival run, or two people.
+ * @typedef {'neon' | 'arena' | 'anthem' | 'contender' | 'iron'} TrackId
  *
  * @typedef {object} MatchStats Solo results, kept across visits.
  * @property {number} matches
@@ -44,6 +51,7 @@ export const MODES = Object.freeze(['solo', 'rush', 'duo']);
  * @property {boolean} powerUps whether power-ups appear in Solo and two-player matches
  * @property {boolean} sound
  * @property {boolean} music
+ * @property {TrackId} track the backing track the next match plays
  * @property {boolean} vibration
  * @property {boolean} tutorialSeen
  * @property {number} bestRally longest rally ever played
