@@ -124,6 +124,10 @@ export class SoundBoard {
         }
         break;
       }
+      case 'paddle-graze':
+        // A dull knock off the paddle's edge, lower and shorter than a proper hit.
+        this.tone({ frequency: 180, endFrequency: 120, duration: 0.07, type: 'triangle', volume: 0.26 });
+        break;
       case 'wall-bounce':
         this.tone({ frequency: 1000, endFrequency: 760, duration: 0.05, type: 'sine', volume: 0.16 });
         break;

@@ -1,16 +1,22 @@
 import {
   bounceFromPaddle,
+  clamp,
   clampPaddleCenter,
   contactOffset,
   curveBall,
-  findPaddleCollision,
+  findPaddleContact,
+  glanceOffPaddle,
   movePaddle,
+  paddleClearance,
   reflectFromSideWalls,
 } from './physics.js';
 import { moveOpponent } from './opponent.js';
 import { collectPowerUps, initialPowerUpState, paddleWidth, tickEffects, tickPowerUps } from './power-ups.js';
 
-/** @import { Ball, GameConfig, GameEvent, GameState, InputSnapshot, Side } from './types.js' */
+/**
+ * @import { Ball, GameConfig, GameEvent, GameState, InputSnapshot, Side } from './types.js'
+ * @import { PaddleContact } from './physics.js'
+ */
 
 export const GAME_PHASE = Object.freeze({
   READY: 'ready',
@@ -334,39 +340,79 @@ function moveBall(ball, deltaSeconds) {
 }
 
 /**
+ * @param {Side} side
+ * @param {GameConfig} config
+ */
+function paddleTop(side, config) {
+  return side === 'player' ? config.height - config.paddle.inset - config.paddle.height : config.paddle.inset;
+}
+
+/**
+ * Where the ball rests one radius in front of a paddle's face, or behind its back.
+ *
+ * @param {Side} side
+ * @param {'front' | 'back'} which
+ * @param {GameConfig} config
+ */
+function besidePaddleY(side, which, config) {
+  const top = paddleTop(side, config);
+  const bottom = top + config.paddle.height;
+  const radius = config.ball.radius;
+  const inFront = side === 'player' ? top - radius : bottom + radius;
+  const behind = side === 'player' ? bottom + radius : top - radius;
+  return which === 'front' ? inFront : behind;
+}
+
+/**
+ * Where a glancing ball rests: where it touched the paddle, relative to where the paddle ends
+ * the step, so a paddle still moving cannot end up covering it. Squeezed against a wall,
+ * that spot is off the court or under the paddle, and the ball slips out behind it instead.
+ *
  * @param {GameState} state
  * @param {Side} side
- * @param {{ time: number, x: number }} collision
+ * @param {PaddleContact} contact
+ * @param {GameConfig} config
+ */
+function glancePosition(state, side, contact, config) {
+  const radius = config.ball.radius;
+  const x = state[side].x + contact.x;
+  const onCourt = clamp(x, radius, config.width - radius);
+  const clear = paddleClearance({ x: onCourt, y: contact.y }, state[side].x, paddleTop(side, config), paddleWidth(state, side, config), config)
+    >= radius - 1e-9;
+
+  return x === onCourt && clear ? { x, y: contact.y } : { x: onCourt, y: besidePaddleY(side, 'back', config) };
+}
+
+/**
+ * A return: the ball met the paddle's face, or one of its front corners.
+ *
+ * @param {GameState} state
+ * @param {Side} side
+ * @param {PaddleContact} contact
  * @param {GameConfig} config
  * @param {GameEvent[]} events
  * @returns {GameState}
  */
-function hitPaddle(state, side, collision, config, events) {
+function hitPaddle(state, side, contact, config, events) {
   const paddle = state[side];
   const width = paddleWidth(state, side, config);
-  const isPlayer = side === 'player';
-  const faceY = isPlayer
-    ? config.height - config.paddle.inset - config.paddle.height - config.ball.radius
-    : config.paddle.inset + config.paddle.height + config.ball.radius;
-  const bounced = bounceFromPaddle(
-    { ...state.ball, x: collision.x },
-    paddle.x,
-    isPlayer ? -1 : 1,
-    config,
-    paddle.vx,
-    width,
-  );
-  const ball = { ...bounced, y: faceY };
+  const struck = paddle.x + contact.x;
+  const bounced = bounceFromPaddle({ ...state.ball, x: struck }, paddle.x, side === 'player' ? -1 : 1, config, paddle.vx, width);
+  // The return leaves from the face: level with it, a paddle sliding sideways cannot catch
+  // the ball again, even after a corner hit.
+  const x = clamp(struck, config.ball.radius, config.width - config.ball.radius);
+  const y = besidePaddleY(side, 'front', config);
+  const ball = { ...bounced, x, y };
   const rally = state.rally + 1;
 
   events.push({
     type: 'paddle-hit',
     side,
-    x: collision.x,
-    y: faceY,
+    x,
+    y,
     speed: Math.hypot(ball.vx, ball.vy),
     spin: ball.spin,
-    offset: contactOffset(collision.x, paddle.x, width),
+    offset: contactOffset(struck, paddle.x, width),
     rally,
   });
 
@@ -380,13 +426,40 @@ function hitPaddle(state, side, collision, config, events) {
 }
 
 /**
+ * A touch that saves nothing: the ball clipped the paddle's side or back corner, or the
+ * paddle was swept into a ball that had already passed it. The ball glances off, so it never
+ * shows through the paddle, and carries on toward the goal line.
+ *
  * @param {GameState} state
- * @param {Ball} previousBall
+ * @param {Side} side
+ * @param {PaddleContact} contact
+ * @param {number} paddleVx the paddle's velocity over this step
  * @param {GameConfig} config
  * @param {GameEvent[]} events
  * @returns {GameState}
  */
-function resolveCollisions(state, previousBall, config, events) {
+function glancePaddle(state, side, contact, paddleVx, config, events) {
+  const normal = { x: contact.normalX, y: contact.normalY };
+  const moved = contact.approaching ? glanceOffPaddle(state.ball, normal, paddleVx, config.ball.maxSpeed) : state.ball;
+  const { x, y } = glancePosition(state, side, contact, config);
+
+  if (contact.approaching) {
+    events.push({ type: 'paddle-graze', side, x, y, speed: Math.hypot(moved.vx, moved.vy) });
+  }
+
+  return { ...state, ball: { ...moved, x, y } };
+}
+
+/**
+ * @param {GameState} state
+ * @param {Ball} previousBall
+ * @param {Record<Side, number>} previousPaddleX where each paddle was when the step began
+ * @param {number} deltaSeconds
+ * @param {GameConfig} config
+ * @param {GameEvent[]} events
+ * @returns {GameState}
+ */
+function resolveCollisions(state, previousBall, previousPaddleX, deltaSeconds, config, events) {
   const ball = reflectFromSideWalls(state.ball, config);
 
   if (ball !== state.ball) {
@@ -394,21 +467,31 @@ function resolveCollisions(state, previousBall, config, events) {
   }
 
   const next = { ...state, ball };
-  const movingDown = ball.vy > 0;
-  const side = movingDown ? 'player' : 'opponent';
-  const collision = findPaddleCollision({
-    previousBall,
-    ball,
-    paddleCenterX: next[side].x,
-    paddleY: movingDown
-      ? config.height - config.paddle.inset - config.paddle.height
-      : config.paddle.inset,
-    movingDown,
-    config,
+  // Only the paddle the ball is heading for can meet it.
+  const side = ball.vy > 0 ? 'player' : 'opponent';
+  const contact = findPaddleContact({
+    from: previousBall,
+    to: ball,
+    paddleFrom: previousPaddleX[side],
+    paddleTo: next[side].x,
+    paddleTop: paddleTop(side, config),
     paddleWidth: paddleWidth(next, side, config),
+    config,
   });
 
-  return collision ? hitPaddle(next, side, collision, config, events) : next;
+  if (!contact) {
+    return next;
+  }
+
+  // The face the ball should meet points into the court: up for the player, down for the opponent.
+  const facesBall = contact.normalY * (side === 'player' ? -1 : 1) > 0;
+
+  if (facesBall && contact.approaching) {
+    return hitPaddle(next, side, contact, config, events);
+  }
+
+  const paddleVx = (next[side].x - previousPaddleX[side]) / deltaSeconds;
+  return glancePaddle(next, side, contact, paddleVx, config, events);
 }
 
 /**
@@ -456,6 +539,7 @@ export function advanceGame(state, deltaSeconds, input, config) {
 
   /** @type {GameEvent[]} */
   const events = [];
+  const previousPaddleX = { player: state.player.x, opponent: state.opponent.x };
   let nextState = steerPaddle(state, 'player', input.pointerX, input.horizontalAxis, deltaSeconds, config);
   nextState = config.opponent.controller === 'human'
     ? steerPaddle(nextState, 'opponent', input.opponentPointerX, input.opponentAxis, deltaSeconds, config)
@@ -471,7 +555,7 @@ export function advanceGame(state, deltaSeconds, input, config) {
 
   const previousBall = nextState.ball;
   nextState = { ...nextState, ball: moveBall(curveBall(previousBall, deltaSeconds, config), deltaSeconds) };
-  nextState = resolveCollisions(nextState, previousBall, config, events);
+  nextState = resolveCollisions(nextState, previousBall, previousPaddleX, deltaSeconds, config, events);
   nextState = collectPowerUps(nextState, config, events);
 
   if (nextState.ball.y - config.ball.radius > config.height) {

@@ -11,6 +11,8 @@ function patternFor(event) {
   switch (event.type) {
     case 'paddle-hit':
       return event.side === 'player' ? 12 : null;
+    case 'paddle-graze':
+      return event.side === 'player' ? 6 : null;
     case 'point':
       return event.scorer === 'player' ? [18, 40, 18] : 45;
     case 'game-over':

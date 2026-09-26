@@ -36,6 +36,7 @@ const requiredFiles = [
   'src/adapters/local-preferences.js',
   'src/adapters/browser-frame-scheduler.js',
   'tests/architecture-rules.test.js',
+  'tests/collisions.test.js',
   'tests/dom-game-view.test.js',
   'tests/effects.test.js',
   'tests/game.test.js',

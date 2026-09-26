@@ -40,6 +40,13 @@ export function playEvents(effects, events, { config, random }) {
       case 'paddle-hit':
         celebrateHit(effects, event, config);
         break;
+      case 'paddle-graze': {
+        // A glancing touch off the paddle's side: a dull spark and no fanfare, since it saves nothing.
+        effects.burst({ x: event.x, y: event.y, color: `rgb(${THEME.side[event.side].rgb})`, count: 10, speed: 160, life: 0.3, size: 1.5 });
+        effects.kick(event.side);
+        effects.shake(0.12);
+        break;
+      }
       case 'wall-bounce':
         effects.burst({ x: event.x, y: event.y, color: '#c4b5fd', count: 8, speed: 180, direction: event.x < width / 2 ? 0 : Math.PI, spread: 2.4, life: 0.35, size: 1.6 });
         effects.ring({ x: event.x, y: event.y, color: `rgba(${THEME.violet}, 0.8)`, radius: 4, growth: 170, life: 0.25, width: 2 });

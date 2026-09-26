@@ -46,19 +46,6 @@ export function foldIntoRange(value, min, max) {
  * @param {GameConfig} config
  * @param {number} [width] the paddle's current width, when a power-up changed it
  */
-export function paddleBounds(centerX, config, width = config.paddle.width) {
-  const halfWidth = width / 2;
-  return {
-    left: centerX - halfWidth,
-    right: centerX + halfWidth,
-  };
-}
-
-/**
- * @param {number} centerX
- * @param {GameConfig} config
- * @param {number} [width] the paddle's current width, when a power-up changed it
- */
 export function clampPaddleCenter(centerX, config, width = config.paddle.width) {
   const halfWidth = width / 2;
   return clamp(centerX, halfWidth, config.width - halfWidth);
@@ -82,50 +69,224 @@ export function movePaddle(paddle, x, deltaSeconds, config) {
 }
 
 /**
- * @param {object} options
- * @param {Ball} options.previousBall
- * @param {Ball} options.ball
- * @param {number} options.paddleCenterX
- * @param {number} options.paddleY
- * @param {boolean} options.movingDown
- * @param {GameConfig} options.config
- * @param {number} [options.paddleWidth] the paddle's current width, when a power-up changed it
- * @returns {{ time: number, x: number } | null}
+ * @typedef {{ x: number, y: number }} Point
+ * @typedef {{ left: number, right: number, top: number, bottom: number }} Box
+ *
+ * @typedef {object} PaddleContact Where a ball touches a paddle during one step.
+ * @property {number} time share of the step at which they first touch, from 0 to 1
+ * @property {number} x the ball's center relative to the paddle's center, touching it
+ * @property {number} y the ball's center in board coordinates, touching it
+ * @property {number} normalX the paddle surface's outward normal where they touch
+ * @property {number} normalY
+ * @property {boolean} approaching whether the ball moves into the paddle rather than away
+ * @property {boolean} overlapping whether they already overlapped when the step began
  */
-export function findPaddleCollision({
-  previousBall,
-  ball,
-  paddleCenterX,
-  paddleY,
-  movingDown,
-  config,
-  paddleWidth = config.paddle.width,
-}) {
-  const radius = config.ball.radius;
-  const collisionPlane = movingDown ? paddleY : paddleY + config.paddle.height;
-  const edgeOffset = movingDown ? radius : -radius;
-  const previousLeadingEdge = previousBall.y + edgeOffset;
-  const currentLeadingEdge = ball.y + edgeOffset;
-  const travel = currentLeadingEdge - previousLeadingEdge;
 
-  if (movingDown) {
-    if (travel <= 0 || previousLeadingEdge > collisionPlane || currentLeadingEdge < collisionPlane) {
+// Below this, distances count as touching rather than overlapping, so a ball resting exactly
+// against a paddle after a contact is not caught again by rounding error.
+const CONTACT_EPSILON = 1e-7;
+
+/**
+ * The earliest share of the segment start → start + delta that lies inside the box, or null.
+ *
+ * @param {Point} start
+ * @param {Point} delta
+ * @param {Box} box
+ */
+function segmentEntersBox(start, delta, box) {
+  let enter = 0;
+  let exit = 1;
+
+  for (const [from, move, min, max] of /** @type {const} */ ([
+    [start.x, delta.x, box.left, box.right],
+    [start.y, delta.y, box.top, box.bottom],
+  ])) {
+    if (move === 0) {
+      if (from < min || from > max) {
+        return null;
+      }
+      continue;
+    }
+
+    const near = (min - from) / move;
+    const far = (max - from) / move;
+    enter = Math.max(enter, Math.min(near, far));
+    exit = Math.min(exit, Math.max(near, far));
+
+    if (enter > exit) {
       return null;
     }
-  } else if (
-    travel >= 0
-    || previousLeadingEdge < collisionPlane
-    || currentLeadingEdge > collisionPlane
-  ) {
+  }
+
+  return enter;
+}
+
+/**
+ * The earliest share of the segment start → start + delta that lies inside the circle, or null.
+ *
+ * @param {Point} start
+ * @param {Point} delta
+ * @param {Point} center
+ * @param {number} radius
+ */
+function segmentEntersCircle(start, delta, center, radius) {
+  const offsetX = start.x - center.x;
+  const offsetY = start.y - center.y;
+  const c = offsetX ** 2 + offsetY ** 2 - radius ** 2;
+
+  if (c <= 0) {
+    return 0;
+  }
+
+  const a = delta.x ** 2 + delta.y ** 2;
+  const b = 2 * (offsetX * delta.x + offsetY * delta.y);
+  const discriminant = b ** 2 - 4 * a * c;
+
+  if (a === 0 || discriminant < 0) {
     return null;
   }
 
-  const time = (collisionPlane - previousLeadingEdge) / travel;
-  const x = previousBall.x + (ball.x - previousBall.x) * time;
-  const bounds = paddleBounds(paddleCenterX, config, paddleWidth);
-  const overlapsHorizontally = x + radius >= bounds.left && x - radius <= bounds.right;
+  const time = (-b - Math.sqrt(discriminant)) / (2 * a);
+  return time >= 0 && time <= 1 ? time : null;
+}
 
-  return overlapsHorizontally ? { time, x } : null;
+/**
+ * When a circle of the given radius, moving from start by delta, first touches the box. The
+ * shape its center must not enter is the box grown by the radius, with rounded corners: two
+ * crossed rectangles and four corner circles. The earliest entry into any of them is the
+ * first touch.
+ *
+ * @param {Point} start
+ * @param {Point} delta
+ * @param {Box} box
+ * @param {number} radius
+ */
+function firstTouch(start, delta, box, radius) {
+  const { left, right, top, bottom } = box;
+  const times = [
+    segmentEntersBox(start, delta, { left: left - radius, right: right + radius, top, bottom }),
+    segmentEntersBox(start, delta, { left, right, top: top - radius, bottom: bottom + radius }),
+    ...[[left, top], [right, top], [left, bottom], [right, bottom]].map(([x, y]) => (
+      segmentEntersCircle(start, delta, { x, y }, radius)
+    )),
+  ].filter((time) => time !== null);
+
+  return times.length > 0 ? Math.min(...times) : null;
+}
+
+/**
+ * The point of the box nearest to p, and the box's outward normal there. For a point inside
+ * the box, the normal points out through the nearest side.
+ *
+ * @param {Point} p
+ * @param {Box} box
+ */
+function nearestSurface(p, box) {
+  const nearest = { x: clamp(p.x, box.left, box.right), y: clamp(p.y, box.top, box.bottom) };
+  const distance = Math.hypot(p.x - nearest.x, p.y - nearest.y);
+
+  if (distance > 0) {
+    return { nearest, distance, normal: { x: (p.x - nearest.x) / distance, y: (p.y - nearest.y) / distance } };
+  }
+
+  const exits = [
+    { depth: p.x - box.left, normal: { x: -1, y: 0 }, nearest: { x: box.left, y: p.y } },
+    { depth: box.right - p.x, normal: { x: 1, y: 0 }, nearest: { x: box.right, y: p.y } },
+    { depth: p.y - box.top, normal: { x: 0, y: -1 }, nearest: { x: p.x, y: box.top } },
+    { depth: box.bottom - p.y, normal: { x: 0, y: 1 }, nearest: { x: p.x, y: box.bottom } },
+  ];
+  const exit = exits.reduce((best, candidate) => (candidate.depth < best.depth ? candidate : best));
+
+  return { nearest: exit.nearest, distance: 0, normal: exit.normal };
+}
+
+/**
+ * How far a point is from a paddle; a ball overlaps the paddle when its center is closer than
+ * one radius.
+ *
+ * @param {Point} point
+ * @param {number} paddleX the paddle's center
+ * @param {number} paddleTop
+ * @param {number} paddleWidth
+ * @param {GameConfig} config
+ */
+export function paddleClearance(point, paddleX, paddleTop, paddleWidth, config) {
+  const box = { left: paddleX - paddleWidth / 2, right: paddleX + paddleWidth / 2, top: paddleTop, bottom: paddleTop + config.paddle.height };
+  return nearestSurface(point, box).distance;
+}
+
+/**
+ * Finds where a moving ball first touches a moving paddle during one step. It works in the
+ * paddle's frame of reference, where the paddle stands still and the ball's path is a
+ * straight segment, so fast balls cannot tunnel through and a paddle swept sideways into
+ * the ball counts as well. Faces, sides and rounded corners are all solid.
+ *
+ * @param {object} options
+ * @param {Point} options.from ball center at the start of the step
+ * @param {Point} options.to ball center at the end of the step
+ * @param {number} options.paddleFrom paddle center x at the start of the step
+ * @param {number} options.paddleTo paddle center x at the end of the step
+ * @param {number} options.paddleTop
+ * @param {number} options.paddleWidth the paddle's current width, power-ups included
+ * @param {GameConfig} options.config
+ * @returns {PaddleContact | null}
+ */
+export function findPaddleContact({ from, to, paddleFrom, paddleTo, paddleTop, paddleWidth, config }) {
+  const radius = config.ball.radius;
+  const box = { left: -paddleWidth / 2, right: paddleWidth / 2, top: paddleTop, bottom: paddleTop + config.paddle.height };
+  const start = { x: from.x - paddleFrom, y: from.y };
+  const delta = { x: to.x - paddleTo - start.x, y: to.y - start.y };
+  const time = firstTouch(start, delta, box, radius);
+
+  if (time === null) {
+    return null;
+  }
+
+  const touch = { x: start.x + delta.x * time, y: start.y + delta.y * time };
+  const surface = nearestSurface(touch, box);
+  const overlapping = time === 0 && surface.distance < radius - CONTACT_EPSILON;
+  const approaching = delta.x * surface.normal.x + delta.y * surface.normal.y < 0;
+
+  // A ball resting against the paddle, or already leaving it, is not a new contact.
+  if (!overlapping && !approaching) {
+    return null;
+  }
+
+  // Report the ball exactly one radius off the surface: touching, never inside.
+  return {
+    time,
+    x: surface.nearest.x + surface.normal.x * radius,
+    y: surface.nearest.y + surface.normal.y * radius,
+    normalX: surface.normal.x,
+    normalY: surface.normal.y,
+    approaching,
+    overlapping,
+  };
+}
+
+/**
+ * A glancing blow off a paddle's side or back corner: the ball bounces off the surface as
+ * off a wall that may itself be moving, and keeps heading for the goal line. Its speed
+ * stays within the cap without losing any of its progress toward the goal.
+ *
+ * @param {Ball} ball
+ * @param {{ x: number, y: number }} normal the paddle surface's outward normal
+ * @param {number} paddleVx the paddle's velocity during the step
+ * @param {number} maxSpeed
+ * @returns {Ball}
+ */
+export function glanceOffPaddle(ball, normal, paddleVx, maxSpeed) {
+  const along = (ball.vx - paddleVx) * normal.x + ball.vy * normal.y;
+  const vx = ball.vx - 2 * along * normal.x;
+  const vy = ball.vy - 2 * along * normal.y;
+  const cap = Math.max(maxSpeed, Math.hypot(ball.vx, ball.vy));
+
+  if (Math.abs(vy) >= cap) {
+    return { ...ball, vx: 0, vy: Math.sign(vy) * cap, spin: 0 };
+  }
+
+  const sideways = Math.sqrt(cap ** 2 - vy ** 2);
+  return { ...ball, vx: clamp(vx, -sideways, sideways), vy, spin: 0 };
 }
 
 /**
