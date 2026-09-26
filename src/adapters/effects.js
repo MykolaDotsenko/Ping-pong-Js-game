@@ -152,6 +152,10 @@ export class Effects {
     this.labels = [{ text, x, y, color, life, maxLife: life, size }];
   }
 
+  clearLabels() {
+    this.labels = [];
+  }
+
   /**
    * @param {string} color
    * @param {number} strength peak opacity
