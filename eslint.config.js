@@ -34,6 +34,7 @@ const sharedRules = {
 const nodeGlobals = {
   console: 'readonly',
   process: 'readonly',
+  fetch: 'readonly',
   Event: 'readonly',
   EventTarget: 'readonly',
 };

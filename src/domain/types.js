@@ -14,6 +14,7 @@
  * @property {Record<Side, number>} score
  * @property {Side | null} lastPoint
  * @property {number} serveNumber
+ * @property {number} serveCountdown Seconds the ball still waits at the center before it is served.
  *
  * @typedef {object} InputSnapshot Device-neutral movement intent for one simulation step.
  * @property {number} horizontalAxis -1 (left), 0 (idle) or 1 (right).
@@ -23,6 +24,7 @@
  * @property {number} width
  * @property {number} height
  * @property {number} winningScore
+ * @property {number} serveDelaySeconds
  * @property {number} fixedStepSeconds
  * @property {number} maxFrameSeconds
  * @property {{ width: number, height: number, inset: number, keyboardSpeed: number }} paddle

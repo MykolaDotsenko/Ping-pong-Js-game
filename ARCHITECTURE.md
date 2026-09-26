@@ -46,6 +46,7 @@ These rules are enforced by ESLint per directory (`eslint.config.js`). `tests/ar
 
 - phases: `ready`, `running`, `paused`, `game-over`
 - score transitions, win condition, and winner
+- the serve countdown: the ball waits at the center before each serve while the paddles can already move
 - paddle bounds
 - ball movement and wall reflection
 - swept paddle collision
@@ -114,7 +115,7 @@ Owns buttons and status text. It translates clicks into application commands and
 
 ### CanvasRenderer
 
-Converts game state into pixels. It never decides scoring, collision, or winning rules. It sizes the canvas backing store to the displayed size in device pixels, and re-sizes on layout and pixel-ratio changes such as browser zoom, so the board stays sharp on high-density screens. Drawing code keeps working in board coordinates through the context transform.
+Converts game state into pixels, including the ring that closes in on the ball during the serve countdown. It never decides scoring, collision, or winning rules. It sizes the canvas backing store to the displayed size in device pixels, and re-sizes on layout and pixel-ratio changes such as browser zoom, so the board stays sharp on high-density screens. Drawing code keeps working in board coordinates through the context transform.
 
 ### BrowserFrameScheduler
 
@@ -177,7 +178,7 @@ Documentation can become stale, so the project encodes its rules as checks that 
 
 The dependency-free unit suite targets deterministic rules and the logic of the adapters:
 
-- domain: state machine, scoring, serves, paddle control, collisions toward both paddles, the speed cap, and a full rally
+- domain: state machine, scoring, serves and the serve countdown, paddle control, collisions toward both paddles, the speed cap, and a full rally
 - application: loop lifecycle, interpolation, commands, and status text
 - adapters: input policy and view behavior, driven through fake event targets thanks to injected globals
 - architecture: the lint rules themselves
@@ -186,12 +187,13 @@ A coverage gate (95% lines, 90% branches and functions over `src/`) keeps it tha
 
 ### Browser tests
 
-Playwright checks the assembled system on desktop and mobile Chromium. Instead of reaching into application state, the tests read the player paddle's position from the canvas pixels. They cover:
+Playwright checks the assembled system on desktop and mobile Chromium. Instead of reaching into application state, the tests read the paddle and ball positions from the canvas pixels, and time-sensitive checks run on a paused fake clock. They cover:
 
 - application boot without page errors
 - state transitions through buttons and the keyboard, including `Space` after a mouse click
 - mouse steering and the keyboard taking over from a resting mouse
 - layout-independent keys and touch taps
+- the ball waiting at the center before the serve
 - auto-pause on focus loss
 - an idle render loop and a quiet live region outside of a match
 - a canvas backing store that matches device pixels

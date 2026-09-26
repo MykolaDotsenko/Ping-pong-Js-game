@@ -36,6 +36,8 @@ const requiredFiles = [
   'package-lock.json',
   'ARCHITECTURE.md',
   'LICENSE',
+  'docs/preview.png',
+  'scripts/capture-preview.mjs',
 ];
 
 await Promise.all(requiredFiles.map((file) => access(file)));

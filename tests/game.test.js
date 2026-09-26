@@ -18,9 +18,42 @@ const step = GAME_CONFIG.fixedStepSeconds;
 const playerPaddleY = GAME_CONFIG.height - GAME_CONFIG.paddle.inset - GAME_CONFIG.paddle.height;
 const opponentPaddleBottom = GAME_CONFIG.paddle.inset + GAME_CONFIG.paddle.height;
 
+// A running match with the ball already in play, past the serve countdown.
 function runningState(overrides = {}) {
-  return { ...startGame(createInitialState(GAME_CONFIG), GAME_CONFIG), ...overrides };
+  return { ...startGame(createInitialState(GAME_CONFIG), GAME_CONFIG), serveCountdown: 0, ...overrides };
 }
+
+test('a new match holds the ball at the center before serving, while paddles can move', () => {
+  const fresh = startGame(createInitialState(GAME_CONFIG), GAME_CONFIG);
+  const next = advanceGame(fresh, step, { horizontalAxis: 1, pointerX: null }, GAME_CONFIG);
+
+  assert.deepEqual(next.ball, fresh.ball);
+  assert.ok(next.player.x > fresh.player.x);
+  assert.ok(Math.abs(next.serveCountdown - (GAME_CONFIG.serveDelaySeconds - step)) < 1e-9);
+});
+
+test('the ball is served as soon as the countdown runs out', () => {
+  let state = startGame(createInitialState(GAME_CONFIG), GAME_CONFIG);
+  let waitingSteps = 0;
+
+  while (state.serveCountdown > 0) {
+    state = advanceGame(state, step, idleInput, GAME_CONFIG);
+    waitingSteps += 1;
+  }
+
+  const served = advanceGame(state, step, idleInput, GAME_CONFIG);
+
+  assert.ok(Math.abs(waitingSteps * step - GAME_CONFIG.serveDelaySeconds) <= step);
+  assert.deepEqual(state.ball, createInitialState(GAME_CONFIG).ball);
+  assert.ok(served.ball.y > state.ball.y);
+});
+
+test('pausing keeps the remaining serve countdown', () => {
+  const waiting = advanceGame(startGame(createInitialState(GAME_CONFIG), GAME_CONFIG), step, idleInput, GAME_CONFIG);
+  const resumed = togglePause(togglePause(waiting));
+
+  assert.equal(resumed.serveCountdown, waiting.serveCountdown);
+});
 
 test('game state transitions are explicit and reversible for pause', () => {
   const ready = createInitialState(GAME_CONFIG);
@@ -152,6 +185,7 @@ test('crossing the bottom boundary awards the opponent a point and resets the ba
   assert.equal(next.score.opponent, 1);
   assert.equal(next.ball.x, GAME_CONFIG.width / 2);
   assert.equal(next.ball.y, GAME_CONFIG.height / 2);
+  assert.equal(next.serveCountdown, GAME_CONFIG.serveDelaySeconds);
 });
 
 test('a point is counted only once because the ball is reset immediately', () => {
@@ -177,6 +211,7 @@ test('winning point moves the state machine to game-over', () => {
   assert.equal(next.score.player, GAME_CONFIG.winningScore);
   assert.equal(next.phase, GAME_PHASE.GAME_OVER);
   assert.deepEqual({ vx: next.ball.vx, vy: next.ball.vy }, { vx: 0, vy: 0 });
+  assert.equal(next.serveCountdown, 0);
 });
 
 test('serve after a player point travels back toward the player', () => {

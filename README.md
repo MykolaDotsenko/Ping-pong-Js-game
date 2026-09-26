@@ -8,7 +8,9 @@ The project deliberately stays on Vanilla JavaScript and Canvas so the engineeri
 
 **[Live demo on GitHub Pages](https://mykoladotsenko.github.io/Ping-pong-Js-game/)**
 
-![Ping Pong Architecture Lab preview](./docs/preview.svg)
+![A live match in Ping Pong Architecture Lab](./docs/preview.png)
+
+The preview is a real frame of a live match, captured from the running app by `npm run docs:preview`.
 
 ## Why this project exists
 
@@ -20,6 +22,7 @@ The original 2024 version used one global script for rendering, input, physics, 
 
 - browser-agnostic **domain + application core**, kept deterministic (no clock, no randomness)
 - explicit state machine: `ready → running ↔ paused → game-over`
+- a short pause before every serve, drawn as a ring closing in on the ball
 - fixed-timestep simulation with render interpolation, independent from display refresh rate
 - a render loop that runs only during a match; idle screens cost no frames
 - swept paddle collision using the exact crossing point
@@ -82,9 +85,11 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 ```text
 .
 ├── .github/workflows/quality.yml
-├── docs/preview.svg
+├── docs/preview.png
 ├── e2e/game.spec.js
-├── scripts/check-project.mjs
+├── scripts
+│   ├── capture-preview.mjs
+│   └── check-project.mjs
 ├── src
 │   ├── adapters
 │   │   ├── browser-frame-scheduler.js
@@ -141,6 +146,7 @@ npm ci
 npm run check
 npx playwright install chromium
 npm run test:e2e
+npm run docs:preview   # regenerate docs/preview.png after UI changes
 ```
 
 ## Controls
@@ -151,6 +157,8 @@ npm run test:e2e
 - `Space` — start or pause/resume
 
 Whichever device you used last steers the paddle, so the keyboard works even while the mouse rests on the board. Clicking a button hands focus back to the board, so `Space` keeps working. The match pauses by itself when the window loses focus or the tab is hidden. Browser shortcuts such as `Ctrl+A` are never intercepted.
+
+Before every serve the ball waits at the center for a moment while a ring closes in on it; both paddles can already move.
 
 First to 7 wins.
 
@@ -171,7 +179,7 @@ The dependency-free unit suite covers:
 
 - state-machine transitions, including idempotent auto-pause
 - scoring, win condition, and double-score prevention
-- serve direction
+- serve direction and the serve countdown, which paddles move through and pausing preserves
 - paddle clamping, keyboard speed, and direct pointer placement
 - wall reflection on both sides
 - center/off-center paddle bounce and the speed cap
@@ -187,13 +195,14 @@ The dependency-free unit suite covers:
 
 ### Browser tests
 
-Playwright runs the real application in desktop and mobile Chromium. It reads the player paddle's position from the canvas pixels, so the tests assert on what the player actually sees. They verify:
+Playwright runs the real application in desktop and mobile Chromium. It reads the paddle and ball positions from the canvas pixels, so the tests assert on what the player actually sees. They verify:
 
 - the application boots without page errors
 - Start, Pause, Reset, and `Space` drive the state machine, including `Space` right after a mouse click
 - the paddle follows the mouse, and the keyboard takes over while the mouse rests on the board
 - `A`/`D` steer when the keyboard layout produces Cyrillic characters
 - a tap moves the paddle on touch screens
+- the ball waits at the center before the serve, timed exactly on a paused fake clock
 - losing window focus pauses the match
 - idle screens request no animation frames and leave the live region untouched
 - the canvas backing store matches the screen's device pixels

@@ -152,6 +152,7 @@ test('frames blend the last two simulation steps', () => {
   const { controller, scheduler, renderer, view } = setup();
 
   view.handler(GAME_COMMAND.START);
+  controller.state = { ...controller.state, serveCountdown: 0 };
   scheduler.flush(1000);
   scheduler.flush(1000 + GAME_CONFIG.fixedStepSeconds * 1500);
 
@@ -170,6 +171,7 @@ test('the winning point shows the final frame and stops the loop', () => {
     ...controller.state,
     score: { player: GAME_CONFIG.winningScore - 1, opponent: 0 },
     ball: { x: 400, y: -GAME_CONFIG.ball.radius - 1, vx: 0, vy: -300 },
+    serveCountdown: 0,
   };
 
   scheduler.flush(1000);
