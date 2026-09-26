@@ -116,6 +116,21 @@ test('Turbo launches the ball at turbo speed in the same direction', () => {
   assert.equal(collected.turbo, powerUps.duration);
 });
 
+test('Turbo is one shot: the return comes back at normal speed and the Turbo look ends with it', () => {
+  // A Turbo ball arrives at the computer, which returns it.
+  const turboShot = rallying({
+    turbo: powerUps.duration - 0.3,
+    opponent: { x: width / 2, vx: 0 },
+    ball: ball({ y: paddle.inset + paddle.height + ballConfig.radius + 4, vy: -powerUps.turboSpeed }),
+    nextPickupIn: 999,
+  });
+  const returned = collect(turboShot);
+
+  assert.equal(returned.events[0].type, 'paddle-hit');
+  assert.ok(Math.hypot(returned.ball.vx, returned.ball.vy) <= ballConfig.maxSpeed + 1e-9);
+  assert.equal(returned.turbo, 0);
+});
+
 test('a ghosted computer cannot see the ball and drifts to the center', () => {
   const state = {
     ...rallying({ opponent: { x: 400, vx: 0 }, ball: ball({ x: 80, y: 150, vy: -400 }) }),

@@ -60,7 +60,7 @@
  * @property {readonly Pickup[]} pickups
  * @property {number} nextPickupIn Seconds until the next power-up may appear.
  * @property {Record<Side, Modifiers>} modifiers
- * @property {number} turbo Seconds left of the Turbo burst on the ball.
+ * @property {number} turbo Seconds left of the Turbo shot in flight; the next return ends it early.
  * @property {number} seed State of the deterministic random source.
  * @property {readonly GameEvent[]} events What happened in the transition that produced this state.
  *

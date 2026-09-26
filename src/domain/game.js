@@ -422,6 +422,8 @@ function hitPaddle(state, side, contact, config, events) {
     rally,
     longestRally: Math.max(state.longestRally, rally),
     hits: { ...state.hits, [side]: state.hits[side] + 1 },
+    // Turbo is one blistering shot: the return comes back at normal speed, so it ends here.
+    turbo: 0,
   };
 }
 

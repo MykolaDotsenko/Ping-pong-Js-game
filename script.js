@@ -32,6 +32,7 @@ function requireElement(selector, type) {
 const arena = requireElement('[data-arena]', HTMLElement);
 const canvas = requireElement('[data-game-canvas]', HTMLCanvasElement);
 const preferences = new LocalPreferences(window);
+preferences.connect();
 const scheduler = new BrowserFrameScheduler(window);
 const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CONFIG });
 const haptics = new Haptics({ navigator: window.navigator, preferences });

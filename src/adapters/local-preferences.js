@@ -67,26 +67,60 @@ function sanitize(stored) {
 }
 
 /**
+ * @typedef {object} StorageWindow
+ * @property {Storage} [localStorage]
+ * @property {(type: 'storage', listener: (event: { key: string | null }) => void) => void} [addEventListener]
+ * @property {(type: 'storage', listener: (event: { key: string | null }) => void) => void} [removeEventListener]
+ */
+
+/**
  * Preferences saved in localStorage. Storage may be missing or throw (private browsing,
  * blocked site data), so every access is guarded and the game falls back to in-memory values.
+ *
+ * The game may be open in several tabs. Each tab follows the others' saves through the
+ * storage event, and merges its own changes into what is stored at that moment, so one tab
+ * never writes back another's older records.
  *
  * @implements {PreferencesPort}
  */
 export class LocalPreferences {
-  /** @param {{ localStorage?: Storage }} window */
+  /** @param {StorageWindow} window */
   constructor(window) {
     this.window = window;
-    this.values = this.load();
+    this.values = this.read() ?? { ...DEFAULTS };
+    /** False once a save has failed: from then on this tab's values are newer than storage. */
+    this.saving = true;
+    /** @param {{ key: string | null }} event */
+    this.handleStorage = (event) => {
+      // A null key means another tab cleared the whole storage.
+      if (this.saving && (event.key === STORAGE_KEY || event.key === null)) {
+        this.values = this.read() ?? this.values;
+      }
+    };
   }
 
-  /** @returns {Preferences} */
-  load() {
+  connect() {
+    this.window.addEventListener?.('storage', this.handleStorage);
+  }
+
+  disconnect() {
+    this.window.removeEventListener?.('storage', this.handleStorage);
+  }
+
+  /** @returns {Preferences | null} what is stored now, or null when storage cannot be read */
+  read() {
     try {
-      const raw = this.window.localStorage?.getItem(STORAGE_KEY);
+      const storage = this.window.localStorage;
+
+      if (!storage) {
+        return null;
+      }
+
+      const raw = storage.getItem(STORAGE_KEY);
       const parsed = raw ? JSON.parse(raw) : {};
       return sanitize(parsed !== null && typeof parsed === 'object' ? parsed : {});
     } catch {
-      return { ...DEFAULTS };
+      return null;
     }
   }
 
@@ -96,12 +130,14 @@ export class LocalPreferences {
 
   /** @param {Partial<Preferences>} changes */
   set(changes) {
-    this.values = sanitize({ ...this.values, ...changes });
+    const current = (this.saving ? this.read() : null) ?? this.values;
+    this.values = sanitize({ ...current, ...changes });
 
     try {
       this.window.localStorage?.setItem(STORAGE_KEY, JSON.stringify(this.values));
     } catch {
       // Keep the new values for this visit even if they cannot be saved.
+      this.saving = false;
     }
   }
 }

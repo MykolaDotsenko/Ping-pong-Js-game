@@ -260,6 +260,21 @@ test('lifting a finger keeps the paddle where it was and frees the paddle for th
   assert.equal(input.snapshot().opponentPointerX, 500);
 });
 
+test('with two players a hovering mouse steers nothing, and clicking takes the half it clicks', () => {
+  const { input, surface } = setup();
+
+  input.configure({ players: 2 });
+  // The mouse enters over the top half and hovers there without pressing.
+  surface.dispatchEvent(pointerEvent('pointermove', 150, { clientY: 100, pointerId: 1 }));
+  surface.dispatchEvent(pointerEvent('pointermove', 180, { clientY: 110, pointerId: 1 }));
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: null, opponentAxis: 0, opponentPointerX: null });
+
+  // A click in Player 1's half steers Player 1's paddle, not the one it hovered over.
+  surface.dispatchEvent(pointerEvent('pointerdown', 250, { clientY: 600, pointerId: 1 }));
+  assert.equal(input.snapshot().pointerX, 300);
+  assert.equal(input.snapshot().opponentPointerX, null);
+});
+
 test('switching back to one player releases the second paddle', () => {
   const { input, surface } = setup();
 

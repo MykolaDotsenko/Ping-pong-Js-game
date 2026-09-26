@@ -68,11 +68,18 @@ export class MusicPlayer {
     for (const event of events) {
       switch (event.type) {
         case 'match-start':
+          // A new match starts from the bass alone, whatever the last rally built up to.
+          this.setIntensity(0, 0);
+          this.start();
+          break;
         case 'resumed':
           this.start();
           break;
-        case 'paused':
         case 'menu':
+          this.setIntensity(0, 0);
+          this.stop();
+          break;
+        case 'paused':
         case 'game-over':
           this.stop();
           break;
@@ -162,8 +169,9 @@ export class MusicPlayer {
    * Brings layers in as the rally grows: the chord at 3 hits, the lead at 6.
    *
    * @param {number} rally
+   * @param {number} [rampSeconds] how long the layers take to reach their new level
    */
-  setIntensity(rally) {
+  setIntensity(rally, rampSeconds = 0.4) {
     this.intensity = rally;
 
     if (!this.layers || !this.context) {
@@ -176,8 +184,13 @@ export class MusicPlayer {
     for (const name of /** @type {const} */ (['chord', 'lead'])) {
       const gain = this.layers[name].gain;
       gain.cancelScheduledValues(now);
-      gain.setValueAtTime(gain.value, now);
-      gain.linearRampToValueAtTime(target[name], now + 0.4);
+
+      if (rampSeconds > 0) {
+        gain.setValueAtTime(gain.value, now);
+        gain.linearRampToValueAtTime(target[name], now + rampSeconds);
+      } else {
+        gain.setValueAtTime(target[name], now);
+      }
     }
   }
 

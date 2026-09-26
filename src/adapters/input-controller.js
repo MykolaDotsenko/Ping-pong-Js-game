@@ -260,9 +260,9 @@ export class InputController {
       return;
     }
 
-    // In a two-player match a finger commits to a paddle only by pressing, so a hover from
-    // the other half cannot steal it.
-    if (this.players === 2 && !isPress && paddle.pointerId !== event.pointerId && paddle.pointerId !== null) {
+    // In a two-player match a finger or mouse commits to a paddle only by pressing, so a
+    // hovering mouse steers nothing and cannot claim the other player's paddle.
+    if (this.players === 2 && !isPress && paddle.pointerId !== event.pointerId) {
       return;
     }
 
