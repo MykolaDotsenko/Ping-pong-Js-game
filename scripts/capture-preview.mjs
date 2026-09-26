@@ -14,9 +14,10 @@ const port = 4176;
 const url = `http://127.0.0.1:${port}/`;
 const output = process.env.PREVIEW_OUTPUT ?? 'docs/preview.png';
 
-// A real rally: the paddle waits in the middle, returns the computer's shot, and the frame is
-// taken just after that hit, with sparks flying and the rally counter up.
-const CAPTURE_AT_MS = Number(process.env.PREVIEW_AT_MS ?? 5290);
+// A real rally: after the three-second countdown the paddle, waiting in the middle, returns the
+// computer's shot, and the frame is taken just after that hit, with sparks flying and the
+// rally counter up.
+const CAPTURE_AT_MS = Number(process.env.PREVIEW_AT_MS ?? 7400);
 
 async function waitForServer() {
   for (let attempt = 0; attempt < 50; attempt += 1) {
@@ -50,6 +51,11 @@ try {
         seed = (seed * 16807) % 2147483647;
         return (seed - 1) / 2147483646;
       };
+    });
+    // A returning player, so the menu shows rather than the tutorial.
+    await page.addInitScript(() => {
+      // Runs in the browser, where globalThis is the window.
+      globalThis.localStorage.setItem('ping-pong-lab:preferences', JSON.stringify({ tutorialSeen: true }));
     });
     await page.clock.install({ time: 0 });
     await page.goto(url);

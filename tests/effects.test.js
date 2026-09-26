@@ -154,6 +154,21 @@ test('drawing strokes sparks and rings additively, and skips work when idle', ()
   assert.deepEqual(busy.calls[busy.calls.length - 1], ['restore']);
 });
 
+test('a callout replaces the previous one, then fades away', () => {
+  const effects = new Effects();
+
+  effects.label({ text: 'EDGE!', x: 10, y: 20, color: 'red' });
+  effects.label({ text: 'CURVE!', x: 30, y: 40, color: 'lime', life: 0.5 });
+
+  assert.equal(effects.labels.length, 1);
+  assert.equal(effects.labels[0].text, 'CURVE!');
+  assert.ok(effects.active);
+
+  effects.update(0.6);
+  assert.equal(effects.labels.length, 0);
+  assert.equal(effects.active, false);
+});
+
 test('clear removes everything at once', () => {
   const effects = new Effects({ random: seededRandom() });
 

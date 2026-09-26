@@ -21,7 +21,7 @@
     <div class="aurora" aria-hidden="true"></div>
 
     <main class="page">
-      <section id="arena" class="arena" data-arena data-phase="ready" aria-labelledby="game-title">
+      <section id="arena" class="arena" data-arena data-phase="ready" data-mode="solo" aria-labelledby="game-title">
         <h1 id="game-title" class="visually-hidden">Ping Pong Architecture Lab</h1>
 
         <div class="stage">
@@ -33,20 +33,26 @@
 
             <div class="scoreboard" aria-hidden="true">
               <div class="scoreboard__side scoreboard__side--player">
-                <span class="scoreboard__label">You</span>
+                <span class="scoreboard__label" data-label="player">You</span>
                 <span class="scoreboard__score" data-score="player">0</span>
               </div>
               <span class="scoreboard__divider"></span>
               <div class="scoreboard__side scoreboard__side--opponent">
                 <span class="scoreboard__score" data-score="opponent">0</span>
-                <span class="scoreboard__label">CPU</span>
+                <span class="scoreboard__label" data-label="opponent">CPU</span>
               </div>
+              <div class="lives" data-lives hidden></div>
             </div>
 
-            <button type="button" class="icon-button" data-setting="sound" aria-pressed="true" aria-label="Sound">
-              <svg class="icon icon-sound-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.2v5.6h3.8l4.9 4.1V5.1L7.3 9.2z"/><path class="icon-stroke" d="M15.6 8.6a4.8 4.8 0 0 1 0 6.8M18.3 6a8.6 8.6 0 0 1 0 12"/></svg>
-              <svg class="icon icon-sound-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.2v5.6h3.8l4.9 4.1V5.1L7.3 9.2z"/><path class="icon-stroke" d="M16 9.5l5 5m0-5l-5 5"/></svg>
-            </button>
+            <div class="hud__group">
+              <button type="button" class="icon-button" data-fullscreen aria-label="Full screen" hidden>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path class="icon-stroke" d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+              </button>
+              <button type="button" class="icon-button" data-setting="sound" aria-pressed="true" aria-label="Sound">
+                <svg class="icon icon-sound-on" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.2v5.6h3.8l4.9 4.1V5.1L7.3 9.2z"/><path class="icon-stroke" d="M15.6 8.6a4.8 4.8 0 0 1 0 6.8M18.3 6a8.6 8.6 0 0 1 0 12"/></svg>
+                <svg class="icon icon-sound-off" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 9.2v5.6h3.8l4.9 4.1V5.1L7.3 9.2z"/><path class="icon-stroke" d="M16 9.5l5 5m0-5l-5 5"/></svg>
+              </button>
+            </div>
           </header>
 
           <div class="board">
@@ -60,21 +66,49 @@
               aria-describedby="controls-help"
             ></canvas>
 
+            <p class="match-point" data-match-point hidden>Match point</p>
+
             <div class="overlay overlay--menu" data-overlay="menu">
               <div class="panel">
                 <p class="logo" aria-hidden="true">
                   <span class="logo__word">PONG</span>
                   <span class="logo__tag">Architecture Lab</span>
                 </p>
-                <div class="segmented" role="group" aria-label="Difficulty">
+                <div class="segmented segmented--modes" role="group" aria-label="Mode">
+                  <button type="button" data-mode="solo" aria-pressed="true"><strong>Solo</strong><small>vs computer</small></button>
+                  <button type="button" data-mode="rush" aria-pressed="false"><strong>Rush</strong><small>3 lives</small></button>
+                  <button type="button" data-mode="duo" aria-pressed="false"><strong>2P</strong><small>one screen</small></button>
+                </div>
+                <div class="segmented" role="group" aria-label="Difficulty" data-solo-only>
                   <button type="button" data-difficulty="easy" aria-pressed="false">Easy</button>
                   <button type="button" data-difficulty="normal" aria-pressed="true">Normal</button>
                   <button type="button" data-difficulty="hard" aria-pressed="false">Hard</button>
                 </div>
                 <button type="button" class="cta" data-command="start">Play</button>
-                <p class="panel__meta">First to 7 · Best rally <strong data-best-rally>0</strong></p>
-                <p class="panel__tip">Flick the paddle as you hit to curve the ball.</p>
-                <a class="panel__link" href="#about">How it's built</a>
+                <p class="panel__meta" data-menu-meta>First to 7 · Best rally <strong data-best-rally>0</strong></p>
+                <p class="panel__stats" data-stats hidden></p>
+                <div class="toggles">
+                  <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-not-rush>Power-ups</button>
+                  <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
+                </div>
+                <p class="panel__tip" data-mode-tip>Flick the paddle as you hit to curve the ball.</p>
+                <div class="panel__row">
+                  <button type="button" class="ghost ghost--small" data-show-tutorial>How to play</button>
+                  <a class="panel__link" href="#about">How it's built</a>
+                </div>
+              </div>
+            </div>
+
+            <div class="overlay" data-overlay="tutorial" hidden>
+              <div class="panel panel--tutorial">
+                <h2 class="panel__title">How to play</h2>
+                <ol class="tutorial">
+                  <li><span class="tutorial__icon">👆</span><span><strong>Drag</strong> anywhere below the middle, or on the rail under the court, to move your paddle.</span></li>
+                  <li><span class="tutorial__icon">↝</span><span><strong>Flick</strong> sideways as the ball lands to put a curve on it. The computer cannot read a curve.</span></li>
+                  <li><span class="tutorial__icon">◐</span><span><strong>Hit off-center</strong> to angle your return. Every hit speeds the ball up.</span></li>
+                  <li><span class="tutorial__icon">✦</span><span><strong>Grab power-ups</strong> with the ball: Wide, Shrink, Turbo and Ghost. Whoever hit last gets it.</span></li>
+                </ol>
+                <button type="button" class="cta" data-dismiss-tutorial>Got it</button>
               </div>
             </div>
 
@@ -88,6 +122,7 @@
                 </div>
                 <div class="toggles">
                   <button type="button" class="toggle" data-setting="sound" aria-pressed="true">Sound</button>
+                  <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
                   <button type="button" class="toggle" data-setting="vibration" aria-pressed="true">Vibration</button>
                 </div>
               </div>
@@ -98,10 +133,15 @@
                 <p class="panel__eyebrow" data-over-difficulty>Normal</p>
                 <h2 class="panel__title panel__title--result" data-over-title>Victory</h2>
                 <p class="result-score" data-over-score>0 : 0</p>
-                <p class="panel__meta">Longest rally <strong data-over-rally>0</strong></p>
+                <p class="panel__meta" data-over-meta>Longest rally <strong data-over-rally>0</strong></p>
                 <p class="badge" data-over-best hidden>New best rally!</p>
+                <p class="badge" data-over-best-rush hidden>New Rush record!</p>
                 <button type="button" class="cta" data-command="start">Play again</button>
-                <button type="button" class="ghost" data-command="reset">Menu</button>
+                <div class="panel__row">
+                  <button type="button" class="ghost" data-share hidden>Share</button>
+                  <button type="button" class="ghost" data-command="reset">Menu</button>
+                </div>
+                <p class="panel__note" data-share-note aria-live="polite"></p>
               </div>
             </div>
           </div>
@@ -113,8 +153,8 @@
         </div>
 
         <p id="controls-help" class="help">
-          <span class="help__touch">Drag anywhere to move · flick as you hit to curve</span>
           <span class="help__keys">Move <kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> · <kbd>Space</kbd> start / pause · <kbd>Esc</kbd> pause</span>
+          <span class="help__duo">Player 2: <kbd>J</kbd> <kbd>L</kbd> or the top half of the screen</span>
           <span class="help__rotate">Turn your phone upright for the full-size court</span>
         </p>
         <p class="visually-hidden" data-game-status aria-live="polite">First to 7. Start when ready.</p>
@@ -127,9 +167,9 @@
           A neon arcade Pong with no framework, no game engine and no runtime dependency, so every engineering decision stays visible.
         </p>
         <ul class="layers">
-          <li><strong>Domain</strong> Scoring, collisions, spin and the computer opponent. Deterministic and browser-free.</li>
-          <li><strong>Application</strong> The match state machine, a fixed-timestep loop, and events that drive sound, vibration and effects.</li>
-          <li><strong>Adapters</strong> Canvas rendering, WebAudio, touch and keyboard input, and the interface around the board.</li>
+          <li><strong>Domain</strong> Scoring, collisions, spin, power-ups and the computer opponent. Deterministic and browser-free.</li>
+          <li><strong>Application</strong> The match state machine, a fixed-timestep loop with slow motion and hit-stop, and events that drive sound, music, vibration and effects.</li>
+          <li><strong>Adapters</strong> Canvas rendering, Web Audio, multi-touch and keyboard input, and the interface around the board.</li>
         </ul>
         <a class="about__link" href="https://github.com/MykolaDotsenko/Ping-pong-Js-game">Source and architecture notes on GitHub</a>
       </section>

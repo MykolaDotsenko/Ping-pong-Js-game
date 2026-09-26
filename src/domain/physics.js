@@ -44,9 +44,10 @@ export function foldIntoRange(value, min, max) {
 /**
  * @param {number} centerX
  * @param {GameConfig} config
+ * @param {number} [width] the paddle's current width, when a power-up changed it
  */
-export function paddleBounds(centerX, config) {
-  const halfWidth = config.paddle.width / 2;
+export function paddleBounds(centerX, config, width = config.paddle.width) {
+  const halfWidth = width / 2;
   return {
     left: centerX - halfWidth,
     right: centerX + halfWidth,
@@ -56,9 +57,10 @@ export function paddleBounds(centerX, config) {
 /**
  * @param {number} centerX
  * @param {GameConfig} config
+ * @param {number} [width] the paddle's current width, when a power-up changed it
  */
-export function clampPaddleCenter(centerX, config) {
-  const halfWidth = config.paddle.width / 2;
+export function clampPaddleCenter(centerX, config, width = config.paddle.width) {
+  const halfWidth = width / 2;
   return clamp(centerX, halfWidth, config.width - halfWidth);
 }
 
@@ -87,6 +89,7 @@ export function movePaddle(paddle, x, deltaSeconds, config) {
  * @param {number} options.paddleY
  * @param {boolean} options.movingDown
  * @param {GameConfig} options.config
+ * @param {number} [options.paddleWidth] the paddle's current width, when a power-up changed it
  * @returns {{ time: number, x: number } | null}
  */
 export function findPaddleCollision({
@@ -96,6 +99,7 @@ export function findPaddleCollision({
   paddleY,
   movingDown,
   config,
+  paddleWidth = config.paddle.width,
 }) {
   const radius = config.ball.radius;
   const collisionPlane = movingDown ? paddleY : paddleY + config.paddle.height;
@@ -118,10 +122,21 @@ export function findPaddleCollision({
 
   const time = (collisionPlane - previousLeadingEdge) / travel;
   const x = previousBall.x + (ball.x - previousBall.x) * time;
-  const bounds = paddleBounds(paddleCenterX, config);
+  const bounds = paddleBounds(paddleCenterX, config, paddleWidth);
   const overlapsHorizontally = x + radius >= bounds.left && x - radius <= bounds.right;
 
   return overlapsHorizontally ? { time, x } : null;
+}
+
+/**
+ * How far from the paddle's center the ball meets it: -1 at the left edge, 1 at the right.
+ *
+ * @param {number} ballX
+ * @param {number} paddleCenterX
+ * @param {number} paddleWidth
+ */
+export function contactOffset(ballX, paddleCenterX, paddleWidth) {
+  return clamp((ballX - paddleCenterX) / (paddleWidth / 2), -1, 1);
 }
 
 /**
@@ -132,11 +147,11 @@ export function findPaddleCollision({
  * @param {1 | -1} direction vertical direction after the bounce
  * @param {GameConfig} config
  * @param {number} [paddleVx] horizontal velocity of the paddle at impact
+ * @param {number} [paddleWidth] the paddle's current width, when a power-up changed it
  * @returns {Ball}
  */
-export function bounceFromPaddle(ball, paddleCenterX, direction, config, paddleVx = 0) {
-  const halfWidth = config.paddle.width / 2;
-  const normalizedOffset = clamp((ball.x - paddleCenterX) / halfWidth, -1, 1);
+export function bounceFromPaddle(ball, paddleCenterX, direction, config, paddleVx = 0, paddleWidth = config.paddle.width) {
+  const normalizedOffset = contactOffset(ball.x, paddleCenterX, paddleWidth);
   const angle = normalizedOffset * config.ball.maxBounceAngleRadians;
   const currentSpeed = Math.hypot(ball.vx, ball.vy);
   const nextSpeed = Math.min(currentSpeed * config.ball.speedIncrease, config.ball.maxSpeed);

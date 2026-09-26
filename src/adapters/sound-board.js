@@ -89,8 +89,28 @@ export class SoundBoard {
       case 'match-start':
         this.arpeggio([NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6], 0.07, 'triangle', 0.45);
         break;
+      case 'countdown':
+        // Three short ticks, then a longer one on "1" that leads into the serve.
+        this.tone({ frequency: event.value === 1 ? NOTE.C6 : NOTE.G5, duration: event.value === 1 ? 0.2 : 0.08, type: 'square', volume: 0.22 });
+        break;
       case 'serve':
         this.tone({ frequency: 320, endFrequency: 760, duration: 0.14, type: 'sine', volume: 0.35 });
+        break;
+      case 'pickup-spawn':
+        this.tone({ frequency: NOTE.E6, endFrequency: NOTE.G6, duration: 0.12, type: 'sine', volume: 0.18 });
+        break;
+      case 'pickup':
+        if (event.side === 'player') {
+          this.arpeggio([NOTE.G5, NOTE.C6, NOTE.E6, NOTE.G6], 0.045, 'triangle', 0.36);
+        } else {
+          this.tone({ frequency: NOTE.G5, endFrequency: NOTE.E4, duration: 0.25, type: 'triangle', volume: 0.28 });
+        }
+        break;
+      case 'match-point':
+        this.arpeggio([NOTE.E5, NOTE.E5, NOTE.G5], 0.11, 'sawtooth', 0.3, 0.15);
+        break;
+      case 'life-lost':
+        this.tone({ frequency: 200, endFrequency: 60, duration: 0.5, type: 'sawtooth', volume: 0.3 });
         break;
       case 'paddle-hit': {
         // Pitch climbs with the rally, so a long exchange audibly builds tension.

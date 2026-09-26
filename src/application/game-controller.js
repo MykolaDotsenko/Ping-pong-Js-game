@@ -3,6 +3,7 @@ import {
   createInitialState,
   GAME_PHASE,
   getWinner,
+  matchPointSide,
   pauseGame,
   resetGame,
   startGame,
@@ -13,13 +14,14 @@ import { interpolateState } from './interpolation.js';
 import { GAME_COMMAND } from './ports.js';
 
 /**
- * @import { GameConfig, GameState } from '../domain/types.js'
+ * @import { GameConfig, GameEvent, GameState } from '../domain/types.js'
  * @import {
- *   Difficulty,
  *   FeedbackPort,
  *   FrameScheduler,
  *   GameCommand,
  *   InputPort,
+ *   MatchCatalog,
+ *   Mode,
  *   PreferencesPort,
  *   Presentation,
  *   RendererPort,
@@ -30,30 +32,68 @@ import { GAME_COMMAND } from './ports.js';
 // A new record is always saved, but only celebrated once the rally is worth mentioning.
 const CELEBRATED_RALLY = 3;
 
+// Drama: a hard hit freezes the picture for an instant, and a ball flying toward a paddle at
+// match point plays in slow motion until it is returned or missed.
+const HIT_STOP_SECONDS = 0.045;
+const DRAMA_TIME_SCALE = 0.45;
+const DRAMA_MIN_SPEED_SHARE = 0.55;
+
+/**
+ * Builds the tuning for the next match from the player's choices.
+ *
+ * @param {MatchCatalog} catalog
+ * @param {{ mode: Mode, difficulty: string, powerUps: boolean }} choices
+ * @returns {GameConfig}
+ */
+export function buildMatchConfig(catalog, choices) {
+  let base = catalog.difficulties[/** @type {keyof MatchCatalog['difficulties']} */ (choices.difficulty)]
+    ?? catalog.difficulties.normal;
+
+  if (choices.mode === 'rush') {
+    return catalog.rush;
+  }
+
+  if (choices.mode === 'duo') {
+    base = catalog.duo;
+  }
+
+  if (choices.powerUps === base.powerUps.enabled) {
+    return base;
+  }
+
+  return { ...base, powerUps: { ...base.powerUps, enabled: choices.powerUps } };
+}
+
 export class GameController {
   /**
    * @param {object} dependencies
-   * @param {Readonly<Record<Difficulty, GameConfig>>} dependencies.configs tuning per difficulty
+   * @param {MatchCatalog} dependencies.catalog
    * @param {PreferencesPort} dependencies.preferences
    * @param {RendererPort} dependencies.renderer
    * @param {InputPort} dependencies.input
    * @param {ViewPort} dependencies.view
    * @param {FrameScheduler} dependencies.scheduler
    * @param {readonly FeedbackPort[]} [dependencies.feedback] sound, vibration and effects
+   * @param {() => number} [dependencies.seed] a fresh seed for each match, so runs differ
    */
-  constructor({ configs, preferences, renderer, input, view, scheduler, feedback = [] }) {
-    this.configs = configs;
+  constructor({ catalog, preferences, renderer, input, view, scheduler, feedback = [], seed = () => 1 }) {
+    this.catalog = catalog;
     this.preferences = preferences;
     this.renderer = renderer;
     this.input = input;
     this.view = view;
     this.feedback = feedback;
+    this.seed = seed;
+    this.mode = preferences.get().mode;
     this.config = this.selectedConfig();
-    this.state = createInitialState(this.config);
+    this.state = createInitialState(this.config, seed());
     /** The state before the latest simulation step, used to interpolate rendering. */
     this.previousState = this.state;
     this.bestRally = preferences.get().bestRally;
+    this.bestRush = preferences.get().bestRush;
     this.newBest = false;
+    this.newBestRush = false;
+    this.recorded = false;
 
     this.loop = new FixedStepLoop({
       stepSeconds: this.config.fixedStepSeconds,
@@ -67,6 +107,7 @@ export class GameController {
   connect() {
     this.input.onCommand((command) => this.handleCommand(command));
     this.view.onCommand((command) => this.handleCommand(command));
+    this.input.configure({ players: this.mode === 'duo' ? 2 : 1 });
     this.input.connect();
     this.view.connect();
     this.renderer.connect();
@@ -90,18 +131,20 @@ export class GameController {
       this.config,
     );
     this.announce(this.state);
+    this.dramatize(this.state);
     this.recordRally(this.state.longestRally);
 
     if (this.state.phase !== GAME_PHASE.RUNNING) {
       // The match just ended: draw the final state as-is and let the loop idle.
       this.previousState = this.state;
+      this.recordResult(this.state);
       this.loop.stop();
     }
   }
 
   /** @param {number} [alpha] fraction of the next fixed step already elapsed */
   render(alpha = 1) {
-    this.renderer.render(interpolateState(this.previousState, this.state, alpha));
+    this.renderer.render(interpolateState(this.previousState, this.state, alpha), this.config);
     this.view.render(this.presentation());
   }
 
@@ -145,7 +188,7 @@ export class GameController {
       case GAME_COMMAND.PAUSE:
         return pauseGame(state);
       case GAME_COMMAND.RESET:
-        return resetGame(this.config);
+        return this.menu();
       case GAME_COMMAND.PRIMARY:
         return idle ? this.newMatch() : togglePause(state);
       default:
@@ -154,18 +197,33 @@ export class GameController {
   }
 
   /**
-   * Starts a fresh match with the difficulty currently chosen in the preferences.
+   * Starts a fresh match with the mode, difficulty and options chosen in the preferences.
    *
    * @returns {GameState}
    */
   newMatch() {
-    this.config = this.selectedConfig();
+    this.applyChoices();
     this.newBest = false;
-    return startGame(resetGame(this.config), this.config);
+    this.newBestRush = false;
+    this.recorded = false;
+    return startGame(createInitialState(this.config, this.seed()), this.config);
+  }
+
+  /** @returns {GameState} */
+  menu() {
+    this.applyChoices();
+    return resetGame(this.config, this.seed());
+  }
+
+  applyChoices() {
+    this.mode = this.preferences.get().mode;
+    this.config = this.selectedConfig();
+    this.input.configure({ players: this.mode === 'duo' ? 2 : 1 });
   }
 
   selectedConfig() {
-    return this.configs[this.preferences.get().difficulty] ?? this.configs.normal;
+    const { mode, difficulty, powerUps } = this.preferences.get();
+    return buildMatchConfig(this.catalog, { mode, difficulty, powerUps });
   }
 
   /**
@@ -183,6 +241,49 @@ export class GameController {
     }
   }
 
+  /**
+   * Hit-stop on hard hits, and slow motion while a match-point ball flies at a paddle.
+   *
+   * @param {GameState} state
+   */
+  dramatize(state) {
+    for (const event of state.events) {
+      if (event.type === 'paddle-hit' && this.speedShare(event.speed) > DRAMA_MIN_SPEED_SHARE) {
+        this.loop.hold(HIT_STOP_SECONDS);
+      }
+    }
+
+    this.loop.timeScale = this.isDramatic(state) ? DRAMA_TIME_SCALE : 1;
+  }
+
+  /**
+   * @param {GameState} state
+   * @returns {boolean} the ball is in its last stretch toward a paddle at match point
+   */
+  isDramatic(state) {
+    if (matchPointSide(state, this.config) === null || state.serveCountdown > 0) {
+      return false;
+    }
+
+    const { ball } = state;
+    const { height, paddle } = this.config;
+    const distance = ball.vy > 0
+      ? height - paddle.inset - paddle.height - ball.y
+      : ball.y - paddle.inset - paddle.height;
+
+    return distance < height * 0.28 && this.speedShare(Math.hypot(ball.vx, ball.vy)) > 0.3;
+  }
+
+  /**
+   * 0 at serve speed, 1 at top speed.
+   *
+   * @param {number} speed
+   */
+  speedShare(speed) {
+    const { initialSpeed, maxSpeed } = this.config.ball;
+    return (speed - initialSpeed) / (maxSpeed - initialSpeed);
+  }
+
   /** @param {number} longestRally */
   recordRally(longestRally) {
     if (longestRally <= this.bestRally) {
@@ -194,27 +295,78 @@ export class GameController {
     this.preferences.set({ bestRally: longestRally });
   }
 
+  /**
+   * Saves the outcome of a finished match: the Rush record, or the Solo win statistics.
+   *
+   * @param {GameState} state
+   */
+  recordResult(state) {
+    if (this.recorded || state.phase !== GAME_PHASE.GAME_OVER) {
+      return;
+    }
+
+    this.recorded = true;
+
+    if (this.mode === 'rush') {
+      if (state.hits.player > this.bestRush) {
+        this.bestRush = state.hits.player;
+        this.newBestRush = true;
+        this.preferences.set({ bestRush: state.hits.player });
+      }
+      return;
+    }
+
+    if (this.mode === 'solo') {
+      const won = getWinner(state) === 'player';
+      const { stats } = this.preferences.get();
+      const streak = won ? stats.streak + 1 : 0;
+
+      this.preferences.set({
+        stats: {
+          matches: stats.matches + 1,
+          wins: stats.wins + (won ? 1 : 0),
+          streak,
+          bestStreak: Math.max(stats.bestStreak, streak),
+        },
+      });
+    }
+  }
+
   /** @returns {Presentation} */
   presentation() {
-    const { phase, score, rally, longestRally } = this.state;
+    const { phase, score, hits, lives, rally, longestRally, modifiers } = this.state;
+    const { difficulty, stats } = this.preferences.get();
 
     return {
       phase,
+      mode: this.mode,
+      difficulty,
       status: this.statusText(),
       score,
+      hits,
+      lives,
+      maxLives: this.config.rules.kind === 'rush' ? this.config.rules.lives : 0,
       rally,
       longestRally,
       bestRally: this.bestRally,
       newBest: this.newBest,
+      bestRush: this.bestRush,
+      newBestRush: this.newBestRush,
+      matchPoint: matchPointSide(this.state, this.config),
+      modifiers,
+      stats,
       winner: getWinner(this.state),
     };
   }
 
   statusText() {
-    const { phase, score } = this.state;
+    const { phase, score, hits } = this.state;
+    const { rules } = this.config;
+    const rush = rules.kind === 'rush';
+    const opponentName = this.mode === 'duo' ? 'Player 2' : 'Computer';
 
     if (phase === GAME_PHASE.READY) {
-      return `First to ${this.config.winningScore}. Start when ready.`;
+      return rush ? 'Rush: survive as long as you can.' : `First to ${rules.winningScore}. Start when ready.`;
     }
 
     if (phase === GAME_PHASE.PAUSED) {
@@ -222,11 +374,25 @@ export class GameController {
     }
 
     if (phase === GAME_PHASE.GAME_OVER) {
+      if (rush) {
+        return `Run over — ${hits.player} hits.`;
+      }
+
       return getWinner(this.state) === 'player'
         ? 'Match complete — you won.'
-        : 'Match complete — computer won.';
+        : `Match complete — ${opponentName.toLowerCase()} won.`;
     }
 
-    return `You ${score.player} — ${score.opponent} Computer`;
+    return rush
+      ? `${hits.player} hits, ${this.state.lives} lives left`
+      : `You ${score.player} — ${score.opponent} ${opponentName}`;
   }
+}
+
+/**
+ * @param {GameEvent} event
+ * @returns {event is Extract<GameEvent, { type: 'paddle-hit' }>}
+ */
+export function isPaddleHit(event) {
+  return event.type === 'paddle-hit';
 }

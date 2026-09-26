@@ -1,6 +1,23 @@
-import { expect, test } from '@playwright/test';
+import { expect, test as base } from '@playwright/test';
 
 import { GAME_CONFIG } from '../src/config.js';
+
+// A first visit opens the tutorial over the menu. Most tests model a returning player, so
+// they store that choice before the page loads; the tutorial has a test of its own.
+const test = base.extend({
+  tutorialSeen: [true, { option: true }],
+  context: async ({ context, tutorialSeen }, use) => {
+    // Runs before every page load, so it must not overwrite choices a test has since made.
+    await context.addInitScript((seen) => {
+      const key = 'ping-pong-lab:preferences';
+
+      if (window.localStorage.getItem(key) === null) {
+        window.localStorage.setItem(key, JSON.stringify({ tutorialSeen: seen }));
+      }
+    }, tutorialSeen);
+    await use(context);
+  },
+});
 
 const status = (page) => page.locator('[data-game-status]');
 const board = (page) => page.locator('[data-game-canvas]');
@@ -26,6 +43,31 @@ function readPlayerX(page) {
       const [red, green, blue] = [row[x * 4], row[x * 4 + 1], row[x * 4 + 2]];
 
       if (red > 135 && red < 195 && green > 225 && blue > 235) {
+        first = first < 0 ? x : first;
+        last = x;
+      }
+    }
+
+    return first < 0 ? null : (first + last) / 2 / scale;
+  }, { boardWidth: width, boardRowY: rowY });
+}
+
+/** The top paddle's center, found the same way by its own core stripe color. */
+function readOpponentX(page) {
+  const { width, paddle } = GAME_CONFIG;
+  const rowY = paddle.inset + paddle.height / 2;
+
+  return board(page).evaluate((canvas, { boardWidth, boardRowY }) => {
+    const scale = canvas.width / boardWidth;
+    const row = canvas.getContext('2d')
+      .getImageData(0, Math.round(boardRowY * scale), canvas.width, 1).data;
+    let first = -1;
+    let last = -1;
+
+    for (let x = 0; x < canvas.width; x += 1) {
+      const [red, green, blue] = [row[x * 4], row[x * 4 + 1], row[x * 4 + 2]];
+
+      if (red > 240 && green > 195 && green < 220 && blue > 220) {
         first = first < 0 ? x : first;
         last = x;
       }
@@ -186,7 +228,7 @@ test('the ball waits at the center before the serve', async ({ page }) => {
   await freezeTime(page);
   await playButton(page).click();
 
-  const delayMs = GAME_CONFIG.serveDelaySeconds * 1000;
+  const delayMs = GAME_CONFIG.startDelaySeconds * 1000;
   const center = { x: GAME_CONFIG.width / 2, y: GAME_CONFIG.height / 2 };
 
   await page.clock.runFor(delayMs / 2);
@@ -319,4 +361,99 @@ test('the page is installable as an app', async ({ page, request }) => {
   for (const icon of manifest.icons) {
     expect((await request.get(icon.src)).ok()).toBe(true);
   }
+});
+
+test.describe('first visit', () => {
+  test.use({ tutorialSeen: false });
+
+  test('the tutorial opens once, and dismissing it is remembered across reloads', async ({ page }) => {
+    await page.goto('/');
+
+    await expect(page.getByRole('heading', { name: 'How to play' })).toBeVisible();
+    await expect(playButton(page)).toBeHidden();
+
+    await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(playButton(page)).toBeVisible();
+
+    await page.reload();
+    await expect(playButton(page)).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'How to play' })).toBeHidden();
+  });
+});
+
+test('the first serve counts down from three before the ball moves', async ({ page }) => {
+  await freezeTime(page);
+  await playButton(page).click();
+
+  const center = { x: GAME_CONFIG.width / 2, y: GAME_CONFIG.height / 2 };
+
+  await page.clock.runFor(GAME_CONFIG.startDelaySeconds * 1000 - 300);
+  const waiting = await readBall(page);
+  expect(Math.abs(waiting.y - center.y)).toBeLessThan(2);
+
+  await page.clock.runFor(600);
+  expect(Math.abs((await readBall(page)).y - center.y)).toBeGreaterThan(30);
+});
+
+test('Rush shows the lives as hearts and ends when they run out', async ({ page, hasTouch }) => {
+  await freezeTime(page);
+  await page.getByRole('button', { name: /Rush/ }).click();
+  await expect(page.getByRole('group', { name: 'Difficulty' })).toBeHidden();
+  await expect(status(page)).toHaveText('Rush: survive as long as you can.');
+
+  await playButton(page).click();
+  await expect(page.locator('.lives__heart')).toHaveCount(3);
+  await expect(page.locator('[data-label="player"]')).toHaveText('Hits');
+
+  // Park the paddle in a corner; the computer scores every serve.
+  const surface = hasTouch ? page.locator('.rail') : board(page);
+  const corner = await pointOn(surface, 0.01);
+  await (hasTouch ? surface.tap(corner) : surface.hover(corner));
+  await page.clock.runFor(4500);
+  await expect(page.locator('.lives__heart--lost')).toHaveCount(1);
+
+  await page.clock.runFor(8500);
+  await expect(page.getByRole('heading', { name: 'Run over' })).toBeVisible();
+  await expect(page.locator('[data-over-score]')).toHaveText('0 hits');
+});
+
+test('two players get their own halves of the board and no thumb rail', async ({ page, hasTouch }) => {
+  test.skip(!hasTouch, 'multi-touch scenario');
+
+  await page.goto('/');
+  await page.getByRole('button', { name: /2P/ }).tap();
+  await expect(page.locator('.rail')).toBeHidden();
+  await expect(status(page)).toHaveText('First to 7. Start when ready.');
+
+  await playButton(page).tap();
+  await expect(status(page)).toHaveText('You 0 — 0 Player 2');
+
+  // A tap on the top half moves the top paddle, one on the bottom half the bottom paddle.
+  const box = await board(page).boundingBox();
+  await board(page).tap({ position: { x: box.width * 0.2, y: box.height * 0.2 } });
+  await board(page).tap({ position: { x: box.width * 0.8, y: box.height * 0.8 } });
+  await expect.poll(() => readPlayerX(page)).toBeCloseTo(0.8 * GAME_CONFIG.width, -1);
+  await expect.poll(() => readOpponentX(page)).toBeCloseTo(0.2 * GAME_CONFIG.width, -1);
+});
+
+test('the mode and the power-up switch survive a reload', async ({ page }) => {
+  await page.goto('/');
+
+  await page.getByRole('button', { name: /2P/ }).click();
+  await page.getByRole('button', { name: 'Power-ups' }).click();
+  await page.reload();
+
+  await expect(page.getByRole('button', { name: /2P/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('button', { name: 'Power-ups' })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('Escape and the pause screen expose music and sound switches', async ({ page }) => {
+  await page.goto('/');
+  await playButton(page).click();
+  await page.keyboard.press('Escape');
+
+  const pause = page.locator('[data-overlay="pause"]');
+  await expect(pause).toBeVisible();
+  await expect(pause.getByRole('button', { name: 'Music' })).toBeVisible();
+  await expect(pause.getByRole('button', { name: 'Sound' })).toBeVisible();
 });

@@ -21,6 +21,10 @@ export class FixedStepLoop {
     this.accumulator = 0;
     /** @type {number | null} */
     this.frameId = null;
+    /** How fast simulated time passes relative to real time: 1 is normal, below 1 is slow motion. */
+    this.timeScale = 1;
+    /** Real seconds during which the simulation stays frozen, for hit-stop. */
+    this.holdSeconds = 0;
     this.tick = this.tick.bind(this);
   }
 
@@ -38,11 +42,22 @@ export class FixedStepLoop {
     this.running = false;
     this.lastTimestamp = null;
     this.accumulator = 0;
+    this.holdSeconds = 0;
+    this.timeScale = 1;
 
     if (this.frameId !== null) {
       this.scheduler.cancel(this.frameId);
       this.frameId = null;
     }
+  }
+
+  /**
+   * Freezes the simulation for a moment while rendering continues: the classic hit-stop.
+   *
+   * @param {number} seconds
+   */
+  hold(seconds) {
+    this.holdSeconds = Math.max(this.holdSeconds, seconds);
   }
 
   /** @param {number} timestamp */
@@ -57,12 +72,19 @@ export class FixedStepLoop {
       this.lastTimestamp = timestamp;
     }
 
-    const frameSeconds = Math.min(
+    let frameSeconds = Math.min(
       (timestamp - this.lastTimestamp) / 1000,
       this.maxFrameSeconds,
     );
     this.lastTimestamp = timestamp;
-    this.accumulator += frameSeconds;
+
+    if (this.holdSeconds > 0) {
+      const held = Math.min(this.holdSeconds, frameSeconds);
+      this.holdSeconds -= held;
+      frameSeconds -= held;
+    }
+
+    this.accumulator += frameSeconds * this.timeScale;
 
     // update() may stop the loop, for example when the match ends, which also clears the accumulator.
     while (this.running && this.accumulator >= this.stepSeconds) {

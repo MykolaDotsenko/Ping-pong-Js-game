@@ -36,6 +36,15 @@
  *
  * @typedef {'player' | 'opponent'} Side
  *
+ * @typedef {object} Label A short word that pops up, drifts and fades: "CURVE!", "SMASH!".
+ * @property {string} text
+ * @property {number} x
+ * @property {number} y
+ * @property {string} color
+ * @property {number} life seconds left
+ * @property {number} maxLife
+ * @property {number} size font size in board units
+ *
  * @typedef {Pick<CanvasRenderingContext2D,
  *   'save' | 'restore' | 'beginPath' | 'moveTo' | 'lineTo' | 'arc' | 'stroke'
  * > & { globalCompositeOperation: string, globalAlpha: number, strokeStyle: unknown, lineWidth: number, lineCap: string }} EffectsContext
@@ -65,6 +74,8 @@ export class Effects {
     this.particles = [];
     /** @type {Ring[]} */
     this.rings = [];
+    /** @type {Label[]} */
+    this.labels = [];
     /** @type {Array<{ delay: number, action: () => void }>} */
     this.scheduled = [];
     this.flashColor = '#ffffff';
@@ -79,6 +90,7 @@ export class Effects {
   get active() {
     return this.particles.length > 0
       || this.rings.length > 0
+      || this.labels.length > 0
       || this.scheduled.length > 0
       || this.flashAlpha > SETTLED
       || this.shakeAmount > SETTLED
@@ -127,6 +139,20 @@ export class Effects {
   }
 
   /**
+   * @param {object} options
+   * @param {string} options.text
+   * @param {number} options.x
+   * @param {number} options.y
+   * @param {string} options.color
+   * @param {number} [options.life]
+   * @param {number} [options.size]
+   */
+  label({ text, x, y, color, life = 0.9, size = 30 }) {
+    // One callout at a time reads best; a new one replaces the old.
+    this.labels = [{ text, x, y, color, life, maxLife: life, size }];
+  }
+
+  /**
    * @param {string} color
    * @param {number} strength peak opacity
    */
@@ -167,6 +193,7 @@ export class Effects {
   clear() {
     this.particles = [];
     this.rings = [];
+    this.labels = [];
     this.scheduled = [];
     this.flashAlpha = 0;
     this.shakeAmount = 0;
@@ -199,8 +226,13 @@ export class Effects {
       ring.life -= deltaSeconds;
     }
 
+    for (const label of this.labels) {
+      label.life -= deltaSeconds;
+    }
+
     this.particles = this.particles.filter((particle) => particle.life > 0);
     this.rings = this.rings.filter((ring) => ring.life > 0);
+    this.labels = this.labels.filter((label) => label.life > 0);
     this.flashAlpha = settle(this.flashAlpha * Math.exp(-DECAY.flash * deltaSeconds));
     this.shakeAmount = settle(this.shakeAmount * Math.exp(-DECAY.shake * deltaSeconds));
     this.pulseAmount = settle(this.pulseAmount * Math.exp(-DECAY.pulse * deltaSeconds));

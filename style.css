@@ -668,6 +668,202 @@ kbd {
   color: var(--violet);
 }
 
+/* ---------- Modes, lives, match point ---------- */
+
+.hud__group {
+  display: flex;
+  gap: 8px;
+}
+
+.segmented--modes button {
+  display: grid;
+  gap: 0.4cqw;
+  min-width: 24cqw;
+  padding: 1.8cqw 2.6cqw;
+  line-height: 1.1;
+}
+
+.segmented--modes small {
+  font-size: 2.4cqw;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.segmented[hidden],
+.toggle[hidden],
+.panel__stats[hidden],
+.match-point[hidden] {
+  display: none;
+}
+
+.lives {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  display: flex;
+  gap: 4px;
+  transform: translate(-50%, -2px);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.lives[hidden] {
+  display: none;
+}
+
+.lives__heart {
+  color: var(--opponent);
+  text-shadow: 0 0 8px rgba(var(--opponent-rgb), 0.9);
+  transition: color 300ms ease, text-shadow 300ms ease, transform 300ms ease;
+}
+
+.lives__heart--lost {
+  color: rgba(148, 163, 184, 0.35);
+  text-shadow: none;
+  transform: scale(0.85);
+}
+
+.scoreboard {
+  position: relative;
+}
+
+.match-point {
+  position: absolute;
+  top: 3cqw;
+  left: 50%;
+  z-index: 1;
+  margin: 0;
+  padding: 1.2cqw 3.4cqw;
+  border-radius: 999px;
+  transform: translateX(-50%);
+  font-size: 3.2cqw;
+  font-weight: 900;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: #1c1300;
+  background: var(--amber);
+  box-shadow: 0 0 5cqw rgba(251, 191, 36, 0.6);
+  pointer-events: none;
+  animation: match-point-pulse 1.1s ease-in-out infinite;
+}
+
+.match-point[data-side="opponent"] {
+  top: auto;
+  bottom: 3cqw;
+}
+
+@keyframes match-point-pulse {
+  50% {
+    transform: translateX(-50%) scale(1.06);
+    box-shadow: 0 0 9cqw rgba(251, 191, 36, 0.85);
+  }
+}
+
+.panel__stats,
+.panel__note {
+  margin: 0;
+  font-size: 3.2cqw;
+  color: var(--muted);
+}
+
+.panel__note {
+  min-height: 1.4em;
+}
+
+.ghost--small {
+  min-width: 0;
+  padding: 2cqw 3.6cqw;
+  font-size: 3.3cqw;
+}
+
+/* ---------- Tutorial ---------- */
+
+/* The tutorial can be taller than a small phone's board, so its steps scroll inside the
+   overlay. The overlay's own row must be definite for the panel's max-height to bind. */
+.overlay:has(.panel--tutorial) {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.panel--tutorial {
+  justify-self: stretch;
+  gap: 3cqw;
+  max-height: 100%;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.panel--tutorial .panel__title {
+  font-size: 8cqw;
+}
+
+.panel--tutorial .tutorial {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 1cqw;
+}
+
+.tutorial {
+  display: grid;
+  gap: 2.6cqw;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.tutorial li {
+  display: grid;
+  grid-template-columns: 9cqw minmax(0, 1fr);
+  align-items: center;
+  gap: 2.6cqw;
+  width: 100%;
+  padding: 2.4cqw 3cqw;
+  border: 1px solid var(--line);
+  border-radius: 3cqw;
+  background: rgba(15, 18, 40, 0.7);
+  font-size: 3.4cqw;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.tutorial strong {
+  color: var(--text);
+}
+
+.tutorial__icon {
+  display: grid;
+  place-items: center;
+  width: 9cqw;
+  height: 9cqw;
+  border-radius: 50%;
+  background: rgba(var(--player-rgb), 0.16);
+  font-size: 4.6cqw;
+  color: var(--player);
+}
+
+/* ---------- Two players ---------- */
+
+/* Both people steer on the board itself; the thumb rail would only get in the second player's way. */
+[data-mode="duo"] .rail {
+  display: none;
+}
+
+[data-mode="duo"] .help__duo {
+  display: inline;
+}
+
+.help__duo {
+  display: none;
+}
+
+/* Player 2 reads the top of the scoreboard from the other side of the phone. */
+[data-mode="duo"][data-phase="running"] .scoreboard__side--opponent,
+[data-mode="duo"][data-phase="paused"] .scoreboard__side--opponent {
+  transform: rotate(180deg);
+}
+
 /* ---------- Devices ---------- */
 
 /* Mouse and trackpad: no thumb rail, keyboard hints instead of touch hints. */

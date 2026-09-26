@@ -1,11 +1,49 @@
-import { DIFFICULTIES } from '../application/ports.js';
+import { DIFFICULTIES, MODES } from '../application/ports.js';
 
-/** @import { Preferences, PreferencesPort } from '../application/ports.js' */
+/** @import { MatchStats, Preferences, PreferencesPort } from '../application/ports.js' */
 
 const STORAGE_KEY = 'ping-pong-lab:preferences';
 
+/** @type {Readonly<MatchStats>} */
+const NO_STATS = Object.freeze({ matches: 0, wins: 0, streak: 0, bestStreak: 0 });
+
 /** @type {Readonly<Preferences>} */
-const DEFAULTS = Object.freeze({ difficulty: 'normal', sound: true, vibration: true, bestRally: 0 });
+const DEFAULTS = Object.freeze({
+  mode: 'solo',
+  difficulty: 'normal',
+  powerUps: true,
+  sound: true,
+  music: true,
+  vibration: true,
+  tutorialSeen: false,
+  bestRally: 0,
+  bestRush: 0,
+  stats: NO_STATS,
+});
+
+/**
+ * @param {unknown} value
+ * @param {boolean} fallback
+ */
+const bool = (value, fallback) => (typeof value === 'boolean' ? value : fallback);
+
+/**
+ * @param {unknown} value
+ */
+const count = (value) => (Number.isInteger(value) && Number(value) >= 0 ? Number(value) : 0);
+
+/**
+ * @param {unknown} value
+ * @returns {MatchStats}
+ */
+function sanitizeStats(value) {
+  const stats = /** @type {Record<string, unknown>} */ (value !== null && typeof value === 'object' ? value : {});
+  const wins = count(stats.wins);
+  const matches = Math.max(count(stats.matches), wins);
+  const bestStreak = Math.min(count(stats.bestStreak), wins);
+
+  return { matches, wins, streak: Math.min(count(stats.streak), bestStreak), bestStreak };
+}
 
 /**
  * Keeps only well-formed values, so a corrupted or outdated stored entry cannot break the game.
@@ -14,13 +52,17 @@ const DEFAULTS = Object.freeze({ difficulty: 'normal', sound: true, vibration: t
  * @returns {Preferences}
  */
 function sanitize(stored) {
-  const { difficulty, sound, vibration, bestRally } = stored;
-
   return {
-    difficulty: DIFFICULTIES.find((level) => level === difficulty) ?? DEFAULTS.difficulty,
-    sound: typeof sound === 'boolean' ? sound : DEFAULTS.sound,
-    vibration: typeof vibration === 'boolean' ? vibration : DEFAULTS.vibration,
-    bestRally: Number.isInteger(bestRally) && Number(bestRally) >= 0 ? Number(bestRally) : DEFAULTS.bestRally,
+    mode: MODES.find((mode) => mode === stored.mode) ?? DEFAULTS.mode,
+    difficulty: DIFFICULTIES.find((level) => level === stored.difficulty) ?? DEFAULTS.difficulty,
+    powerUps: bool(stored.powerUps, DEFAULTS.powerUps),
+    sound: bool(stored.sound, DEFAULTS.sound),
+    music: bool(stored.music, DEFAULTS.music),
+    vibration: bool(stored.vibration, DEFAULTS.vibration),
+    tutorialSeen: bool(stored.tutorialSeen, DEFAULTS.tutorialSeen),
+    bestRally: count(stored.bestRally),
+    bestRush: count(stored.bestRush),
+    stats: sanitizeStats(stored.stats),
   };
 }
 

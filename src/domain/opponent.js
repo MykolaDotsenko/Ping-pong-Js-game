@@ -1,4 +1,5 @@
 import { clampPaddleCenter, foldIntoRange, movePaddle, moveTowards } from './physics.js';
+import { paddleWidth } from './power-ups.js';
 
 /** @import { GameConfig, GameState } from './types.js' */
 
@@ -16,10 +17,11 @@ function wobble(state) {
 
 /**
  * Where the computer wants its paddle. Like a person, it only reacts once the ball comes
- * within its reach. It then predicts where the ball will cross its paddle, folding the path
- * at the side walls, trusts that prediction as much as its difficulty allows, misjudges it
- * more the faster the ball flies, and shifts to meet the ball off-center so the return angles
- * away from the player. Spin is not predicted, so a curved shot is the player's way past it.
+ * within its reach, and it cannot see a ghosted ball at all. It then predicts where the ball
+ * will cross its paddle, folding the path at the side walls, trusts that prediction as much
+ * as its difficulty allows, misjudges it more the faster the ball flies, and shifts to meet
+ * the ball off-center so the return angles away from the player. Spin is not predicted, so
+ * a curved shot is the player's way past it.
  *
  * @param {GameState} state
  * @param {GameConfig} config
@@ -29,7 +31,7 @@ export function calculateOpponentTarget(state, config) {
   const center = config.width / 2;
   const reactionLine = config.paddle.inset + config.opponent.reach * config.height;
 
-  if (ball.vy >= 0 || ball.y > reactionLine) {
+  if (ball.vy >= 0 || ball.y > reactionLine || state.modifiers.opponent.ghost > 0) {
     return center;
   }
 
@@ -40,14 +42,15 @@ export function calculateOpponentTarget(state, config) {
   const predictedX = ball.x + (crossingX - ball.x) * config.opponent.predictionWeight;
   const speedup = Math.hypot(ball.vx, ball.vy) / config.ball.initialSpeed;
   const misjudgement = config.opponent.error * Math.max(0, speedup ** 1.5 - 1) * wobble(state);
+  const width = paddleWidth(state, 'opponent', config);
   const awayFromPlayer = player.x < center ? 1 : -1;
-  const target = predictedX + misjudgement - awayFromPlayer * config.opponent.aim * (config.paddle.width / 2);
+  const target = predictedX + misjudgement - awayFromPlayer * config.opponent.aim * (width / 2);
 
   if (Math.abs(target - opponent.x) < config.opponent.trackingDeadZone) {
     return opponent.x;
   }
 
-  return clampPaddleCenter(target, config);
+  return clampPaddleCenter(target, config, width);
 }
 
 /**

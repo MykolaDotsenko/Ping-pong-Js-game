@@ -1,8 +1,9 @@
 import { GAME_PHASE } from '../domain/game.js';
+import { paddleWidth } from '../domain/power-ups.js';
 import { Effects } from './effects.js';
 
 /**
- * @import { GameConfig, GameEvent, GameState, Side } from '../domain/types.js'
+ * @import { GameConfig, GameEvent, GameState, Pickup, PowerUpKind, Side } from '../domain/types.js'
  * @import { FeedbackPort, FrameScheduler, RendererPort } from '../application/ports.js'
  */
 
@@ -22,16 +23,30 @@ const THEME = Object.freeze({
   violet: '167, 139, 250',
   amber: '251, 191, 36',
   rose: '251, 113, 133',
+  lime: '163, 230, 53',
   side: Object.freeze({
     player: Object.freeze({ rgb: '34, 211, 238', body: '#22d3ee', core: '#a5f3fc' }),
     opponent: Object.freeze({ rgb: '244, 114, 182', body: '#f472b6', core: '#fbcfe8' }),
   }),
 });
 
+/** How each power-up looks on the court: a color and a glyph. */
+const PICKUP_STYLE = Object.freeze({
+  wide: Object.freeze({ rgb: '34, 211, 238', glyph: '⟷', label: 'WIDE' }),
+  shrink: Object.freeze({ rgb: '251, 113, 133', glyph: '⤡', label: 'SHRINK' }),
+  turbo: Object.freeze({ rgb: '251, 191, 36', glyph: '⚡', label: 'TURBO' }),
+  ghost: Object.freeze({ rgb: '167, 139, 250', glyph: '◌', label: 'GHOST' }),
+});
+
 // Rendering above twice the CSS size costs battery on phones without visibly sharper glow.
 const MAX_PIXEL_RATIO = 2;
 const TRAIL_LENGTH = 18;
 const FEVER_RALLY = 10;
+// A hit this far from the paddle's center, or with this much curve, earns a callout.
+const EDGE_OFFSET = 0.8;
+const CURVE_SPIN = 0.35;
+const SMASH_SPEED_SHARE = 0.75;
+const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
 /**
  * @param {string} rgb "r, g, b"
@@ -65,8 +80,8 @@ function roundedRect(context, x, y, width, height, radius) {
 
 /**
  * Draws the game as a neon arcade board and plays the visual side of game events: sparks,
- * shockwaves, screen shake, flashes and a ball trail that heats up with speed. Static layers
- * and glows are pre-rendered, so a frame is mostly cheap image copies.
+ * shockwaves, screen shake, flashes, callouts and a ball trail that heats up with speed.
+ * Static layers and glows are pre-rendered, so a frame is mostly cheap image copies.
  *
  * @implements {RendererPort}
  * @implements {FeedbackPort}
@@ -77,7 +92,7 @@ export class CanvasRenderer {
    * @param {HTMLCanvasElement} options.canvas
    * @param {Window & typeof globalThis} options.window
    * @param {FrameScheduler} options.scheduler runs effects after a match ends, when the game loop is idle
-   * @param {GameConfig} options.config
+   * @param {GameConfig} options.config the court geometry; the match config arrives with each frame
    * @param {() => number} [options.random]
    */
   constructor({ canvas, window, scheduler, config, random = Math.random }) {
@@ -322,33 +337,35 @@ export class CanvasRenderer {
           effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.violet}, 0.9)`, radius: 20, growth: 560, life: 0.6, width: 5 });
           effects.flash(`rgb(${THEME.violet})`, 0.16);
           break;
+        case 'countdown':
+          effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.violet}, 0.7)`, radius: 40, growth: 260, life: 0.5, width: 3 });
+          effects.pulse(0.5);
+          break;
         case 'serve':
+          effects.labels = [];
           effects.ring({ x: event.x, y: event.y, color: `rgba(${THEME.violet}, 0.8)`, radius: ball.radius + 2, growth: 200, life: 0.35, width: 2 });
           effects.burst({ x: event.x, y: event.y, color: `rgb(${THEME.violet})`, count: 10, speed: 130, life: 0.4, size: 1.6 });
           break;
-        case 'paddle-hit': {
-          const color = `rgb(${THEME.side[event.side].rgb})`;
-          const intensity = this.intensity(event.speed);
-          const outward = event.side === 'player' ? -Math.PI / 2 : Math.PI / 2;
-
-          effects.burst({ x: event.x, y: event.y, color, count: 22 + Math.round(20 * intensity), speed: 300 + 320 * intensity, direction: outward, spread: 2.3, life: 0.55, size: 2.4 });
-          effects.burst({ x: event.x, y: event.y, color: THEME.spark, count: 8, speed: 420, direction: outward, spread: 1.2, life: 0.3, size: 1.5 });
-          effects.ring({ x: event.x, y: event.y, color, radius: 8, growth: 300 + 240 * intensity, life: 0.35 });
-          effects.kick(event.side);
-          effects.shake(0.16 + 0.34 * intensity);
-          effects.pulse(0.3 + 0.45 * intensity);
-          effects.pop();
-
-          if (event.rally % 5 === 0) {
-            effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.amber}, 0.9)`, radius: 30, growth: 620, life: 0.7, width: 5 });
-            effects.flash(`rgb(${THEME.amber})`, 0.1);
-          }
+        case 'paddle-hit':
+          this.celebrateHit(event);
           break;
-        }
         case 'wall-bounce':
           effects.burst({ x: event.x, y: event.y, color: '#c4b5fd', count: 8, speed: 180, direction: event.x < width / 2 ? 0 : Math.PI, spread: 2.4, life: 0.35, size: 1.6 });
           effects.ring({ x: event.x, y: event.y, color: `rgba(${THEME.violet}, 0.8)`, radius: 4, growth: 170, life: 0.25, width: 2 });
           break;
+        case 'pickup-spawn':
+          effects.ring({ x: event.x, y: event.y, color: `rgba(${PICKUP_STYLE[event.kind].rgb}, 0.9)`, radius: 4, growth: 260, life: 0.5, width: 3 });
+          break;
+        case 'pickup': {
+          const style = PICKUP_STYLE[event.kind];
+          const color = `rgb(${style.rgb})`;
+
+          effects.burst({ x: event.x, y: event.y, color, count: 36, speed: 300, life: 0.6, size: 2.2 });
+          effects.ring({ x: event.x, y: event.y, color, radius: 10, growth: 520, life: 0.5, width: 4 });
+          effects.flash(color, 0.14);
+          effects.label({ text: style.label, x: event.x, y: event.y - 30, color, size: 26 });
+          break;
+        }
         case 'point': {
           const color = `rgb(${THEME.side[event.scorer].rgb})`;
           const intoCourt = event.y === 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -362,6 +379,14 @@ export class CanvasRenderer {
           effects.pulse(1);
           break;
         }
+        case 'match-point':
+          effects.label({ text: 'MATCH POINT', x: width / 2, y: height / 2, color: `rgb(${THEME.amber})`, life: 1.4, size: 34 });
+          effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.amber}, 0.9)`, radius: 30, growth: 700, life: 0.8, width: 6 });
+          break;
+        case 'life-lost':
+          effects.flash(`rgb(${THEME.rose})`, 0.3);
+          effects.shake(1.1);
+          break;
         case 'game-over':
           this.celebrate(event.winner);
           break;
@@ -371,6 +396,39 @@ export class CanvasRenderer {
     }
 
     this.ensureEffectsLoop();
+  }
+
+  /** @param {Extract<GameEvent, { type: 'paddle-hit' }>} event */
+  celebrateHit(event) {
+    const { width, height } = this.config;
+    const { effects } = this;
+    const color = `rgb(${THEME.side[event.side].rgb})`;
+    const intensity = this.intensity(event.speed);
+    const outward = event.side === 'player' ? -Math.PI / 2 : Math.PI / 2;
+
+    effects.burst({ x: event.x, y: event.y, color, count: 22 + Math.round(20 * intensity), speed: 300 + 320 * intensity, direction: outward, spread: 2.3, life: 0.55, size: 2.4 });
+    effects.burst({ x: event.x, y: event.y, color: THEME.spark, count: 8, speed: 420, direction: outward, spread: 1.2, life: 0.3, size: 1.5 });
+    effects.ring({ x: event.x, y: event.y, color, radius: 8, growth: 300 + 240 * intensity, life: 0.35 });
+    effects.kick(event.side);
+    effects.shake(0.16 + 0.34 * intensity);
+    effects.pulse(0.3 + 0.45 * intensity);
+    effects.pop();
+
+    // A callout for a skilful hit: a curve, a smash, or a catch at the paddle's very edge.
+    const labelY = event.side === 'player' ? event.y - 40 : event.y + 44;
+
+    if (Math.abs(event.spin) >= CURVE_SPIN) {
+      effects.label({ text: 'CURVE!', x: event.x, y: labelY, color: `rgb(${THEME.lime})` });
+    } else if (intensity >= SMASH_SPEED_SHARE) {
+      effects.label({ text: 'SMASH!', x: event.x, y: labelY, color: `rgb(${THEME.amber})` });
+    } else if (Math.abs(event.offset) >= EDGE_OFFSET) {
+      effects.label({ text: 'EDGE!', x: event.x, y: labelY, color: `rgb(${THEME.rose})` });
+    }
+
+    if (event.rally % 5 === 0) {
+      effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.amber}, 0.9)`, radius: 30, growth: 620, life: 0.7, width: 5 });
+      effects.flash(`rgb(${THEME.amber})`, 0.1);
+    }
   }
 
   /** @param {Side} winner */
@@ -398,8 +456,12 @@ export class CanvasRenderer {
     return Math.min(1, Math.max(0, (speed - initialSpeed) / (maxSpeed - initialSpeed)));
   }
 
-  /** @param {GameState} state */
-  render(state) {
+  /**
+   * @param {GameState} state
+   * @param {GameConfig} config the match's tuning, which sets speeds and paddle widths
+   */
+  render(state, config) {
+    this.config = config;
     this.lastState = state;
 
     if (state.phase === GAME_PHASE.READY) {
@@ -468,13 +530,16 @@ export class CanvasRenderer {
       ctx.globalCompositeOperation = 'source-over';
     }
 
+    this.drawGhostFog(state);
     this.drawRally(state);
+    this.drawPickups(state, now);
     this.drawTrail(state);
     this.effects.draw(ctx);
     this.drawBall(state);
-    this.drawPaddle('opponent', state.opponent.x);
-    this.drawPaddle('player', state.player.x);
+    this.drawPaddle(state, 'opponent');
+    this.drawPaddle(state, 'player');
     this.drawServeCountdown(state);
+    this.drawLabels();
 
     if (this.effects.flashAlpha > 0) {
       ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
@@ -501,7 +566,7 @@ export class CanvasRenderer {
     }
 
     this.trail.push({ x: ball.x, y: ball.y });
-    const length = state.rally >= FEVER_RALLY ? TRAIL_LENGTH + 8 : TRAIL_LENGTH;
+    const length = state.rally >= FEVER_RALLY || state.turbo > 0 ? TRAIL_LENGTH + 8 : TRAIL_LENGTH;
 
     if (this.trail.length > length) {
       this.trail.splice(0, this.trail.length - length);
@@ -510,7 +575,7 @@ export class CanvasRenderer {
 
   /**
    * The ball takes the color of whoever hit it last and heats toward amber as it speeds up;
-   * a long rally tips it into a rose "fever" glow.
+   * a long rally tips it into a rose "fever" glow, and Turbo turns it amber outright.
    *
    * @param {GameState} state
    */
@@ -521,9 +586,103 @@ export class CanvasRenderer {
       return THEME.violet;
     }
 
+    if (state.turbo > 0) {
+      return THEME.amber;
+    }
+
     const hitter = ball.vy < 0 ? THEME.side.player.rgb : THEME.side.opponent.rgb;
     const heated = mixRgb(hitter, THEME.amber, this.intensity(Math.hypot(ball.vx, ball.vy)) ** 1.4);
     return state.rally >= FEVER_RALLY ? mixRgb(heated, THEME.rose, 0.55) : heated;
+  }
+
+  /**
+   * A ghosted side cannot see the ball in its own half: the ball, its trail and the
+   * pickups are hidden there behind a fog of the other side's color.
+   *
+   * @param {GameState} state
+   * @returns {{ from: number, to: number } | null} the hidden band of the court, in board y
+   */
+  hiddenBand(state) {
+    const { height } = this.config;
+
+    if (state.modifiers.player.ghost > 0) {
+      return { from: height / 2, to: height };
+    }
+
+    if (state.modifiers.opponent.ghost > 0) {
+      return { from: 0, to: height / 2 };
+    }
+
+    return null;
+  }
+
+  /** @param {GameState} state */
+  drawGhostFog(state) {
+    const band = this.hiddenBand(state);
+
+    if (!band) {
+      return;
+    }
+
+    const ctx = this.context;
+    const { width } = this.config;
+    const fog = ctx.createLinearGradient(0, band.from, 0, band.to);
+    const color = PICKUP_STYLE.ghost.rgb;
+
+    fog.addColorStop(0, `rgba(${color}, ${band.from === 0 ? 0.35 : 0.05})`);
+    fog.addColorStop(1, `rgba(${color}, ${band.from === 0 ? 0.05 : 0.35})`);
+    ctx.fillStyle = fog;
+    ctx.fillRect(0, band.from, width, band.to - band.from);
+  }
+
+  /**
+   * @param {GameState} state
+   * @param {number} y
+   */
+  isHidden(state, y) {
+    const band = this.hiddenBand(state);
+    return band !== null && y >= band.from && y <= band.to;
+  }
+
+  /**
+   * @param {GameState} state
+   * @param {number} now milliseconds, for the bob and pulse
+   */
+  drawPickups(state, now) {
+    const ctx = this.context;
+    const { radius } = this.config.powerUps;
+
+    for (const pickup of state.pickups) {
+      if (this.isHidden(state, pickup.y)) {
+        continue;
+      }
+
+      const style = PICKUP_STYLE[pickup.kind];
+      const bob = Math.sin(now / 260 + pickup.id) * 4;
+      const pulse = 0.85 + 0.15 * Math.sin(now / 140);
+      // Fade out over the last second on the court, so the player sees it going.
+      const alpha = Math.min(1, pickup.ttl);
+      const y = pickup.y + bob;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.drawImage(this.glow(style.rgb), pickup.x - radius * 2.2, y - radius * 2.2, radius * 4.4, radius * 4.4);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = `rgba(${style.rgb}, 0.9)`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(pickup.x, y, radius * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(${style.rgb}, 0.22)`;
+      ctx.fill();
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = `800 ${Math.round(radius * 1.2)}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(style.glyph, pickup.x, y + 1);
+      ctx.restore();
+    }
   }
 
   /** @param {GameState} state */
@@ -541,6 +700,10 @@ export class CanvasRenderer {
     ctx.fillStyle = `rgb(${color})`;
 
     this.trail.forEach((point, index) => {
+      if (this.isHidden(state, point.y)) {
+        return;
+      }
+
       const t = (index + 1) / this.trail.length;
       ctx.globalAlpha = t * 0.45;
       ctx.beginPath();
@@ -553,11 +716,16 @@ export class CanvasRenderer {
 
   /** @param {GameState} state */
   drawBall(state) {
-    const ctx = this.context;
     const { ball } = state;
+
+    if (this.isHidden(state, ball.y) && state.serveCountdown === 0) {
+      return;
+    }
+
+    const ctx = this.context;
     const radius = this.config.ball.radius;
     const color = this.ballColor(state);
-    const fever = state.rally >= FEVER_RALLY ? 1.3 : 1;
+    const fever = state.rally >= FEVER_RALLY || state.turbo > 0 ? 1.3 : 1;
     const glowSize = radius * 10 * fever;
 
     ctx.save();
@@ -586,24 +754,28 @@ export class CanvasRenderer {
   }
 
   /**
+   * @param {GameState} state
    * @param {Side} side
-   * @param {number} centerX
    */
-  drawPaddle(side, centerX) {
+  drawPaddle(state, side) {
     const ctx = this.context;
     const { paddle, height } = this.config;
     const colors = THEME.side[side];
     const squash = this.effects.squash[side];
+    const centerX = state[side].x;
     const top = side === 'player' ? height - paddle.inset - paddle.height : paddle.inset;
-    const width = paddle.width * (1 + 0.16 * squash);
+    const width = paddleWidth(state, side, this.config) * (1 + 0.16 * squash);
     const thickness = paddle.height * (1 - 0.3 * squash);
     const left = centerX - width / 2;
     const middle = top + paddle.height / 2;
+    const { wide, tiny } = state.modifiers[side];
+    // An enlarged paddle glows lime, a shrunk one rose, so the effect reads at a glance.
+    const glowRgb = wide > 0 ? THEME.lime : tiny > 0 ? THEME.rose : colors.rgb;
 
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.5 + 0.5 * squash;
-    ctx.drawImage(this.glow(colors.rgb), centerX - width * 0.95, middle - paddle.height * 3.4, width * 1.9, paddle.height * 6.8);
+    ctx.drawImage(this.glow(glowRgb), centerX - width * 0.95, middle - paddle.height * 3.4, width * 1.9, paddle.height * 6.8);
     ctx.restore();
 
     ctx.fillStyle = colors.body;
@@ -616,7 +788,8 @@ export class CanvasRenderer {
   }
 
   /**
-   * A closing ring and a filling arc around the waiting ball; both complete as it is served.
+   * Before a serve: a closing ring and a filling arc around the waiting ball, and on the
+   * first serve of a match the countdown number itself.
    *
    * @param {GameState} state
    */
@@ -628,7 +801,8 @@ export class CanvasRenderer {
     const ctx = this.context;
     const { ball } = state;
     const radius = this.config.ball.radius;
-    const remaining = state.serveCountdown / this.config.serveDelaySeconds;
+    const total = state.serveNumber === 0 ? this.config.startDelaySeconds : this.config.serveDelaySeconds;
+    const remaining = state.serveCountdown / total;
 
     ctx.save();
     ctx.lineCap = 'round';
@@ -642,6 +816,22 @@ export class CanvasRenderer {
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, radius + 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - remaining));
     ctx.stroke();
+
+    if (state.serveNumber === 0) {
+      const value = Math.ceil(state.serveCountdown);
+      // Each number swells as it lands and shrinks away before the next.
+      const within = 1 - (state.serveCountdown - (value - 1));
+      const scale = 1.4 - 0.4 * within;
+
+      ctx.translate(ball.x, ball.y - 70);
+      ctx.scale(scale, scale);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = `rgba(248, 250, 252, ${0.95 - within * 0.5})`;
+      ctx.font = `900 64px ${FONT}`;
+      ctx.fillText(String(value), 0, 0);
+    }
+
     ctx.restore();
   }
 
@@ -665,11 +855,44 @@ export class CanvasRenderer {
     ctx.scale(1 + pop * 0.3, 1 + pop * 0.3);
     ctx.textAlign = 'right';
     ctx.fillStyle = `rgba(${color}, ${0.3 + pop * 0.5})`;
-    ctx.font = '800 44px system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.font = `800 44px ${FONT}`;
     ctx.fillText(String(state.rally), 0, 0);
-    ctx.font = '700 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+    ctx.font = `700 11px ${FONT}`;
     ctx.fillStyle = `rgba(${color}, ${0.35 + pop * 0.4})`;
     ctx.fillText('RALLY', 0, 16);
     ctx.restore();
   }
+
+  // Callouts rise and fade; each swells in over its first tenth.
+  drawLabels() {
+    const ctx = this.context;
+
+    for (const label of this.effects.labels) {
+      const age = 1 - label.life / label.maxLife;
+      const swell = Math.min(1, age / 0.1);
+      const scale = 0.6 + 0.4 * swell + age * 0.15;
+
+      ctx.save();
+      ctx.translate(label.x, label.y - age * 36);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = Math.min(1, label.life / 0.3);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `900 ${label.size}px ${FONT}`;
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'rgba(5, 6, 15, 0.85)';
+      ctx.strokeText(label.text, 0, 0);
+      ctx.fillStyle = label.color;
+      ctx.fillText(label.text, 0, 0);
+      ctx.restore();
+    }
+  }
+}
+
+/**
+ * @param {Pickup} pickup
+ * @returns {PowerUpKind}
+ */
+export function pickupKind(pickup) {
+  return pickup.kind;
 }

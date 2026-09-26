@@ -4,7 +4,19 @@ import assert from 'node:assert/strict';
 import { LocalPreferences } from '../src/adapters/local-preferences.js';
 
 const KEY = 'ping-pong-lab:preferences';
-const DEFAULTS = { difficulty: 'normal', sound: true, vibration: true, bestRally: 0 };
+const NO_STATS = { matches: 0, wins: 0, streak: 0, bestStreak: 0 };
+const DEFAULTS = {
+  mode: 'solo',
+  difficulty: 'normal',
+  powerUps: true,
+  sound: true,
+  music: true,
+  vibration: true,
+  tutorialSeen: false,
+  bestRally: 0,
+  bestRush: 0,
+  stats: NO_STATS,
+};
 
 function createStorage(initial = {}) {
   const entries = new Map(Object.entries(initial));
@@ -22,20 +34,39 @@ test('starts from sensible defaults when nothing is stored', () => {
 });
 
 test('restores stored choices', () => {
-  const stored = { difficulty: 'hard', sound: false, vibration: false, bestRally: 17 };
+  const stored = {
+    mode: 'rush',
+    difficulty: 'hard',
+    powerUps: false,
+    sound: false,
+    music: false,
+    vibration: false,
+    tutorialSeen: true,
+    bestRally: 17,
+    bestRush: 40,
+    stats: { matches: 9, wins: 6, streak: 2, bestStreak: 4 },
+  };
   const preferences = new LocalPreferences({ localStorage: createStorage({ [KEY]: JSON.stringify(stored) }) });
 
   assert.deepEqual(preferences.get(), stored);
 });
 
 test('ignores malformed or outdated stored values', () => {
-  const stored = { difficulty: 'impossible', sound: 'yes', vibration: null, bestRally: -3 };
+  const stored = { mode: 'battle-royale', difficulty: 'impossible', sound: 'yes', vibration: null, bestRally: -3, bestRush: '12', stats: 'lots' };
   const preferences = new LocalPreferences({ localStorage: createStorage({ [KEY]: JSON.stringify(stored) }) });
 
   assert.deepEqual(preferences.get(), DEFAULTS);
   assert.deepEqual(new LocalPreferences({ localStorage: createStorage({ [KEY]: '{broken' }) }).get(), DEFAULTS);
   assert.deepEqual(new LocalPreferences({ localStorage: createStorage({ [KEY]: '42' }) }).get(), DEFAULTS);
   assert.equal(new LocalPreferences({ localStorage: createStorage({ [KEY]: '{"bestRally":2.5}' }) }).get().bestRally, 0);
+});
+
+test('statistics that cannot be true are brought back into range', () => {
+  const stored = { stats: { matches: 2, wins: 5, streak: 9, bestStreak: 1 } };
+  const { stats } = new LocalPreferences({ localStorage: createStorage({ [KEY]: JSON.stringify(stored) }) }).get();
+
+  // Wins cannot exceed matches, and a streak cannot exceed the wins or the best streak.
+  assert.deepEqual(stats, { matches: 5, wins: 5, streak: 1, bestStreak: 1 });
 });
 
 test('changes are merged and saved', () => {
