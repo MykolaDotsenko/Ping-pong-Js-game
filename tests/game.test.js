@@ -11,7 +11,6 @@ import {
   NO_EVENTS,
   pauseGame,
   resetGame,
-  setPlayerPosition,
   startGame,
   togglePause,
 } from '../src/domain/game.js';
@@ -179,11 +178,10 @@ test('quiet steps share the empty event list', () => {
   assert.strictEqual(next.events, NO_EVENTS);
 });
 
-test('player position is clamped at the domain boundary', () => {
-  const state = createInitialState(PLAIN);
-  const moved = setPlayerPosition(state, -999, PLAIN);
+test('a pointer far off the court leaves the whole paddle on it', () => {
+  const next = advanceGame(runningState(), step, { ...idleInput, pointerX: -999 }, PLAIN);
 
-  assert.equal(moved.player.x, paddle.width / 2);
+  assert.equal(next.player.x, paddle.width / 2);
 });
 
 test('a pointer target places the paddle directly and wins over the keyboard axis', () => {

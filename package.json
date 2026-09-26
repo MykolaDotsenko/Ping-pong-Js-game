@@ -7,7 +7,7 @@
   "scripts": {
     "test": "npm run test:unit",
     "test:unit": "node --test",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/** --test-coverage-lines=95 --test-coverage-branches=90 --test-coverage-functions=90",
+    "test:coverage": "node scripts/coverage-gate.mjs",
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",

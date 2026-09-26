@@ -195,38 +195,6 @@ function steerPaddle(state, side, pointerX, axis, deltaSeconds, config) {
 
 /**
  * @param {GameState} state
- * @param {number} targetX
- * @param {GameConfig} config
- * @returns {GameState}
- */
-export function setPlayerPosition(state, targetX, config) {
-  return {
-    ...state,
-    player: {
-      ...state.player,
-      x: clampPaddleCenter(targetX, config, paddleWidth(state, 'player', config)),
-    },
-  };
-}
-
-/**
- * @param {GameState} state
- * @param {number} axis
- * @param {number} deltaSeconds
- * @param {GameConfig} config
- * @returns {GameState}
- */
-export function movePlayerByAxis(state, axis, deltaSeconds, config) {
-  if (!axis) {
-    return state;
-  }
-
-  const nextX = state.player.x + axis * config.paddle.keyboardSpeed * deltaSeconds;
-  return setPlayerPosition(state, nextX, config);
-}
-
-/**
- * @param {GameState} state
  * @param {Side} scorer
  * @param {GameConfig} config
  */

@@ -29,7 +29,7 @@ const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'p
  * @typedef {object} Device
  * @property {boolean} canShare
  * @property {boolean} canFullscreen
- * @property {(text: string) => Promise<'shared' | 'copied' | 'failed'>} share
+ * @property {(text: string) => Promise<'shared' | 'copied' | 'cancelled' | 'failed'>} share
  * @property {() => Promise<void>} toggleFullscreen
  */
 
@@ -321,7 +321,7 @@ export class DomGameView {
       : `I ${result.winner === 'player' ? 'won' : 'lost'} ${result.score.player}:${result.score.opponent} on ${DIFFICULTY_LABELS[result.difficulty]} in Ping Pong Architecture Lab. Longest rally: ${result.longestRally}.`;
     const outcome = await this.device.share(text);
 
-    note.textContent = { shared: '', copied: 'Copied to clipboard', failed: 'Sharing is not available here' }[outcome];
+    note.textContent = { shared: '', copied: 'Copied to clipboard', cancelled: '', failed: 'Sharing is not available here' }[outcome];
   }
 
   /** @param {Presentation} presentation */
