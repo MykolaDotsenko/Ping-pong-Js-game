@@ -31,8 +31,8 @@ The original 2024 version used one global script for rendering, input, physics, 
 - **Juice:** sparks, shockwaves, screen shake, flashes, a speed-heated ball trail and victory fireworks, with synthesized sound effects, a synthesized backing track and vibration.
 - **Five backing tracks**, all original and synthesized in the browser: **Neon** (synthwave), **Arena** (arcade fighter techno), **Anthem** (a big synth-brass anthem), **Contender** (training-montage rock) and **Iron** (heavy industrial). The ♪ button in the menu or the pause screen switches track and plays a few seconds of it.
 - **Thumb rail:** on touch screens, a strip below the court steers the paddle, so your thumb never covers the play.
-- **Solid paddles:** the ball meets a paddle's face, corners and sides as solid shapes. Clip a front corner and it comes back from the edge; catch it on the side and it glances off, but it never passes through.
-- **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result. The heads-up display fits even a 320px-wide screen.
+- **Solid paddles:** the ball meets a paddle's face, corners and sides as solid shapes. Clip a front corner and it comes back from the edge; catch it on the side and it glances off, but it never passes through. Once you have missed, a paddle moved into the ball stops against it instead of dragging it along.
+- **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result. Every control is at least 44 by 44 pixels, the size a fingertip needs, even on a 320px-wide screen. Held sideways, the heads-up display becomes a column beside a full-height court, and the menus open as sheets across the screen.
 - Mode, difficulty, power-ups, sound, music and its track, vibration, your best rally, your best Rush run and your Solo win record are remembered between visits, and stay in step across open tabs. Leaving a Solo match after its first point counts as a loss, so a streak is earned, not protected.
 
 ## What it demonstrates
@@ -119,7 +119,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 │   ├── capture-preview.mjs
 │   ├── check-project.mjs
 │   ├── coverage-gate.mjs
-│   └── render-icons.mjs
+│   ├── render-icons.mjs
+│   └── verify-live-site.mjs    after a deploy: every published file served byte for byte
 ├── src
 │   ├── adapters
 │   │   ├── canvas
@@ -221,7 +222,7 @@ The dependency-free unit suite covers:
 - power-ups: spawning on schedule, each effect, wear-off through serve pauses, and the computer's blindness to a ghosted ball
 - the deterministic random source, so a seed replays a match
 - paddle control, the speed cap, spin from a moving paddle, curves that keep their speed and never stall a rally, and a full deterministic rally
-- paddle contact: faces, clipped corners, sides, a paddle swept into the ball, a ball squeezed against a wall, fast balls at any speed, and a property test over 60 bot matches in which the ball never overlaps a paddle
+- paddle contact: faces, clipped corners, sides, a paddle run into a missed ball or yanked toward a wall, a paddle that flashes across under the ball, fast balls at any speed, and a property test over 60 bot matches in which the ball never overlaps a paddle
 - the opponent's reach, wall-folded prediction, aim, speed-dependent misjudgement, and the ordering of the difficulty presets
 - the fixed-step loop with its time scale and hit-stop hold, and render interpolation
 - the controller: loop lifecycle, commands, the match built from mode and difficulty, slow motion and hit-stop, event dispatch to feedback adapters, the best-rally, best-Rush and win-streak records, and forfeits
@@ -234,7 +235,7 @@ Playwright runs the real application in desktop and mobile Chromium. It reads th
 
 - the application boots without page errors, and Play, `Space`, `Esc` and the menus drive the state machine
 - the paddle follows the mouse, the keyboard takes over while the mouse rests on the board, and `A`/`D` work on a Cyrillic layout
-- on a phone, the court fills the screen, stays in view when a match starts, and the thumb rail steers the paddle; on a 320px-wide phone the heads-up display fits without sideways scrolling
+- on a phone, the court fills the screen, stays in view when a match starts, and the thumb rail steers the paddle; on a 320px-wide phone the heads-up display fits without sideways scrolling and every control of the menu and pause screen is fingertip-sized; held sideways, the HUD stands beside a full-height court and the menu sheet fits
 - the first serve counts down from three before the ball moves
 - the first visit opens the tutorial once as a modal dialog; `Space` closes it without starting a match, `Esc` closes it too, and either is remembered
 - Rush shows lives as hearts and ends when they run out; two players get their own halves of the board
@@ -268,7 +269,7 @@ If you have two minutes, inspect these files in order:
 5. [`src/domain/physics.js`](./src/domain/physics.js) — swept paddle contact in the paddle's frame of reference
 6. [`src/adapters/canvas/event-effects.js`](./src/adapters/canvas/event-effects.js) — how events become visual effects
 7. [`eslint.config.js`](./eslint.config.js) — executable architecture constraints
-8. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification, then the GitHub Pages deploy once `main` is green
+8. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification, then the GitHub Pages deploy once `main` is green, checked against the live site file by file
 
 ## License
 

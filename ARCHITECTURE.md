@@ -170,6 +170,10 @@ It is built for phones:
 
 While a match runs, the game loop drives every frame. After the match ends, the renderer requests its own frames until the fireworks settle, then stops. Paused screens freeze the effects. `prefers-reduced-motion` removes shake and softens flashes.
 
+### Layout
+
+The page is laid out in CSS only. The stage is a size container, and the court takes the largest 5:8 box that fits it. Everything drawn over the court is sized in `--u`, 1% of the court's width, so the menus scale with it; every control is at least 44 by 44 CSS pixels and no text in a control is under 12px, and container queries tighten spacing on courts under 350px and drop the tagline and tip under 300px, which is what lets a 320px phone fit the menu. A phone held sideways sets `--u` from the screen's height instead: the HUD becomes a column at the left edge, the court gets the full height, and the menu, pause and result screens open as sheets across the rest of the screen, the menu's two groups side by side. End-to-end tests measure every visible control on both.
+
 ### SoundBoard and MusicPlayer
 
 Both implement `FeedbackPort` with Web Audio, and every sound is synthesized at play time from oscillators and generated noise, with no audio files. The sound board plays effects: hit pitch climbs with the rally, every fifth hit adds a chime, and the countdown, power-ups, match point and a lost life each have their own cue. The music player is a step sequencer that plays one of five original tracks, written as data in `music-tracks.js` (tempo, bar roots, bass, chords, lead and drum patterns). Notes are scheduled ahead of the clock, so timing stays exact whatever the frame rate; a track starts with bass and kick alone, adds the chords with snare and hi-hat at three hits and the lead at six, fades on pause, stops at the menu, and starts every match from the bass again. Drums are synthesized too: a falling sine for the kick and high-passed noise for the snare and hi-hat. Choosing a track in the menu or on the pause screen plays a four-second preview with every layer in; it never interrupts a match, and a track changed during a pause plays from its first bar on resume. Every envelope starts silent before its first scheduled value, because a new gain node passes full level until then and a source starting a sample early would click. Both play through one audio context, owned by `AudioOutput`: browsers limit how many a page may open, so it is created once, on the first event, which always follows a click or key press, and resumed whenever the browser suspended it.
@@ -219,9 +223,9 @@ A simple overlap check misses a paddle when a fast ball travels past it between 
 
 `findPaddleContact` works in the paddle's frame of reference, where the paddle stands still and the ball's path over one step, the paddle's own motion included, is a straight segment. The ball's center must not enter the paddle rectangle grown by the ball's radius, whose corners are rounded: two crossed rectangles and four corner circles. The earliest entry into any of them is the first touch, and the surface normal there tells face, corner and side apart.
 
-- the face and the front corners return the ball, from the very edge when a corner is clipped, and the return leaves level with the face, so a paddle sliding on cannot catch it twice
-- the sides and back corners deflect it like a moving wall (`paddle-graze`), keeping its progress toward the goal, and the point still goes to the other side
-- a ball squeezed between a paddle and a side wall slips out behind the paddle
+- the face and the front corners return the ball, from the very edge when a corner is clipped, and the return leaves level with the face, so a paddle sliding on cannot catch it twice. The ball leaves from where it was struck: a tap moves the paddle to the finger at once, so the paddle may end the step far from that point
+- a ball that flies into a side or back corner bounces off it (`paddle-graze`), keeping its progress toward the goal, and the point still goes to the other side
+- a paddle that runs into the ball side-on stops against it and passes on none of its own speed, so a missed ball keeps its course however the player moves. An earlier version placed the ball beside the paddle where the paddle ended the step, and a tap across the court dragged a missed ball up to 360 units in one frame
 
 A property test plays 60 bot matches across every mode, over 100,000 steps with yanked paddles, and asserts that the ball never overlaps a paddle. The difficulty balance, measured with the same bots before and after the change, moved only within noise.
 
@@ -274,7 +278,8 @@ Playwright checks the assembled system on desktop and mobile Chromium. Instead o
 - the three-second countdown before the first serve
 - the first-visit tutorial as a modal dialog: `Space` closes it without starting a match, `Escape` closes it too, and either is remembered
 - Rush lives running out, and two players steering their own halves of the board
-- the heads-up display fitting a 320px-wide phone without sideways scrolling
+- the heads-up display fitting a 320px-wide phone without sideways scrolling, and every control of its menu and pause screen at least 44 by 44 pixels
+- a phone held sideways: the HUD beside a full-height court, and a menu sheet that fits with fingertip-sized controls
 - preferences surviving a reload, and the result screen after a full match
 - auto-pause on focus loss, and an idle render loop outside of a match
 - a canvas backing store that matches device pixels, and an installable manifest

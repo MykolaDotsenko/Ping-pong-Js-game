@@ -56,6 +56,31 @@ test('a power-up appears once the schedule and the rally allow it, and vanishes 
   assert.equal(state.pickups.length, 0);
 });
 
+test('a power-up can appear from exactly the minimum rally on', () => {
+  const next = advanceGame(rallying({ nextPickupIn: 0, rally: powerUps.minRally }), step, idleInput, GAME_CONFIG);
+
+  assert.deepEqual(next.events.map((event) => event.type), ['pickup-spawn']);
+});
+
+test('only one power-up waits on the court at a time', () => {
+  const waiting = { id: 1, kind: 'wide', x: 60, y: 400, ttl: 5 };
+  const next = advanceGame(rallying({ nextPickupIn: 0, rally: 20, pickups: [waiting] }), step, idleInput, GAME_CONFIG);
+
+  assert.equal(next.pickups.length, 1);
+  assert.equal(next.events.some((event) => event.type === 'pickup-spawn'), false);
+});
+
+test('every kind of power-up turns up', () => {
+  const seen = new Set();
+
+  for (let seed = 1; seed <= 200 && seen.size < POWER_UP_KINDS.length; seed += 1) {
+    const next = advanceGame(rallying({ nextPickupIn: 0, seed }), step, idleInput, GAME_CONFIG);
+    seen.add(next.pickups[0].kind);
+  }
+
+  assert.deepEqual([...seen].sort(), [...POWER_UP_KINDS].sort());
+});
+
 test('no power-up appears before the rally is long enough, or when they are switched off', () => {
   const tooEarly = advanceGame(rallying({ nextPickupIn: 0, rally: 0 }), step, idleInput, GAME_CONFIG);
   const disabled = { ...GAME_CONFIG, powerUps: { ...powerUps, enabled: false } };
@@ -158,4 +183,16 @@ test('a point clears the court of power-ups and turbo', () => {
 
   assert.equal(next.pickups.length, 0);
   assert.equal(next.turbo, 0);
+});
+
+test('the match-winning point clears the court of power-ups too', () => {
+  const state = rallying({
+    score: { player: GAME_CONFIG.rules.winningScore - 1, opponent: 0 },
+    pickups: [{ id: 1, kind: 'ghost', x: 60, y: 400, ttl: 5 }],
+    ball: ball({ x: 10, y: -ballConfig.radius - 1, vy: -300 }),
+  });
+  const next = advanceGame(state, step, idleInput, GAME_CONFIG);
+
+  assert.equal(next.phase, 'game-over');
+  assert.deepEqual(next.pickups, []);
 });

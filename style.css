@@ -157,10 +157,6 @@ canvas:focus-visible {
   height: var(--hud-h);
 }
 
-.hud .icon-button {
-  width: clamp(38px, 13cqw, 44px);
-  height: clamp(38px, 13cqw, 44px);
-}
 
 @container hud (max-width: 330px) {
   .scoreboard {
@@ -294,7 +290,10 @@ canvas:focus-visible {
 }
 
 .board {
-  container-type: inline-size;
+  /* Everything drawn over the court is sized in --u, 1% of the court's width, so the menus
+     scale with it. A phone held sideways sets it from the screen instead (see Devices). */
+  --u: 1cqw;
+  container: board / inline-size;
   position: relative;
   aspect-ratio: 5 / 8;
   padding: 2px;
@@ -344,7 +343,7 @@ canvas:focus-visible {
 
 .rail__label {
   margin-bottom: 6px;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -361,8 +360,7 @@ canvas:focus-visible {
 /* On touch screens the thumb rail already says how to move; the hint stays in the board's
    accessible description. */
 .help__touch,
-.help__keys,
-.help__rotate {
+.help__keys {
   display: none;
 }
 
@@ -385,7 +383,7 @@ kbd {
   inset: 2px;
   display: grid;
   place-items: center;
-  padding: 7cqw;
+  padding: calc(7 * var(--u));
   border-radius: 20px;
   background: radial-gradient(circle at 50% 42%, rgba(9, 11, 28, 0.5), rgba(5, 6, 15, 0.86));
   backdrop-filter: blur(3px);
@@ -407,19 +405,36 @@ kbd {
 .panel {
   display: grid;
   justify-items: center;
-  gap: 4.2cqw;
+  gap: calc(4.2 * var(--u));
   width: 100%;
   text-align: center;
 }
 
+/* The menu comes in two groups, what the match is and the controls. On a phone held upright
+   they interleave in one column, in this order; held sideways they stand side by side. */
+.panel__side,
+.panel__main {
+  display: contents;
+}
+
+.panel--menu .logo { order: 1; }
+.panel--menu .segmented--modes { order: 2; }
+.panel--menu [data-solo-only] { order: 3; }
+.panel--menu .cta { order: 4; }
+.panel--menu .panel__meta { order: 5; }
+.panel--menu .panel__stats { order: 6; }
+.panel--menu .toggles { order: 7; }
+.panel--menu .panel__tip { order: 8; }
+.panel--menu .panel__row { order: 9; }
+
 .logo {
   display: grid;
-  gap: 1.5cqw;
-  margin: 0 0 2cqw;
+  gap: calc(1.5 * var(--u));
+  margin: 0 0 calc(2 * var(--u));
 }
 
 .logo__word {
-  font-size: 25cqw;
+  font-size: calc(25 * var(--u));
   font-weight: 900;
   line-height: 0.9;
   letter-spacing: 0.05em;
@@ -427,12 +442,12 @@ kbd {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  filter: drop-shadow(0 0 2.4cqw rgba(var(--player-rgb), 0.6)) drop-shadow(0 0 7cqw rgba(var(--opponent-rgb), 0.4));
+  filter: drop-shadow(0 0 calc(2.4 * var(--u)) rgba(var(--player-rgb), 0.6)) drop-shadow(0 0 calc(7 * var(--u)) rgba(var(--opponent-rgb), 0.4));
   animation: flicker 7s linear infinite;
 }
 
 .logo__tag {
-  font-size: 3.4cqw;
+  font-size: max(10px, calc(3.4 * var(--u)));
   font-weight: 700;
   letter-spacing: 0.42em;
   text-transform: uppercase;
@@ -450,27 +465,27 @@ kbd {
 
 .panel__title {
   margin: 0;
-  font-size: 11cqw;
+  font-size: calc(11 * var(--u));
   font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text);
-  text-shadow: 0 0 3cqw rgba(var(--violet-rgb), 0.7);
+  text-shadow: 0 0 calc(3 * var(--u)) rgba(var(--violet-rgb), 0.7);
 }
 
 .panel__title--result[data-winner="player"] {
   color: var(--player);
-  text-shadow: 0 0 3cqw rgba(var(--player-rgb), 0.9), 0 0 9cqw rgba(var(--player-rgb), 0.45);
+  text-shadow: 0 0 calc(3 * var(--u)) rgba(var(--player-rgb), 0.9), 0 0 calc(9 * var(--u)) rgba(var(--player-rgb), 0.45);
 }
 
 .panel__title--result[data-winner="opponent"] {
   color: var(--opponent);
-  text-shadow: 0 0 3cqw rgba(var(--opponent-rgb), 0.9), 0 0 9cqw rgba(var(--opponent-rgb), 0.45);
+  text-shadow: 0 0 calc(3 * var(--u)) rgba(var(--opponent-rgb), 0.9), 0 0 calc(9 * var(--u)) rgba(var(--opponent-rgb), 0.45);
 }
 
 .panel__eyebrow {
   margin: 0;
-  font-size: 3.4cqw;
+  font-size: max(11px, calc(3.4 * var(--u)));
   font-weight: 800;
   letter-spacing: 0.3em;
   text-transform: uppercase;
@@ -479,7 +494,7 @@ kbd {
 
 .result-score {
   margin: 0;
-  font-size: 13cqw;
+  font-size: calc(13 * var(--u));
   font-weight: 900;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.06em;
@@ -488,7 +503,7 @@ kbd {
 .panel__meta,
 .panel__tip {
   margin: 0;
-  font-size: 3.6cqw;
+  font-size: max(12px, calc(3.6 * var(--u)));
   color: var(--muted);
 }
 
@@ -498,32 +513,37 @@ kbd {
 
 .panel__tip {
   max-width: 30ch;
-  font-size: 3.3cqw;
+  font-size: max(12px, calc(3.3 * var(--u)));
   opacity: 0.85;
 }
 
 .panel__link {
-  font-size: 3.3cqw;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 calc(2 * var(--u));
+  font-size: max(12px, calc(3.3 * var(--u)));
   color: var(--violet);
 }
 
 .panel__row {
   display: flex;
-  gap: 3cqw;
+  gap: calc(3 * var(--u));
 }
 
 .cta {
   width: min(78%, 22rem);
-  padding: 3.6cqw 5cqw;
+  min-height: 48px;
+  padding: calc(3.6 * var(--u)) calc(5 * var(--u));
   border: 0;
   border-radius: 999px;
-  font-size: 5.2cqw;
+  font-size: max(15px, calc(5.2 * var(--u)));
   font-weight: 900;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #041018;
   background: linear-gradient(90deg, var(--player), var(--violet));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 1.5cqw 6cqw rgba(var(--player-rgb), 0.4);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 calc(1.5 * var(--u)) calc(6 * var(--u)) rgba(var(--player-rgb), 0.4);
   animation: breathe 2.6s ease-in-out infinite;
   transition: transform 120ms ease;
 }
@@ -534,16 +554,17 @@ kbd {
 
 @keyframes breathe {
   50% {
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 1.5cqw 9cqw rgba(var(--violet-rgb), 0.6);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), 0 calc(1.5 * var(--u)) calc(9 * var(--u)) rgba(var(--violet-rgb), 0.6);
   }
 }
 
 .ghost {
-  min-width: 30cqw;
-  padding: 2.6cqw 5cqw;
+  min-width: calc(30 * var(--u));
+  min-height: 44px;
+  padding: calc(2.6 * var(--u)) calc(5 * var(--u));
   border: 1px solid var(--line);
   border-radius: 999px;
-  font-size: 3.8cqw;
+  font-size: max(13px, calc(3.8 * var(--u)));
   font-weight: 800;
   letter-spacing: 0.08em;
   background: rgba(15, 18, 40, 0.6);
@@ -555,18 +576,19 @@ kbd {
 
 .segmented {
   display: flex;
-  padding: 1cqw;
+  padding: calc(1 * var(--u));
   border: 1px solid var(--line);
   border-radius: 999px;
   background: rgba(10, 12, 28, 0.75);
 }
 
 .segmented button {
-  min-width: 20cqw;
-  padding: 2.2cqw 3.6cqw;
+  min-width: max(44px, calc(20 * var(--u)));
+  min-height: 44px;
+  padding: calc(1.2 * var(--u)) calc(3.6 * var(--u));
   border: 0;
   border-radius: 999px;
-  font-size: 3.6cqw;
+  font-size: max(12px, calc(3.6 * var(--u)));
   font-weight: 800;
   letter-spacing: 0.06em;
   color: var(--muted);
@@ -577,24 +599,25 @@ kbd {
 .segmented button[aria-pressed="true"] {
   color: #041018;
   background: linear-gradient(90deg, var(--player), var(--violet));
-  box-shadow: 0 0 4cqw rgba(var(--player-rgb), 0.45);
+  box-shadow: 0 0 calc(4 * var(--u)) rgba(var(--player-rgb), 0.45);
 }
 
 .toggles {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 3cqw;
+  gap: calc(3 * var(--u));
 }
 
 .toggle {
   display: inline-flex;
   align-items: center;
-  gap: 2.4cqw;
-  padding: 2cqw 3.2cqw;
+  gap: calc(2.4 * var(--u));
+  min-height: 44px;
+  padding: 0 calc(3.2 * var(--u));
   border: 1px solid var(--line);
   border-radius: 999px;
-  font-size: 3.4cqw;
+  font-size: max(12px, calc(3.4 * var(--u)));
   font-weight: 700;
   color: var(--muted);
   background: rgba(15, 18, 40, 0.6);
@@ -607,10 +630,10 @@ kbd {
 /* The switch knob. */
 .toggle::before {
   content: "";
-  width: 7cqw;
-  height: 4cqw;
+  width: calc(7 * var(--u));
+  height: calc(4 * var(--u));
   border-radius: 999px;
-  background: radial-gradient(circle at 30% 50%, #cbd5e1 0 1.4cqw, transparent 1.5cqw), rgba(148, 163, 184, 0.3);
+  background: radial-gradient(circle at 30% 50%, #cbd5e1 0 calc(1.4 * var(--u)), transparent calc(1.5 * var(--u))), rgba(148, 163, 184, 0.3);
   transition: background 150ms ease;
 }
 
@@ -619,19 +642,20 @@ kbd {
 }
 
 .toggle[aria-pressed="true"]::before {
-  background: radial-gradient(circle at 70% 50%, #041018 0 1.4cqw, transparent 1.5cqw), var(--player);
-  box-shadow: 0 0 3cqw rgba(var(--player-rgb), 0.6);
+  background: radial-gradient(circle at 70% 50%, #041018 0 calc(1.4 * var(--u)), transparent calc(1.5 * var(--u))), var(--player);
+  box-shadow: 0 0 calc(3 * var(--u)) rgba(var(--player-rgb), 0.6);
 }
 
 /* The music track picker: each tap moves to the next track and plays a sample of it. */
 .track {
   display: inline-flex;
   align-items: center;
-  gap: 1.6cqw;
-  padding: 2cqw 3.2cqw;
+  gap: calc(1.6 * var(--u));
+  min-height: 44px;
+  padding: 0 calc(3.2 * var(--u));
   border: 1px solid rgba(var(--player-rgb), 0.45);
   border-radius: 999px;
-  font-size: 3.4cqw;
+  font-size: max(12px, calc(3.4 * var(--u)));
   font-weight: 700;
   color: var(--text);
   background: rgba(15, 18, 40, 0.6);
@@ -640,24 +664,59 @@ kbd {
 .track::before {
   content: "♪" / "";
   color: var(--player);
-  text-shadow: 0 0 2cqw rgba(var(--player-rgb), 0.8);
+  text-shadow: 0 0 calc(2 * var(--u)) rgba(var(--player-rgb), 0.8);
 }
 
 .badge {
   margin: 0;
-  padding: 1.4cqw 3.4cqw;
+  padding: calc(1.4 * var(--u)) calc(3.4 * var(--u));
   border-radius: 999px;
-  font-size: 3.4cqw;
+  font-size: max(11px, calc(3.4 * var(--u)));
   font-weight: 900;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: #1c1300;
   background: var(--amber);
-  box-shadow: 0 0 5cqw rgba(251, 191, 36, 0.55);
+  box-shadow: 0 0 calc(5 * var(--u)) rgba(251, 191, 36, 0.55);
 }
 
 .badge[hidden] {
   display: none;
+}
+
+/* Shorter courts fit the menu with 44px controls by tightening the spacing and the logo; on
+   the smallest the tagline and the tip go, and the tip is in "How to play" anyway. */
+@container board (max-width: 350px) {
+  .overlay {
+    padding: calc(5 * var(--u));
+  }
+
+  .panel {
+    gap: calc(3 * var(--u));
+  }
+
+  .panel--menu .logo {
+    margin: 0;
+  }
+
+  .logo__word {
+    font-size: calc(20 * var(--u));
+  }
+
+  .toggles {
+    gap: calc(2 * var(--u));
+  }
+}
+
+@container board (max-width: 300px) {
+  .logo__word {
+    font-size: calc(18 * var(--u));
+  }
+
+  .logo__tag,
+  .panel--menu .panel__tip {
+    display: none;
+  }
 }
 
 /* ---------- About ---------- */
@@ -727,18 +786,19 @@ kbd {
 
 .segmented--modes button {
   display: grid;
-  gap: 0.4cqw;
-  min-width: 24cqw;
-  padding: 1.8cqw 2.6cqw;
+  align-content: center;
+  gap: calc(0.4 * var(--u));
+  min-width: calc(24 * var(--u));
+  padding: calc(1.2 * var(--u)) calc(2.6 * var(--u));
   line-height: 1.1;
 }
 
 .segmented--modes small {
-  font-size: 2.4cqw;
+  white-space: nowrap;
+  font-size: max(10px, calc(2.4 * var(--u)));
   font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.75;
+  letter-spacing: 0.02em;
+  opacity: 0.8;
 }
 
 .segmented[hidden],
@@ -781,40 +841,40 @@ kbd {
 
 .match-point {
   position: absolute;
-  top: 3cqw;
+  top: calc(3 * var(--u));
   left: 50%;
   z-index: 1;
   margin: 0;
-  padding: 1.2cqw 3.4cqw;
+  padding: calc(1.2 * var(--u)) calc(3.4 * var(--u));
   border-radius: 999px;
   transform: translateX(-50%);
-  font-size: 3.2cqw;
+  font-size: calc(3.2 * var(--u));
   font-weight: 900;
   letter-spacing: 0.24em;
   text-transform: uppercase;
   color: #1c1300;
   background: var(--amber);
-  box-shadow: 0 0 5cqw rgba(251, 191, 36, 0.6);
+  box-shadow: 0 0 calc(5 * var(--u)) rgba(251, 191, 36, 0.6);
   pointer-events: none;
   animation: match-point-pulse 1.1s ease-in-out infinite;
 }
 
 .match-point[data-side="opponent"] {
   top: auto;
-  bottom: 3cqw;
+  bottom: calc(3 * var(--u));
 }
 
 @keyframes match-point-pulse {
   50% {
     transform: translateX(-50%) scale(1.06);
-    box-shadow: 0 0 9cqw rgba(251, 191, 36, 0.85);
+    box-shadow: 0 0 calc(9 * var(--u)) rgba(251, 191, 36, 0.85);
   }
 }
 
 .panel__stats,
 .panel__note {
   margin: 0;
-  font-size: 3.2cqw;
+  font-size: max(12px, calc(3.2 * var(--u)));
   color: var(--muted);
 }
 
@@ -824,8 +884,8 @@ kbd {
 
 .ghost--small {
   min-width: 0;
-  padding: 2cqw 3.6cqw;
-  font-size: 3.3cqw;
+  padding: 0 calc(3.6 * var(--u));
+  font-size: max(12px, calc(3.3 * var(--u)));
 }
 
 /* ---------- Tutorial ---------- */
@@ -953,19 +1013,96 @@ kbd {
   }
 }
 
-/* A phone held sideways: the court shrinks, so suggest turning it upright. */
+/* A phone held sideways. The HUD turns into a column at the left edge, so the court gets the
+   full height, and the menu, pause and result screens open as sheets across the rest of the
+   screen, sized from its height rather than from the narrow court. The menu's two groups
+   stand side by side. */
 @media (orientation: landscape) and (max-height: 520px) and (pointer: coarse) {
   :root {
-    --hud-h: 44px;
     --rail-h: 0px;
+    --hud-w: 52px;
   }
 
   .rail {
     display: none;
   }
 
-  .help__rotate {
-    display: inline;
+  .stage {
+    display: grid;
+    grid-template-columns: var(--hud-w) minmax(0, 1fr);
+    align-items: center;
+    justify-items: center;
+    column-gap: var(--gap);
+  }
+
+  .stage > * {
+    --board-w: min(100cqw - var(--hud-w) - var(--gap), 100cqh * 0.625);
+  }
+
+  .hud {
+    grid-template-columns: none;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    justify-items: center;
+    width: var(--hud-w);
+    height: min(100cqh, var(--board-w) * 1.6);
+  }
+
+  .hud__group {
+    flex-direction: column;
+  }
+
+  .scoreboard {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .scoreboard__divider {
+    width: 26px;
+    height: 2px;
+  }
+
+  .overlay {
+    --u: min(0.85vh, 0.5vw);
+    position: fixed;
+    inset: 0 0 0 calc(max(10px, env(safe-area-inset-left)) + var(--hud-w) + var(--gap));
+    z-index: 3;
+    overflow-y: auto;
+    padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) 16px;
+    border-radius: 0;
+  }
+
+  .panel {
+    gap: calc(3 * var(--u));
+    max-width: 44rem;
+  }
+
+  .panel--menu {
+    grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+    align-items: center;
+    column-gap: calc(5 * var(--u));
+  }
+
+  .panel__side,
+  .panel__main {
+    display: grid;
+    justify-items: center;
+    gap: calc(3 * var(--u));
+  }
+
+  .panel--menu .logo {
+    margin: 0;
+  }
+
+  .logo__word {
+    font-size: calc(16 * var(--u));
+  }
+
+  .panel--menu .panel__tip {
+    display: block;
+  }
+
+  .toggles {
+    gap: calc(2 * var(--u));
   }
 }
 
@@ -975,7 +1112,8 @@ kbd {
     display: grid;
     grid-template-columns: minmax(0, 760px) minmax(340px, 440px);
     justify-content: center;
-    align-items: center;
+    /* The game stays pinned at the top, whole, however long the write-up beside it is. */
+    align-items: start;
     column-gap: 24px;
   }
 

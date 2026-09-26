@@ -221,6 +221,31 @@ test('the primary command starts an idle match and toggles pause during one', ()
   assert.deepEqual(controller.state.score, { player: 0, opponent: 0 });
 });
 
+test('a command draws the new state as it is, not blended with the frame before it', () => {
+  const { controller, scheduler, renderer, view } = setup();
+
+  view.handler(GAME_COMMAND.START);
+  inPlay(controller, { ball: { ...ballAtPlayerPaddle, y: 300 } });
+  scheduler.flush(1000);
+  scheduler.flush(1030);
+  view.handler(GAME_COMMAND.RESTART);
+  assert.deepEqual(lastOf(renderer.frames).state.ball, controller.state.ball);
+
+  // A frame that comes before the next simulation step blends nothing old into it.
+  scheduler.flush(1030);
+  assert.deepEqual(lastOf(renderer.frames).state.ball, controller.state.ball);
+});
+
+test('Space on the menu sets up a match from the current choices, like the Play button', () => {
+  const { controller, input, preferences } = setup();
+
+  preferences.set({ mode: 'rush' });
+  input.handler(GAME_COMMAND.PRIMARY);
+
+  assert.strictEqual(controller.config, RUSH_CONFIG);
+  assert.equal(controller.state.lives, RUSH_CONFIG.rules.lives);
+});
+
 test('restart abandons the current match for a fresh one', () => {
   const { controller, view, scheduler } = setup();
 
@@ -349,6 +374,41 @@ test('a soft hit does not freeze the picture', () => {
   assert.equal(controller.loop.holdSeconds, 0);
 });
 
+test('a firm hit short of top speed also freezes the picture', () => {
+  const { controller, scheduler, view, feedback } = setup();
+  const { initialSpeed, maxSpeed } = GAME_CONFIG.ball;
+
+  view.handler(GAME_COMMAND.START);
+  // Leaves the paddle at about three quarters of the way from serve speed to top speed.
+  inPlay(controller, { ball: { ...ballAtPlayerPaddle, vy: initialSpeed + 0.68 * (maxSpeed - initialSpeed) } });
+  scheduler.flush(1000);
+  scheduler.flush(1020);
+
+  assert.ok(sawHit(feedback));
+  assert.ok(controller.loop.holdSeconds > 0);
+});
+
+test('slow motion waits for a fast ball in the last stretch, never during a serve pause', () => {
+  const winning = GAME_CONFIG.rules.winningScore;
+  const matchPoint = { score: { player: winning - 1, opponent: 0 } };
+  const closing = { ...ballAtPlayerPaddle, y: ballAtPlayerPaddle.y - 100, vy: 900 };
+  const cases = [
+    ['a serve pause', { ...matchPoint, serveCountdown: 1, ball: closing }],
+    ['a ball far from the paddle', { ...matchPoint, ball: { ...closing, y: GAME_CONFIG.height * 0.3 } }],
+    ['a slow ball', { ...matchPoint, ball: { ...closing, vy: GAME_CONFIG.ball.initialSpeed } }],
+  ];
+
+  for (const [name, overrides] of cases) {
+    const { controller, scheduler, view } = setup();
+
+    view.handler(GAME_COMMAND.START);
+    inPlay(controller, overrides);
+    scheduler.flush(1000);
+    scheduler.flush(1020);
+    assert.equal(controller.loop.timeScale, 1, name);
+  }
+});
+
 test('a fast ball closing on a paddle at match point plays in slow motion', () => {
   const { controller, scheduler, view } = setup();
   const winning = GAME_CONFIG.rules.winningScore;
@@ -429,6 +489,32 @@ test('a Rush run ends when the lives run out and records the hit count', () => {
   assert.equal(presentation.newBestRush, true);
   assert.equal(presentation.stats.matches, 0);
   assert.deepEqual(lastOf(preferences.writes), { bestRush: 9 });
+});
+
+test('during a Rush run the status line counts the lives actually left', () => {
+  const { controller, view } = setup({ mode: 'rush' });
+
+  view.handler(GAME_COMMAND.START);
+  controller.state = { ...controller.state, lives: 2, hits: { player: 4, opponent: 3 } };
+
+  assert.equal(controller.statusText(), '4 hits, 2 lives left');
+});
+
+test('a Rush record is celebrated for that run only', () => {
+  const { controller, scheduler, view } = setup({ mode: 'rush', bestRush: 5 });
+
+  view.handler(GAME_COMMAND.START);
+  inPlay(controller, {
+    lives: 1,
+    hits: { player: 9, opponent: 8 },
+    ball: { x: 250, y: GAME_CONFIG.height + GAME_CONFIG.ball.radius + 1, vx: 0, vy: 300, spin: 0 },
+  });
+  scheduler.flush(1000);
+  scheduler.flush(1020);
+  assert.equal(controller.presentation().newBestRush, true);
+
+  view.handler(GAME_COMMAND.START);
+  assert.equal(controller.presentation().newBestRush, false);
 });
 
 test('a two-player match names the second player and keeps Solo statistics untouched', () => {

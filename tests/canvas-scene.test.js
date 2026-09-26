@@ -156,6 +156,17 @@ test('paddles are drawn at their width, which power-ups change, and glow in the 
   assert.equal(drawn(tiny, 'opponent').width, paddle.width * GAME_CONFIG.powerUps.shrinkScale);
 });
 
+test('a widened paddle glows lime and a shrunk one rose, like their power-ups', () => {
+  const glowOf = (state, side) => {
+    const asked = [];
+    drawPaddle(createRecordingContext(), state, side, GAME_CONFIG, 0, { get: (rgb) => asked.push(rgb) && new FakeCanvas() });
+    return asked[0];
+  };
+
+  assert.equal(glowOf(playing({ modifiers: { player: { ...noGhost, wide: 4 }, opponent: noGhost } }), 'player'), THEME.lime);
+  assert.equal(glowOf(playing({ modifiers: { player: noGhost, opponent: { ...noGhost, tiny: 4 } } }), 'opponent'), THEME.rose);
+});
+
 test('a squashed paddle is wider and thinner for a moment after a hit', () => {
   const ctx = createRecordingContext();
   drawPaddle(ctx, playing(), 'player', GAME_CONFIG, 1, glows());

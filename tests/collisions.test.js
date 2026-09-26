@@ -96,7 +96,7 @@ test('a ball that has passed the face glances off the side and the point is lost
   assert.ok(closest >= radius - 1e-6, `the ball came ${closest.toFixed(3)} units from the paddle`);
 });
 
-test('a paddle swept into a ball beside it knocks the ball away instead of covering it', () => {
+test('a paddle moving into a ball it has missed stops against it instead of shoving it', () => {
   const start = {
     ...startGame(createInitialState(PLAIN, 7), PLAIN),
     serveCountdown: 0,
@@ -105,26 +105,74 @@ test('a paddle swept into a ball beside it knocks the ball away instead of cover
   };
   const next = advanceGame(start, step, hold(290), PLAIN);
 
-  assert.deepEqual(next.events.map((event) => event.type), ['paddle-graze']);
-  assert.ok(next.ball.vx > 0, 'pushed the way the paddle moved');
-  assert.ok(next.ball.vy > 0, 'still heading for the goal line');
+  assert.deepEqual(next.events, []);
+  assert.ok(Math.abs(next.player.x - (start.ball.x - radius - halfPaddle)) < 1e-6, 'stopped right against the ball');
+  assert.deepEqual([next.ball.vx, next.ball.vy], [0, 240], 'the ball keeps its own path');
   assert.ok(clearance(next, 'player', PLAIN) >= radius - 1e-6);
+
+  // Once the ball has gone, the paddle reaches the finger.
+  const { state, events } = playOutPoint(next, hold(290));
+  assert.equal(state.score.opponent, 1);
+  assert.equal(events.some((event) => event.type === 'paddle-graze' || event.type === 'paddle-hit'), false);
+  assert.equal(advanceGame(state, step, hold(290), PLAIN).player.x, 290);
 });
 
-test('a ball squeezed between the paddle and a wall slips out behind the paddle', () => {
+test('a tap across the court never drags a missed ball along with the paddle', () => {
+  // The player has just missed: the ball is beside the paddle's end, past its face. A tap
+  // moves the paddle to the finger at once; the ball must go on as it was.
+  for (const tapX of [140, 200, 300, 450]) {
+    const start = {
+      ...startGame(createInitialState(PLAIN, 7), PLAIN),
+      serveCountdown: 0,
+      player: { x: 60, vx: 0 },
+      ball: { x: 130, y: face + 5, vx: 60, vy: 420, spin: 0 },
+    };
+    let state = start;
+    let lastX = start.ball.x;
+
+    for (let i = 0; i < 60 && state.score.opponent === 0; i += 1) {
+      state = advanceGame(state, step, hold(tapX), PLAIN);
+
+      if (state.score.opponent === 0) {
+        assert.ok(Math.abs(state.ball.x - lastX - 60 * step) < 1e-6, `tap at ${tapX}: the ball kept its course`);
+        assert.ok(clearance(state, 'player', PLAIN) >= radius - 1e-6, `tap at ${tapX}: no overlap`);
+        lastX = state.ball.x;
+      }
+    }
+
+    assert.equal(state.score.opponent, 1, `tap at ${tapX}: the point is lost`);
+  }
+});
+
+test('a paddle yanked toward a wall stops against a missed ball instead of squeezing it', () => {
   const start = {
     ...startGame(createInitialState(PLAIN, 7), PLAIN),
     serveCountdown: 0,
     player: { x: 100, vx: 0 },
     ball: { x: 25, y: face + 6, vx: 0, vy: 240, spin: 0 },
   };
-  // The paddle is yanked against the left wall, leaving the ball no room beside it.
   const next = advanceGame(start, step, hold(0), PLAIN);
 
-  assert.equal(next.player.x, halfPaddle);
-  assert.equal(next.ball.y, face + paddle.height + radius, 'behind the paddle');
+  assert.ok(Math.abs(next.player.x - (25 + radius + halfPaddle)) < 1e-6);
+  assert.equal(next.ball.x, 25, 'left where it was');
   assert.ok(clearance(next, 'player', PLAIN) >= radius - 1e-6);
-  assert.ok(next.ball.x >= radius);
+});
+
+test('a paddle that flashes across under a ball returns it from where it struck it', () => {
+  // The ball meets the face this step while a tap sweeps the paddle from far left to far right.
+  const start = {
+    ...startGame(createInitialState(PLAIN, 7), PLAIN),
+    serveCountdown: 0,
+    player: { x: 60, vx: 0 },
+    ball: { x: 200, y: face - radius - 1, vx: 0, vy: 600, spin: 0 },
+  };
+  const next = advanceGame(start, step, hold(440), PLAIN);
+  const hit = next.events.find((event) => event.type === 'paddle-hit');
+
+  assert.ok(hit, 'the sweep met the ball');
+  assert.ok(Math.abs(next.ball.x - 200) < 1, `returned from x ${next.ball.x.toFixed(1)}, where it was struck`);
+  assert.ok(next.ball.vy < 0, 'on its way back up');
+  assert.ok(clearance(next, 'player', PLAIN) >= radius - 1e-6);
 });
 
 test('a fast ball aimed at the middle of the paddle is always returned, at any speed', () => {

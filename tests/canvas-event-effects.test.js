@@ -110,3 +110,15 @@ test('the winner gets fireworks in their colors, spread over time and placed by 
   assert.ok(colors.has(`rgb(${THEME.side.player.rgb})`));
   assert.ok(colors.has(`rgb(${THEME.amber})`));
 });
+
+test('a curve earns its callout whichever way it bends', () => {
+  assert.deepEqual(calloutFor(hit({ spin: -CURVE_SPIN }), GAME_CONFIG), { text: 'CURVE!', rgb: THEME.lime });
+});
+
+test('the sparks of a point spray into the court, away from the goal line', () => {
+  const atTop = play([{ type: 'point', scorer: 'player', x: 250, y: 0 }]);
+  const atBottom = play([{ type: 'point', scorer: 'opponent', x: 250, y: height }]);
+
+  assert.ok(atTop.particles.every((particle) => particle.vy > 0), 'down from the top goal');
+  assert.ok(atBottom.particles.every((particle) => particle.vy < 0), 'up from the bottom goal');
+});

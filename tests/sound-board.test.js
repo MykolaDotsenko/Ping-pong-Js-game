@@ -129,6 +129,14 @@ test('every sound starts silent, so an oscillator starting a sample early cannot
   assert.ok(envelopes.every((gain) => gain.gain.value === 0.0001));
 });
 
+test('the effects play well below full scale, leaving headroom for the music', () => {
+  const { board, contexts } = setup();
+
+  board.handle([hit(1)]);
+
+  assert.ok(contexts[0].gains[0].gain.value <= 0.5);
+});
+
 test('every event type has a sound, and milestone rallies add a chime', () => {
   const { board, contexts } = setup();
   const events = [
