@@ -11,7 +11,7 @@ The objective is not to imitate an enterprise backend in the browser. The object
 ```text
 index.html
    |
-script.js  ← composition root only
+script.js  ← composition root; the only module that touches browser globals
    |
    +--> adapters/input-controller.js
    +--> adapters/dom-game-view.js
@@ -20,7 +20,9 @@ script.js  ← composition root only
    |
    +--> application/game-controller.js
                  |
+                 +--> application/ports.js
                  +--> application/game-loop.js
+                 +--> application/interpolation.js
                  +--> domain/game.js
                            |
                            +--> domain/physics.js
@@ -31,46 +33,47 @@ Dependencies point inward.
 
 - adapters may depend on the core
 - application may depend on domain
-- domain has no browser dependency
-- application has no browser dependency
+- domain depends on nothing outside `src/domain/`
+- domain and application see no browser or Node globals, no clock, and no `Math.random`
 - the core never imports adapters
+- adapters receive `window` and `document` from the composition root instead of reading globals
 
-These rules are checked in CI by `scripts/check-project.mjs`.
+These rules are enforced by ESLint per directory (`eslint.config.js`). `tests/architecture-rules.test.js` lints deliberate violations to prove the rules keep rejecting them.
 
 ## 1. Domain layer
 
 `src/domain/` owns the rules that define the game:
 
 - phases: `ready`, `running`, `paused`, `game-over`
-- score transitions and win condition
+- score transitions, win condition, and winner
 - paddle bounds
 - ball movement and wall reflection
 - swept paddle collision
 - bounce angle and speed progression
 - opponent target and speed policy
 
-The domain accepts plain data and returns new state. It does not draw, register listeners, query the DOM, schedule frames, or know which device produced an input command.
+The domain accepts plain data and returns new state. It does not draw, register listeners, query the DOM, schedule frames, read the clock, or know which device produced an input command. The shapes it works with (`GameState`, `GameConfig`, `InputSnapshot`) are declared once in `src/domain/types.js`.
 
-That makes the highest-value behavior directly testable with Node's built-in test runner.
+That makes the highest-value behavior directly testable with Node's built-in test runner, and fully deterministic: the same inputs always produce the same match.
 
 ## 2. Application layer
 
 `GameController` owns orchestration:
 
-- start
-- pause/resume
-- reset
+- start, pause/resume, reset
+- idempotent pause when the page loses focus
 - advance one simulation step
+- run the frame loop only while a match is running
 - translate current state into presentation data
 
-It communicates through small ports supplied by the composition root:
+It talks to adapters through the ports declared in `src/application/ports.js`:
 
-- `input.snapshot()`
-- `input.onCommand(...)`
-- `view.onCommand(...)`
-- `view.render(...)`
-- `renderer.render(...)`
-- frame scheduler injected into `FixedStepLoop`
+- `InputPort` — `snapshot()`, `onCommand(...)`
+- `ViewPort` — `render(presentation)`, `onCommand(...)`
+- `RendererPort` — `render(state)`
+- `FrameScheduler` — `request(...)`, `cancel(...)`, injected into `FixedStepLoop`
+
+The input, view, and renderer ports also expose `connect()` / `disconnect()`. The ports are JSDoc type definitions, and `npm run typecheck` uses the TypeScript compiler to verify that every adapter satisfies them and that the controller only uses what they promise. Commands are a closed set (`GAME_COMMAND`), so an unknown command is a type error instead of a silent no-op.
 
 The controller therefore contains application policy without knowing whether the concrete UI is DOM, Canvas, keyboard, touch, or something else.
 
@@ -86,9 +89,11 @@ It:
 2. caps unusually large frame gaps
 3. accumulates elapsed time
 4. advances simulation in fixed 1/120-second increments
-5. renders after the simulation catches up
+5. renders after the simulation catches up, passing how far time has moved into the next step
 
-This keeps game speed independent from 60 Hz vs 120 Hz displays and makes timing policy testable independently from the browser.
+The controller uses that fraction to blend the last two simulation states (`interpolateState`), so motion stays smooth on 60, 120 and 144 Hz displays alike. A serve teleports the ball, so states across a serve are never blended.
+
+The loop is stopped whenever the match is not running, including from inside an update when the winning point is scored. Ready, paused, and game-over screens are drawn once and then cost nothing.
 
 ## 4. Adapters
 
@@ -96,26 +101,24 @@ Browser-specific concerns live in `src/adapters/`.
 
 ### InputController
 
-Translates:
+Translates pointer, mouse, touch, and keyboard input into device-neutral movement snapshots and commands. Its policy:
 
-- pointer / mouse / touch movement
-- Arrow Left / Arrow Right
-- A / D
-- Space
-
-into device-neutral movement snapshots and commands.
+- keys are matched by physical code (`KeyA`, `KeyD`, arrows, `Space`), so layouts such as Ukrainian or AZERTY work
+- combinations with `Ctrl`, `Meta` or `Alt` are left to the browser
+- the most recently used device steers; a key press takes over from a resting mouse, and a horizontal pointer move or a tap takes over from the keyboard
+- losing window focus or hiding the page releases held keys and sends an idempotent pause, because key-up events are lost while the page is unfocused
 
 ### DomGameView
 
-Owns buttons and status text. It translates UI clicks into application commands and presentation data back into DOM state.
+Owns buttons and status text. It translates clicks into application commands and presentation data back into DOM state. After any click it hands focus back to the board, so `Space` controls the game instead of re-activating the focused button. It only writes to the DOM when the presentation changes, which keeps the `aria-live` status region from being rewritten every frame.
 
 ### CanvasRenderer
 
-Converts game state into pixels. It never decides scoring, collision, or winning rules.
+Converts game state into pixels. It never decides scoring, collision, or winning rules. It sizes the canvas backing store to the displayed size in device pixels, and re-sizes on layout and pixel-ratio changes such as browser zoom, so the board stays sharp on high-density screens. Drawing code keeps working in board coordinates through the context transform.
 
 ### BrowserFrameScheduler
 
-Wraps `requestAnimationFrame` / `cancelAnimationFrame`. This small adapter keeps browser scheduling out of the application core.
+Wraps `requestAnimationFrame` / `cancelAnimationFrame` of the injected window. This small adapter keeps browser scheduling out of the application core.
 
 ## State ownership
 
@@ -161,44 +164,37 @@ Prediction and physical ability remain separate:
 
 ## Executable architecture constraints
 
-Documentation can become stale, so the project also encodes key architectural rules as checks.
+Documentation can become stale, so the project encodes its rules as checks that fail CI:
 
-`scripts/check-project.mjs` verifies that:
-
-- expected modules exist
-- `script.js` remains a small composition root
-- domain/application files contain no browser-only APIs
-- application files do not import adapters
-- inline HTML event handlers are not introduced
-
-If a future change violates these constraints, CI fails.
+- `eslint.config.js` — layer boundaries, no host globals or clock or randomness in the core, browser globals only in the composition root
+- `tests/architecture-rules.test.js` — proves those lint rules still catch violations
+- `tsconfig.json` + `npm run typecheck` — adapters satisfy the port contracts
+- `scripts/check-project.mjs` — expected modules exist, `script.js` stays a small composition root, no inline HTML event handlers
 
 ## Testing strategy
 
 ### Unit tests
 
-The dependency-free unit suite targets deterministic rules:
+The dependency-free unit suite targets deterministic rules and the logic of the adapters:
 
-- state-machine transitions
-- scoring and win condition
-- double-score prevention
-- serve direction
-- paddle clamping
-- wall reflection
-- center and edge bounce behavior
-- speed cap
-- swept collision
-- opponent target and movement limits
+- domain: state machine, scoring, serves, paddle control, collisions toward both paddles, the speed cap, and a full rally
+- application: loop lifecycle, interpolation, commands, and status text
+- adapters: input policy and view behavior, driven through fake event targets thanks to injected globals
+- architecture: the lint rules themselves
 
-### Browser smoke tests
+A coverage gate (95% lines, 90% branches and functions over `src/`) keeps it that way.
 
-Playwright checks the assembled system on desktop and mobile Chromium:
+### Browser tests
 
-- application boot
-- no page errors
-- state transitions through UI and keyboard
-- responsive Canvas visibility
-- pointer interaction
+Playwright checks the assembled system on desktop and mobile Chromium. Instead of reaching into application state, the tests read the player paddle's position from the canvas pixels. They cover:
+
+- application boot without page errors
+- state transitions through buttons and the keyboard, including `Space` after a mouse click
+- mouse steering and the keyboard taking over from a resting mouse
+- layout-independent keys and touch taps
+- auto-pause on focus loss
+- an idle render loop and a quiet live region outside of a match
+- a canvas backing store that matches device pixels
 
 The goal is not to duplicate every domain test in a browser. Browser tests cover integration seams; unit tests cover rule permutations.
 
@@ -211,7 +207,7 @@ The project does not add:
 - a dependency-injection library
 - a physics engine
 - a repository/service abstraction with no external resource
-- a bundler
+- a bundler or a compile step
 - a backend
 
 Those tools would increase surface area without solving current requirements.
@@ -222,10 +218,11 @@ The boundaries make future changes local:
 
 - replace opponent strategy → `domain/opponent.js`
 - tune difficulty → `config.js`
-- replace Canvas → another renderer adapter
-- replace DOM controls → another view adapter
-- add gamepad support → another input adapter
-- replace browser frame scheduling → another scheduler
+- randomize serves → inject a seeded random source, keeping the core deterministic
+- replace Canvas → another `RendererPort` adapter
+- replace DOM controls → another `ViewPort` adapter
+- add gamepad support → another `InputPort` adapter
+- replace browser frame scheduling → another `FrameScheduler`
 - add second human player → input mapping + domain command
 - add replay/debug snapshots → observe controller state without rewriting physics
 

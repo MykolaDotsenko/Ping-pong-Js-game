@@ -6,6 +6,8 @@ import {
 } from './physics.js';
 import { moveOpponent } from './opponent.js';
 
+/** @import { Ball, GameConfig, GameState, InputSnapshot, Side } from './types.js' */
+
 export const GAME_PHASE = Object.freeze({
   READY: 'ready',
   RUNNING: 'running',
@@ -13,6 +15,12 @@ export const GAME_PHASE = Object.freeze({
   GAME_OVER: 'game-over',
 });
 
+/**
+ * @param {GameConfig} config
+ * @param {1 | -1} [verticalDirection]
+ * @param {1 | -1} [horizontalDirection]
+ * @returns {Ball}
+ */
 function createServeBall(config, verticalDirection = 1, horizontalDirection = 1) {
   const speed = config.ball.initialSpeed;
   const horizontalSpeed = speed * 0.34 * horizontalDirection;
@@ -26,6 +34,10 @@ function createServeBall(config, verticalDirection = 1, horizontalDirection = 1)
   };
 }
 
+/**
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 export function createInitialState(config) {
   return {
     phase: GAME_PHASE.READY,
@@ -38,6 +50,11 @@ export function createInitialState(config) {
   };
 }
 
+/**
+ * @param {GameState} state
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 export function startGame(state, config) {
   if (state.phase === GAME_PHASE.PAUSED) {
     return { ...state, phase: GAME_PHASE.RUNNING };
@@ -53,22 +70,59 @@ export function startGame(state, config) {
   };
 }
 
+/**
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 export function resetGame(config) {
   return createInitialState(config);
 }
 
-export function togglePause(state) {
+/**
+ * Pauses a running match and leaves every other phase untouched, so it is safe to
+ * request repeatedly, for example whenever the page loses focus.
+ *
+ * @param {GameState} state
+ * @returns {GameState}
+ */
+export function pauseGame(state) {
   if (state.phase === GAME_PHASE.RUNNING) {
     return { ...state, phase: GAME_PHASE.PAUSED };
-  }
-
-  if (state.phase === GAME_PHASE.PAUSED) {
-    return { ...state, phase: GAME_PHASE.RUNNING };
   }
 
   return state;
 }
 
+/**
+ * @param {GameState} state
+ * @returns {GameState}
+ */
+export function togglePause(state) {
+  if (state.phase === GAME_PHASE.PAUSED) {
+    return { ...state, phase: GAME_PHASE.RUNNING };
+  }
+
+  return pauseGame(state);
+}
+
+/**
+ * @param {GameState} state
+ * @returns {Side | null} the match winner, or null while the match is not over
+ */
+export function getWinner(state) {
+  if (state.phase !== GAME_PHASE.GAME_OVER) {
+    return null;
+  }
+
+  return state.score.player > state.score.opponent ? 'player' : 'opponent';
+}
+
+/**
+ * @param {GameState} state
+ * @param {number} targetX
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 export function setPlayerPosition(state, targetX, config) {
   return {
     ...state,
@@ -79,6 +133,13 @@ export function setPlayerPosition(state, targetX, config) {
   };
 }
 
+/**
+ * @param {GameState} state
+ * @param {number} axis
+ * @param {number} deltaSeconds
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 export function movePlayerByAxis(state, axis, deltaSeconds, config) {
   if (!axis) {
     return state;
@@ -88,6 +149,11 @@ export function movePlayerByAxis(state, axis, deltaSeconds, config) {
   return setPlayerPosition(state, nextX, config);
 }
 
+/**
+ * @param {GameState} state
+ * @param {Side} scorer
+ * @param {GameConfig} config
+ */
 function nextServeBall(state, scorer, config) {
   const serveNumber = state.serveNumber + 1;
   const horizontalDirection = serveNumber % 2 === 0 ? 1 : -1;
@@ -99,6 +165,12 @@ function nextServeBall(state, scorer, config) {
   };
 }
 
+/**
+ * @param {GameState} state
+ * @param {Side} scorer
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 function awardPoint(state, scorer, config) {
   const score = {
     ...state.score,
@@ -126,6 +198,11 @@ function awardPoint(state, scorer, config) {
   };
 }
 
+/**
+ * @param {GameState} state
+ * @param {number} deltaSeconds
+ * @returns {GameState}
+ */
 function moveBall(state, deltaSeconds) {
   return {
     ...state,
@@ -137,6 +214,12 @@ function moveBall(state, deltaSeconds) {
   };
 }
 
+/**
+ * @param {GameState} state
+ * @param {Ball} previousBall
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 function resolveCollisions(state, previousBall, config) {
   let ball = reflectFromSideWalls(state.ball, config);
   const playerY = config.height - config.paddle.inset - config.paddle.height;
@@ -189,6 +272,15 @@ function resolveCollisions(state, previousBall, config) {
   return { ...state, ball };
 }
 
+/**
+ * Advances the simulation by one fixed step. Does nothing unless the match is running.
+ *
+ * @param {GameState} state
+ * @param {number} deltaSeconds
+ * @param {InputSnapshot} input
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 export function advanceGame(state, deltaSeconds, input, config) {
   if (state.phase !== GAME_PHASE.RUNNING) {
     return state;
@@ -197,7 +289,7 @@ export function advanceGame(state, deltaSeconds, input, config) {
   let nextState = state;
 
   if (Number.isFinite(input.pointerX)) {
-    nextState = setPlayerPosition(nextState, input.pointerX, config);
+    nextState = setPlayerPosition(nextState, /** @type {number} */ (input.pointerX), config);
   } else {
     nextState = movePlayerByAxis(nextState, input.horizontalAxis, deltaSeconds, config);
   }
