@@ -1,4 +1,9 @@
-/** @import { Ball, GameConfig } from './types.js' */
+/** @import { Ball, GameConfig, Paddle } from './types.js' */
+
+// Share of a ball's spin that survives a wall bounce, reversed so the ball curves away from the wall.
+const WALL_SPIN_RETENTION = 0.6;
+// Spin below this is dropped, so a decaying curve ends instead of lingering forever.
+const MIN_SPIN = 0.01;
 
 /**
  * @param {number} value
@@ -23,6 +28,20 @@ export function moveTowards(current, target, maxDelta) {
 }
 
 /**
+ * Reflects a coordinate back into [min, max] as if it had bounced off both ends, which is
+ * where a ball travelling in a straight line ends up after wall bounces.
+ *
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ */
+export function foldIntoRange(value, min, max) {
+  const span = max - min;
+  const offset = (((value - min) % (2 * span)) + 2 * span) % (2 * span);
+  return min + (offset <= span ? offset : 2 * span - offset);
+}
+
+/**
  * @param {number} centerX
  * @param {GameConfig} config
  */
@@ -41,6 +60,23 @@ export function paddleBounds(centerX, config) {
 export function clampPaddleCenter(centerX, config) {
   const halfWidth = config.paddle.width / 2;
   return clamp(centerX, halfWidth, config.width - halfWidth);
+}
+
+/**
+ * Moves a paddle to x and updates its smoothed velocity, so a quick flick reads as speed
+ * while a single jittery sample does not.
+ *
+ * @param {Paddle} paddle
+ * @param {number} x
+ * @param {number} deltaSeconds
+ * @param {GameConfig} config
+ * @returns {Paddle}
+ */
+export function movePaddle(paddle, x, deltaSeconds, config) {
+  const measured = (x - paddle.x) / deltaSeconds;
+  const blend = Math.min(1, config.paddle.velocityResponse * deltaSeconds);
+
+  return { ...paddle, x, vx: paddle.vx + (measured - paddle.vx) * blend };
 }
 
 /**
@@ -89,24 +125,61 @@ export function findPaddleCollision({
 }
 
 /**
+ * The contact point sets the outgoing angle; the paddle's own sideways motion adds spin.
+ *
  * @param {Ball} ball
  * @param {number} paddleCenterX
  * @param {1 | -1} direction vertical direction after the bounce
  * @param {GameConfig} config
+ * @param {number} [paddleVx] horizontal velocity of the paddle at impact
  * @returns {Ball}
  */
-export function bounceFromPaddle(ball, paddleCenterX, direction, config) {
+export function bounceFromPaddle(ball, paddleCenterX, direction, config, paddleVx = 0) {
   const halfWidth = config.paddle.width / 2;
   const normalizedOffset = clamp((ball.x - paddleCenterX) / halfWidth, -1, 1);
   const angle = normalizedOffset * config.ball.maxBounceAngleRadians;
   const currentSpeed = Math.hypot(ball.vx, ball.vy);
   const nextSpeed = Math.min(currentSpeed * config.ball.speedIncrease, config.ball.maxSpeed);
+  const spin = clamp(paddleVx * config.ball.spinPerPaddleSpeed, -config.ball.maxSpin, config.ball.maxSpin);
 
   return {
     ...ball,
     vx: Math.sin(angle) * nextSpeed,
     vy: Math.cos(angle) * nextSpeed * direction,
+    spin,
   };
+}
+
+/**
+ * Bends a spinning ball's path: its direction turns toward +x for positive spin, its speed
+ * stays the same, and the spin fades. The ball never leans further from vertical than the
+ * steepest bounce angle, so a curve cannot stall a rally.
+ *
+ * @param {Ball} ball
+ * @param {number} deltaSeconds
+ * @param {GameConfig} config
+ * @returns {Ball}
+ */
+export function curveBall(ball, deltaSeconds, config) {
+  if (!ball.spin) {
+    return ball;
+  }
+
+  const speed = Math.hypot(ball.vx, ball.vy);
+  const verticalSign = Math.sign(ball.vy);
+  const turn = -verticalSign * ball.spin * deltaSeconds;
+  let vx = ball.vx * Math.cos(turn) - ball.vy * Math.sin(turn);
+  let vy = ball.vx * Math.sin(turn) + ball.vy * Math.cos(turn);
+  let spin = ball.spin * Math.exp(-config.ball.spinDecay * deltaSeconds);
+  const maxAngle = config.ball.maxBounceAngleRadians;
+
+  if (Math.abs(vx) > speed * Math.sin(maxAngle) || Math.sign(vy) !== verticalSign) {
+    vx = Math.sign(ball.spin) * speed * Math.sin(maxAngle);
+    vy = verticalSign * speed * Math.cos(maxAngle);
+    spin = 0;
+  }
+
+  return { ...ball, vx, vy, spin: Math.abs(spin) < MIN_SPIN ? 0 : spin };
 }
 
 /**
@@ -116,15 +189,14 @@ export function bounceFromPaddle(ball, paddleCenterX, direction, config) {
  */
 export function reflectFromSideWalls(ball, config) {
   const radius = config.ball.radius;
-  let { x, vx } = ball;
 
-  if (x - radius < 0 && vx < 0) {
-    x = radius;
-    vx = -vx;
-  } else if (x + radius > config.width && vx > 0) {
-    x = config.width - radius;
-    vx = -vx;
+  if (ball.x - radius < 0 && ball.vx < 0) {
+    return { ...ball, x: radius, vx: -ball.vx, spin: -ball.spin * WALL_SPIN_RETENTION };
   }
 
-  return { ...ball, x, vx };
+  if (ball.x + radius > config.width && ball.vx > 0) {
+    return { ...ball, x: config.width - radius, vx: -ball.vx, spin: -ball.spin * WALL_SPIN_RETENTION };
+  }
+
+  return ball;
 }

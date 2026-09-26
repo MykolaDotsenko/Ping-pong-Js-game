@@ -4,17 +4,16 @@ import assert from 'node:assert/strict';
 import { InputController } from '../src/adapters/input-controller.js';
 import { GAME_COMMAND } from '../src/application/ports.js';
 
-// The board is 800 units wide and displayed 400px wide, 100px from the left edge.
-class FakeSurface extends EventTarget {
-  getBoundingClientRect() {
-    return { left: 100, width: 400 };
-  }
-}
+// The pointer surface (board plus thumb rail) listens for events; the board, 800 units wide
+// and displayed 400px wide 100px from the left edge, maps them onto the court.
+const board = {
+  getBoundingClientRect: () => ({ left: 100, width: 400 }),
+};
 
 function setup() {
   const window = new EventTarget();
   const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
-  const input = new InputController({ surface: new FakeSurface(), window, document, config: { width: 800 } });
+  const input = new InputController({ surface: new EventTarget(), board, window, document, config: { width: 800 } });
   const commands = [];
 
   input.onCommand((command) => commands.push(command));
@@ -112,6 +111,27 @@ test('Space sends the primary command unless it repeats or a control has focus',
 
   assert.ok(space.defaultPrevented);
   assert.deepEqual(commands, [GAME_COMMAND.PRIMARY]);
+});
+
+test('Escape toggles pause, once per press', () => {
+  const { window, commands } = setup();
+
+  press(window, { code: 'Escape', key: 'Escape' });
+  press(window, { code: 'Escape', key: 'Escape', repeat: true });
+
+  assert.deepEqual(commands, [GAME_COMMAND.TOGGLE_PAUSE]);
+});
+
+test('taps on controls, or icons inside them, do not move the paddle', () => {
+  const { input } = setup();
+  const insideButton = { closest: (selector) => (selector.includes('button') ? {} : null) };
+  const plainElement = { closest: () => null };
+
+  input.handlePointer({ clientX: 150, target: insideButton }, true);
+  assert.equal(input.snapshot().pointerX, null);
+
+  input.handlePointer({ clientX: 150, target: plainElement }, true);
+  assert.equal(input.snapshot().pointerX, 100);
 });
 
 test('the most recently used device steers the paddle', () => {

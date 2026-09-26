@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { GameController } from '../src/application/game-controller.js';
 import { GAME_COMMAND } from '../src/application/ports.js';
-import { GAME_CONFIG } from '../src/config.js';
+import { DIFFICULTY_CONFIGS, GAME_CONFIG } from '../src/config.js';
 import { GAME_PHASE } from '../src/domain/game.js';
 
 function createFrameScheduler() {
@@ -46,8 +46,22 @@ function createPort(extra = {}) {
   };
 }
 
-function setup() {
+function createPreferences(initial = {}) {
+  let values = { difficulty: 'normal', sound: true, vibration: true, bestRally: 0, ...initial };
+
+  return {
+    writes: [],
+    get: () => values,
+    set(changes) {
+      this.writes.push(changes);
+      values = { ...values, ...changes };
+    },
+  };
+}
+
+function setup(preferenceValues) {
   const scheduler = createFrameScheduler();
+  const preferences = createPreferences(preferenceValues);
   const renderer = createPort({
     frames: [],
     render(state) {
@@ -66,13 +80,42 @@ function setup() {
       return this.current;
     },
   });
-  const controller = new GameController({ config: GAME_CONFIG, renderer, input, view, scheduler });
+  const feedback = {
+    received: [],
+    handle(events, state) {
+      this.received.push({ types: events.map((event) => event.type), phase: state.phase });
+    },
+  };
+  const controller = new GameController({
+    configs: DIFFICULTY_CONFIGS,
+    preferences,
+    renderer,
+    input,
+    view,
+    scheduler,
+    feedback: [feedback],
+  });
   controller.connect();
 
-  return { controller, scheduler, renderer, view, input };
+  return { controller, scheduler, renderer, view, input, feedback, preferences };
 }
 
 const lastOf = (items) => items[items.length - 1];
+
+// A ball a few units above the player's paddle, about to be returned.
+const ballAtPlayerPaddle = {
+  x: GAME_CONFIG.width / 2,
+  y: GAME_CONFIG.height - GAME_CONFIG.paddle.inset - GAME_CONFIG.paddle.height - GAME_CONFIG.ball.radius - 3,
+  vx: 0,
+  vy: 400,
+  spin: 0,
+};
+
+// Puts the ball in play, skipping the serve pause.
+function inPlay(controller, overrides = {}) {
+  controller.state = { ...controller.state, serveCountdown: 0, ...overrides };
+  controller.previousState = controller.state;
+}
 
 test('connecting draws the ready screen and leaves the loop idle', () => {
   const { scheduler, renderer, view, input } = setup();
@@ -82,6 +125,12 @@ test('connecting draws the ready screen and leaves the loop idle', () => {
   assert.deepEqual(lastOf(view.presentations), {
     phase: GAME_PHASE.READY,
     status: 'First to 7. Start when ready.',
+    score: { player: 0, opponent: 0 },
+    rally: 0,
+    longestRally: 0,
+    bestRally: 0,
+    newBest: false,
+    winner: null,
   });
   assert.equal(scheduler.pending.size, 0);
 });
@@ -125,6 +174,19 @@ test('the primary command starts an idle match and toggles pause during one', ()
   assert.deepEqual(controller.state.score, { player: 0, opponent: 0 });
 });
 
+test('restart abandons the current match for a fresh one', () => {
+  const { controller, view, scheduler } = setup();
+
+  view.handler(GAME_COMMAND.START);
+  controller.state = { ...controller.state, score: { player: 3, opponent: 5 } };
+  view.handler(GAME_COMMAND.TOGGLE_PAUSE);
+  view.handler(GAME_COMMAND.RESTART);
+
+  assert.equal(controller.state.phase, GAME_PHASE.RUNNING);
+  assert.deepEqual(controller.state.score, { player: 0, opponent: 0 });
+  assert.equal(scheduler.pending.size, 1);
+});
+
 test('focus loss pauses a running match and never resumes a paused one', () => {
   const { controller, input } = setup();
 
@@ -148,11 +210,49 @@ test('commands that change nothing do not redraw', () => {
   assert.equal(view.presentations.length, 2);
 });
 
+test('a new match uses the difficulty chosen in the preferences at that moment', () => {
+  const { controller, view, preferences } = setup({ difficulty: 'easy' });
+
+  assert.strictEqual(controller.config, DIFFICULTY_CONFIGS.easy);
+
+  preferences.set({ difficulty: 'hard' });
+  view.handler(GAME_COMMAND.START);
+  assert.strictEqual(controller.config, DIFFICULTY_CONFIGS.hard);
+
+  // Changing it mid-match waits for the next match.
+  preferences.set({ difficulty: 'easy' });
+  view.handler(GAME_COMMAND.TOGGLE_PAUSE);
+  view.handler(GAME_COMMAND.START);
+  assert.strictEqual(controller.config, DIFFICULTY_CONFIGS.hard);
+});
+
+test('an unknown stored difficulty falls back to normal', () => {
+  const { controller } = setup({ difficulty: 'impossible' });
+
+  assert.strictEqual(controller.config, GAME_CONFIG);
+});
+
+test('events reach every feedback adapter once, from commands and from simulation steps', () => {
+  const { controller, scheduler, view, feedback } = setup();
+
+  view.handler(GAME_COMMAND.START);
+  inPlay(controller, { ball: ballAtPlayerPaddle });
+  scheduler.flush(1000);
+  scheduler.flush(1020);
+  view.handler(GAME_COMMAND.TOGGLE_PAUSE);
+
+  assert.deepEqual(feedback.received, [
+    { types: ['match-start'], phase: GAME_PHASE.RUNNING },
+    { types: ['paddle-hit'], phase: GAME_PHASE.RUNNING },
+    { types: ['paused'], phase: GAME_PHASE.PAUSED },
+  ]);
+});
+
 test('frames blend the last two simulation steps', () => {
   const { controller, scheduler, renderer, view } = setup();
 
   view.handler(GAME_COMMAND.START);
-  controller.state = { ...controller.state, serveCountdown: 0 };
+  inPlay(controller);
   scheduler.flush(1000);
   scheduler.flush(1000 + GAME_CONFIG.fixedStepSeconds * 1500);
 
@@ -164,15 +264,13 @@ test('frames blend the last two simulation steps', () => {
 });
 
 test('the winning point shows the final frame and stops the loop', () => {
-  const { controller, scheduler, renderer, view } = setup();
+  const { controller, scheduler, renderer, view, feedback } = setup();
 
   view.handler(GAME_COMMAND.START);
-  controller.state = {
-    ...controller.state,
+  inPlay(controller, {
     score: { player: GAME_CONFIG.winningScore - 1, opponent: 0 },
-    ball: { x: 400, y: -GAME_CONFIG.ball.radius - 1, vx: 0, vy: -300 },
-    serveCountdown: 0,
-  };
+    ball: { x: 250, y: -GAME_CONFIG.ball.radius - 1, vx: 0, vy: -300, spin: 0 },
+  });
 
   scheduler.flush(1000);
   scheduler.flush(1020);
@@ -180,10 +278,47 @@ test('the winning point shows the final frame and stops the loop', () => {
   assert.equal(controller.state.phase, GAME_PHASE.GAME_OVER);
   assert.equal(scheduler.pending.size, 0);
   assert.strictEqual(lastOf(renderer.frames), controller.state);
+  assert.deepEqual(lastOf(feedback.received).types, ['point', 'game-over']);
   assert.deepEqual(lastOf(view.presentations), {
     phase: GAME_PHASE.GAME_OVER,
     status: 'Match complete — you won.',
+    score: { player: GAME_CONFIG.winningScore, opponent: 0 },
+    rally: 0,
+    longestRally: 0,
+    bestRally: 0,
+    newBest: false,
+    winner: 'player',
   });
+});
+
+test('a longer rally than ever before is remembered and flagged for this match', () => {
+  const { controller, scheduler, view, preferences } = setup({ bestRally: 3 });
+
+  view.handler(GAME_COMMAND.START);
+  inPlay(controller, { rally: 3, longestRally: 3, ball: ballAtPlayerPaddle });
+  scheduler.flush(1000);
+  scheduler.flush(1020);
+
+  assert.deepEqual(preferences.writes, [{ bestRally: 4 }]);
+  assert.equal(lastOf(view.presentations).bestRally, 4);
+  assert.equal(lastOf(view.presentations).newBest, true);
+
+  view.handler(GAME_COMMAND.RESTART);
+  assert.equal(lastOf(view.presentations).newBest, false);
+  assert.equal(lastOf(view.presentations).bestRally, 4);
+});
+
+test('a short first rally is saved as the record without being celebrated', () => {
+  const { controller, scheduler, view, preferences } = setup();
+
+  view.handler(GAME_COMMAND.START);
+  inPlay(controller, { ball: ballAtPlayerPaddle });
+  scheduler.flush(1000);
+  scheduler.flush(1020);
+
+  assert.deepEqual(preferences.writes, [{ bestRally: 1 }]);
+  assert.equal(lastOf(view.presentations).bestRally, 1);
+  assert.equal(lastOf(view.presentations).newBest, false);
 });
 
 test('the status line reports the live score and a computer win', () => {

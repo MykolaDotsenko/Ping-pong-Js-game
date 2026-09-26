@@ -35,6 +35,7 @@ const nodeGlobals = {
   console: 'readonly',
   process: 'readonly',
   fetch: 'readonly',
+  structuredClone: 'readonly',
   Event: 'readonly',
   EventTarget: 'readonly',
 };

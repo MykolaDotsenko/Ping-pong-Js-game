@@ -8,27 +8,43 @@ import { GAME_COMMAND } from '../application/ports.js';
 // Physical key codes rather than characters, so A/D also work on Cyrillic, AZERTY and other layouts.
 const LEFT_KEYS = new Set(['ArrowLeft', 'KeyA']);
 const RIGHT_KEYS = new Set(['ArrowRight', 'KeyD']);
-const INTERACTIVE_TAGS = new Set(['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA']);
+const INTERACTIVE_TAGS = ['A', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'];
+const INTERACTIVE_SELECTOR = INTERACTIVE_TAGS.join(',').toLowerCase();
 
 /**
+ * Whether the event came from a control (or something inside one, like an icon), which keeps
+ * its own meaning for Space and taps.
+ *
  * @param {EventTarget | null} target
  */
 function isInteractiveTarget(target) {
-  const { tagName } = /** @type {{ tagName?: string } | null} */ (target) ?? {};
-  return tagName !== undefined && INTERACTIVE_TAGS.has(tagName);
+  const element = /** @type {{ tagName?: string, closest?: (selector: string) => unknown } | null} */ (target);
+
+  if (!element) {
+    return false;
+  }
+
+  if (typeof element.closest === 'function') {
+    return element.closest(INTERACTIVE_SELECTOR) !== null;
+  }
+
+  return element.tagName !== undefined && INTERACTIVE_TAGS.includes(element.tagName);
 }
 
 /** @implements {InputPort} */
 export class InputController {
   /**
    * @param {object} options
-   * @param {HTMLElement} options.surface element that receives pointer input
+   * @param {HTMLElement} options.surface area that listens for pointers, which may extend
+   *   beyond the board so a thumb can steer from below it without covering the play
+   * @param {HTMLElement} options.board element whose width maps pointer positions onto the court
    * @param {Window} options.window
    * @param {Document} options.document
    * @param {{ width: number }} options.config
    */
-  constructor({ surface, window, document, config }) {
+  constructor({ surface, board, window, document, config }) {
     this.surface = surface;
+    this.board = board;
     this.window = window;
     this.document = document;
     this.config = config;
@@ -102,9 +118,15 @@ export class InputController {
       return;
     }
 
-    if (event.code === 'Space' && !event.repeat && !isInteractiveTarget(event.target)) {
+    if (event.repeat) {
+      return;
+    }
+
+    if (event.code === 'Space' && !isInteractiveTarget(event.target)) {
       this.commandHandler(GAME_COMMAND.PRIMARY);
       event.preventDefault();
+    } else if (event.code === 'Escape') {
+      this.commandHandler(GAME_COMMAND.TOGGLE_PAUSE);
     }
   }
 
@@ -133,13 +155,14 @@ export class InputController {
    * @param {boolean} isPress a press (click or tap) always takes over steering
    */
   handlePointer(event, isPress) {
-    // Moves without horizontal travel (vertical or synthetic) must not take over from the keyboard.
-    if (!isPress && event.clientX === this.lastClientX) {
+    // Buttons on the surface keep their own meaning, and moves without horizontal travel
+    // (vertical or synthetic) must not take over from the keyboard.
+    if (isInteractiveTarget(event.target) || (!isPress && event.clientX === this.lastClientX)) {
       return;
     }
 
     this.lastClientX = event.clientX;
-    const rect = this.surface.getBoundingClientRect();
+    const rect = this.board.getBoundingClientRect();
     this.pointerX = ((event.clientX - rect.left) / rect.width) * this.config.width;
   }
 
