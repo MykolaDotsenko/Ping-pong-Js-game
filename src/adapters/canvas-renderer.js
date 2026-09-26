@@ -1,15 +1,89 @@
-import { GAME_PHASE } from '../domain/game.js';
+import { GAME_PHASE, getWinner } from '../domain/game.js';
 
+/**
+ * @import { GameConfig, GameState } from '../domain/types.js'
+ * @import { RendererPort } from '../application/ports.js'
+ */
+
+/** @implements {RendererPort} */
 export class CanvasRenderer {
-  constructor(canvas, config) {
+  /**
+   * @param {object} options
+   * @param {HTMLCanvasElement} options.canvas
+   * @param {Window & typeof globalThis} options.window
+   * @param {GameConfig} options.config
+   */
+  constructor({ canvas, window, config }) {
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      throw new Error('Ping Pong needs Canvas 2D support.');
+    }
+
     this.canvas = canvas;
+    this.window = window;
     this.config = config;
-    this.context = canvas.getContext('2d');
-    this.canvas.width = config.width;
-    this.canvas.height = config.height;
+    this.context = context;
+    /** @type {GameState | null} */
+    this.lastState = null;
+    /** @type {ResizeObserver | null} */
+    this.resizeObserver = null;
+    this.stopWatchingPixelRatio = () => {};
+    this.resize();
   }
 
+  connect() {
+    const observer = new this.window.ResizeObserver(() => this.resize());
+    observer.observe(this.canvas);
+    this.resizeObserver = observer;
+    this.watchPixelRatio();
+  }
+
+  disconnect() {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.stopWatchingPixelRatio();
+  }
+
+  // Browser zoom or a move to another display changes the pixel ratio without resizing the canvas.
+  watchPixelRatio() {
+    const query = this.window.matchMedia(`(resolution: ${this.window.devicePixelRatio}dppx)`);
+    const handleChange = () => {
+      this.resize();
+      this.watchPixelRatio();
+    };
+
+    query.addEventListener('change', handleChange, { once: true });
+    this.stopWatchingPixelRatio = () => query.removeEventListener('change', handleChange);
+  }
+
+  // Match the backing store to the displayed size in device pixels so the board stays sharp.
+  // Drawing code keeps using board coordinates through the context transform.
+  resize() {
+    const { width, height } = this.config;
+    const displayWidth = this.canvas.clientWidth || width;
+    const scale = (displayWidth * (this.window.devicePixelRatio || 1)) / width;
+    const backingWidth = Math.round(width * scale);
+    const backingHeight = Math.round(height * scale);
+
+    if (this.canvas.width === backingWidth && this.canvas.height === backingHeight) {
+      return;
+    }
+
+    // Resizing clears the canvas and resets the context, so restore the transform and repaint.
+    this.canvas.width = backingWidth;
+    this.canvas.height = backingHeight;
+    this.context.setTransform(backingWidth / width, 0, 0, backingHeight / height, 0, 0);
+
+    if (this.lastState) {
+      this.render(this.lastState);
+    }
+  }
+
+  /** @param {GameState} state */
   render(state) {
+    this.lastState = state;
+
     const ctx = this.context;
     const { width, height, paddle, ball } = this.config;
 
@@ -26,10 +100,10 @@ export class CanvasRenderer {
     if (state.phase === GAME_PHASE.READY) {
       this.drawOverlay('Ready', 'Press Start or Space');
     } else if (state.phase === GAME_PHASE.PAUSED) {
-      this.drawOverlay('Paused', 'Press Pause or Space to continue');
+      this.drawOverlay('Paused', 'Press Resume or Space to continue');
     } else if (state.phase === GAME_PHASE.GAME_OVER) {
-      const winner = state.score.player > state.score.opponent ? 'You win' : 'Computer wins';
-      this.drawOverlay(winner, 'Press Start for a new match');
+      const winner = getWinner(state) === 'player' ? 'You win' : 'Computer wins';
+      this.drawOverlay(winner, 'Press Start or Space for a new match');
     }
   }
 
@@ -46,6 +120,7 @@ export class CanvasRenderer {
     ctx.restore();
   }
 
+  /** @param {GameState} state */
   drawScore(state) {
     const ctx = this.context;
     ctx.save();
@@ -57,6 +132,10 @@ export class CanvasRenderer {
     ctx.restore();
   }
 
+  /**
+   * @param {number} centerX
+   * @param {number} y
+   */
   drawPaddle(centerX, y) {
     const { paddle } = this.config;
     const x = centerX - paddle.width / 2;
@@ -70,6 +149,11 @@ export class CanvasRenderer {
     ctx.restore();
   }
 
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @param {number} radius
+   */
   drawBall(x, y, radius) {
     const ctx = this.context;
     ctx.save();
@@ -82,6 +166,10 @@ export class CanvasRenderer {
     ctx.restore();
   }
 
+  /**
+   * @param {string} title
+   * @param {string} subtitle
+   */
   drawOverlay(title, subtitle) {
     const ctx = this.context;
     ctx.save();

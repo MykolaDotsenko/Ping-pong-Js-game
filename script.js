@@ -5,32 +5,36 @@ import { DomGameView } from './src/adapters/dom-game-view.js';
 import { InputController } from './src/adapters/input-controller.js';
 import { GameController } from './src/application/game-controller.js';
 
-const canvas = document.querySelector('[data-game-canvas]');
-const startButton = document.querySelector('[data-action="start"]');
-const pauseButton = document.querySelector('[data-action="pause"]');
-const resetButton = document.querySelector('[data-action="reset"]');
-const status = document.querySelector('[data-game-status]');
+// Browser globals are resolved here, once, and injected everywhere else.
 
-if (!canvas || !startButton || !pauseButton || !resetButton || !status) {
-  throw new Error('Ping Pong could not start because the application shell is incomplete.');
+/**
+ * @template {Element} T
+ * @param {string} selector
+ * @param {{ new (): T }} type
+ * @returns {T}
+ */
+function requireElement(selector, type) {
+  const element = document.querySelector(selector);
+
+  if (!(element instanceof type)) {
+    throw new Error(`Ping Pong could not start because ${selector} is missing from the page.`);
+  }
+
+  return element;
 }
 
-const renderer = new CanvasRenderer(canvas, GAME_CONFIG);
-const input = new InputController(canvas, GAME_CONFIG);
-const view = new DomGameView({
-  startButton,
-  pauseButton,
-  resetButton,
-  status,
-});
-const scheduler = new BrowserFrameScheduler();
+const canvas = requireElement('[data-game-canvas]', HTMLCanvasElement);
+const startButton = requireElement('[data-action="start"]', HTMLButtonElement);
+const pauseButton = requireElement('[data-action="pause"]', HTMLButtonElement);
+const resetButton = requireElement('[data-action="reset"]', HTMLButtonElement);
+const status = requireElement('[data-game-status]', HTMLElement);
 
 const controller = new GameController({
   config: GAME_CONFIG,
-  renderer,
-  input,
-  view,
-  scheduler,
+  renderer: new CanvasRenderer({ canvas, window, config: GAME_CONFIG }),
+  input: new InputController({ surface: canvas, window, document, config: GAME_CONFIG }),
+  view: new DomGameView({ startButton, pauseButton, resetButton, status, board: canvas }),
+  scheduler: new BrowserFrameScheduler(window),
 });
 
 controller.connect();

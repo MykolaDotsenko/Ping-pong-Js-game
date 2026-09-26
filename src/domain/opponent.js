@@ -1,5 +1,11 @@
 import { clampPaddleCenter, moveTowards } from './physics.js';
 
+/** @import { GameConfig, GameState } from './types.js' */
+
+/**
+ * @param {GameState} state
+ * @param {GameConfig} config
+ */
 export function calculateOpponentTarget(state, config) {
   const { ball, opponent } = state;
   const center = config.width / 2;
@@ -23,6 +29,12 @@ export function calculateOpponentTarget(state, config) {
   return clampPaddleCenter(target, config);
 }
 
+/**
+ * @param {GameState} state
+ * @param {number} deltaSeconds
+ * @param {GameConfig} config
+ * @returns {GameState}
+ */
 export function moveOpponent(state, deltaSeconds, config) {
   const target = calculateOpponentTarget(state, config);
   const maxDelta = config.opponent.maxSpeed * deltaSeconds;

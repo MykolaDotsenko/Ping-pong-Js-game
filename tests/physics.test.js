@@ -110,6 +110,47 @@ test('swept paddle collision detects a hit at the crossing point even when the f
   assert.ok(collision.x < 500);
 });
 
+test('reflectFromSideWalls also mirrors the right wall', () => {
+  const reflected = reflectFromSideWalls(
+    { x: GAME_CONFIG.width - GAME_CONFIG.ball.radius + 3, y: 100, vx: 250, vy: -300 },
+    GAME_CONFIG,
+  );
+
+  assert.equal(reflected.x, GAME_CONFIG.width - GAME_CONFIG.ball.radius);
+  assert.equal(reflected.vx, -250);
+  assert.equal(reflected.vy, -300);
+});
+
+test('swept collision also detects an upward crossing of the opponent paddle', () => {
+  const paddleBottom = GAME_CONFIG.paddle.inset + GAME_CONFIG.paddle.height;
+
+  const collision = findPaddleCollision({
+    previousBall: { x: 380, y: paddleBottom + 30, vx: 0, vy: 0 },
+    ball: { x: 420, y: paddleBottom - 10, vx: 0, vy: 0 },
+    paddleCenterX: 400,
+    paddleY: GAME_CONFIG.paddle.inset,
+    movingDown: false,
+    config: GAME_CONFIG,
+  });
+
+  assert.ok(collision);
+  assert.ok(Math.abs(collision.time - 22 / 40) < 1e-9);
+  assert.ok(Math.abs(collision.x - 402) < 1e-9);
+});
+
+test('swept collision ignores a ball moving away from the paddle plane', () => {
+  const collision = findPaddleCollision({
+    previousBall: { x: 400, y: 60, vx: 0, vy: 0 },
+    ball: { x: 400, y: 70, vx: 0, vy: 0 },
+    paddleCenterX: 400,
+    paddleY: GAME_CONFIG.paddle.inset,
+    movingDown: false,
+    config: GAME_CONFIG,
+  });
+
+  assert.equal(collision, null);
+});
+
 test('swept paddle collision rejects a crossing outside paddle bounds', () => {
   const playerY =
     GAME_CONFIG.height - GAME_CONFIG.paddle.inset - GAME_CONFIG.paddle.height;

@@ -22,8 +22,10 @@
     <text x="135" y="282" font-size="15" fill="#94a3b8">You 2 — 1 Computer</text>
 
     <g font-size="15" font-weight="700">
-      <rect x="825" y="232" width="78" height="38" rx="10" fill="#2dd4bf"/>
-      <text x="846" y="257" fill="#05201d">Start</text>
+      <g opacity=".45">
+        <rect x="825" y="232" width="78" height="38" rx="10" fill="#2dd4bf"/>
+        <text x="846" y="257" fill="#05201d">Start</text>
+      </g>
       <rect x="914" y="232" width="82" height="38" rx="10" fill="#2dd4bf"/>
       <text x="930" y="257" fill="#05201d">Pause</text>
       <rect x="1007" y="232" width="70" height="38" rx="10" fill="none" stroke="#475569"/>
@@ -38,7 +40,7 @@
     <rect x="690" y="512" width="112" height="14" rx="3" fill="#f8fafc"/>
     <circle cx="650" cy="450" r="8" fill="#5eead4"/>
     <text x="140" y="575" font-size="14" fill="#94a3b8"><tspan fill="#cbd5e1" font-weight="700">Move:</tspan> pointer/touch, ← →, A D</text>
-    <text x="430" y="575" font-size="14" fill="#94a3b8"><tspan fill="#cbd5e1" font-weight="700">Pause:</tspan> Space</text>
+    <text x="430" y="575" font-size="14" fill="#94a3b8"><tspan fill="#cbd5e1" font-weight="700">Start / pause:</tspan> Space</text>
     <text x="615" y="575" font-size="14" fill="#94a3b8"><tspan fill="#cbd5e1" font-weight="700">Goal:</tspan> first to 7</text>
 
     <rect x="105" y="640" width="990" height="130" rx="24" fill="#0f172a" fill-opacity=".94" stroke="#334155"/>

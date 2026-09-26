@@ -1,7 +1,19 @@
+/** @import { Ball, GameConfig } from './types.js' */
+
+/**
+ * @param {number} value
+ * @param {number} min
+ * @param {number} max
+ */
 export function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
+/**
+ * @param {number} current
+ * @param {number} target
+ * @param {number} maxDelta
+ */
 export function moveTowards(current, target, maxDelta) {
   if (Math.abs(target - current) <= maxDelta) {
     return target;
@@ -10,6 +22,10 @@ export function moveTowards(current, target, maxDelta) {
   return current + Math.sign(target - current) * maxDelta;
 }
 
+/**
+ * @param {number} centerX
+ * @param {GameConfig} config
+ */
 export function paddleBounds(centerX, config) {
   const halfWidth = config.paddle.width / 2;
   return {
@@ -18,11 +34,25 @@ export function paddleBounds(centerX, config) {
   };
 }
 
+/**
+ * @param {number} centerX
+ * @param {GameConfig} config
+ */
 export function clampPaddleCenter(centerX, config) {
   const halfWidth = config.paddle.width / 2;
   return clamp(centerX, halfWidth, config.width - halfWidth);
 }
 
+/**
+ * @param {object} options
+ * @param {Ball} options.previousBall
+ * @param {Ball} options.ball
+ * @param {number} options.paddleCenterX
+ * @param {number} options.paddleY
+ * @param {boolean} options.movingDown
+ * @param {GameConfig} options.config
+ * @returns {{ time: number, x: number } | null}
+ */
 export function findPaddleCollision({
   previousBall,
   ball,
@@ -51,11 +81,6 @@ export function findPaddleCollision({
   }
 
   const time = (collisionPlane - previousLeadingEdge) / travel;
-
-  if (time < 0 || time > 1) {
-    return null;
-  }
-
   const x = previousBall.x + (ball.x - previousBall.x) * time;
   const bounds = paddleBounds(paddleCenterX, config);
   const overlapsHorizontally = x + radius >= bounds.left && x - radius <= bounds.right;
@@ -63,6 +88,13 @@ export function findPaddleCollision({
   return overlapsHorizontally ? { time, x } : null;
 }
 
+/**
+ * @param {Ball} ball
+ * @param {number} paddleCenterX
+ * @param {1 | -1} direction vertical direction after the bounce
+ * @param {GameConfig} config
+ * @returns {Ball}
+ */
 export function bounceFromPaddle(ball, paddleCenterX, direction, config) {
   const halfWidth = config.paddle.width / 2;
   const normalizedOffset = clamp((ball.x - paddleCenterX) / halfWidth, -1, 1);
@@ -77,6 +109,11 @@ export function bounceFromPaddle(ball, paddleCenterX, direction, config) {
   };
 }
 
+/**
+ * @param {Ball} ball
+ * @param {GameConfig} config
+ * @returns {Ball}
+ */
 export function reflectFromSideWalls(ball, config) {
   const radius = config.ball.radius;
   let { x, vx } = ball;

@@ -1,3 +1,6 @@
+/** @import { GameConfig } from './domain/types.js' */
+
+/** @satisfies {GameConfig} */
 export const GAME_CONFIG = Object.freeze({
   width: 800,
   height: 520,

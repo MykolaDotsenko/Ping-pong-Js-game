@@ -32,6 +32,16 @@ test('opponent movement is capped by configured speed', () => {
   assert.ok(movement <= GAME_CONFIG.opponent.maxSpeed * deltaSeconds + 1e-9);
 });
 
+test('opponent holds position when the target is inside its dead zone', () => {
+  const state = {
+    ...createInitialState(GAME_CONFIG),
+    opponent: { x: 400 },
+    ball: { x: 400 + GAME_CONFIG.opponent.trackingDeadZone / 2, y: 300, vx: 0, vy: -300 },
+  };
+
+  assert.equal(calculateOpponentTarget(state, GAME_CONFIG), 400);
+});
+
 test('opponent target stays inside legal paddle bounds', () => {
   const state = {
     ...createInitialState(GAME_CONFIG),
