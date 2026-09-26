@@ -83,6 +83,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Assemble the static site
         run: |
           mkdir site
@@ -103,7 +108,8 @@ jobs:
 
       # A deploy can "succeed" and still change nothing when the Pages source
       # in the repository settings is a branch instead of GitHub Actions, so
-      # print the configuration and prove the live site serves this commit.
+      # print the configuration and prove the live site serves this commit:
+      # every published file must come back from it byte for byte.
       - name: Report the Pages configuration
         env:
           GH_TOKEN: ${{ github.token }}
@@ -112,16 +118,4 @@ jobs:
       - name: Verify the live site serves this commit
         env:
           PAGE_URL: ${{ steps.deployment.outputs.page_url }}
-        run: |
-          expected=$(grep -o '<title>[^<]*</title>' index.html)
-          for attempt in 1 2 3 4 5 6; do
-            served=$(curl -fsSL "${PAGE_URL}?deployed=${GITHUB_SHA}" | grep -o '<title>[^<]*</title>' || true)
-            echo "attempt ${attempt}: ${served:-no title}"
-            if [ "${served}" = "${expected}" ]; then
-              echo "Live: ${PAGE_URL}"
-              exit 0
-            fi
-            sleep 10
-          done
-          echo "::error::${PAGE_URL} still serves an older build. In Settings > Pages the source must be 'GitHub Actions'."
-          exit 1
+        run: node scripts/verify-live-site.mjs site "${PAGE_URL}" "${GITHUB_SHA}"

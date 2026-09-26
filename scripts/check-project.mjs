@@ -72,6 +72,7 @@ const requiredFiles = [
   'docs/preview.png',
   'scripts/capture-preview.mjs',
   'scripts/coverage-gate.mjs',
+  'scripts/verify-live-site.mjs',
   'scripts/render-icons.mjs',
   'manifest.webmanifest',
   'icons/icon.svg',

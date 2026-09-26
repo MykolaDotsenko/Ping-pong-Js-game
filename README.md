@@ -119,7 +119,8 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 │   ├── capture-preview.mjs
 │   ├── check-project.mjs
 │   ├── coverage-gate.mjs
-│   └── render-icons.mjs
+│   ├── render-icons.mjs
+│   └── verify-live-site.mjs    after a deploy: every published file served byte for byte
 ├── src
 │   ├── adapters
 │   │   ├── canvas
@@ -268,7 +269,7 @@ If you have two minutes, inspect these files in order:
 5. [`src/domain/physics.js`](./src/domain/physics.js) — swept paddle contact in the paddle's frame of reference
 6. [`src/adapters/canvas/event-effects.js`](./src/adapters/canvas/event-effects.js) — how events become visual effects
 7. [`eslint.config.js`](./eslint.config.js) — executable architecture constraints
-8. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification, then the GitHub Pages deploy once `main` is green
+8. [`.github/workflows/quality.yml`](./.github/workflows/quality.yml) — automated verification, then the GitHub Pages deploy once `main` is green, checked against the live site file by file
 
 ## License
 
