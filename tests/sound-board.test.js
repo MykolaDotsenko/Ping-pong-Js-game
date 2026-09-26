@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { AudioOutput } from '../src/adapters/audio-output.js';
+import { MusicPlayer } from '../src/adapters/music-player.js';
 import { SoundBoard } from '../src/adapters/sound-board.js';
 
 function fakeParam() {
@@ -12,6 +14,12 @@ function fakeParam() {
     },
     exponentialRampToValueAtTime(value, time) {
       param.events.push(['ramp', value, time]);
+    },
+    linearRampToValueAtTime(value, time) {
+      param.events.push(['linear', value, time]);
+    },
+    cancelScheduledValues(time) {
+      param.events.push(['cancel', time]);
     },
   };
   return param;
@@ -58,7 +66,7 @@ class FakeAudioContext {
 function setup({ sound = true, withAudio = true } = {}) {
   FakeAudioContext.created = [];
   const board = new SoundBoard({
-    window: withAudio ? { AudioContext: FakeAudioContext } : {},
+    audio: new AudioOutput(withAudio ? { AudioContext: FakeAudioContext } : {}),
     preferences: { get: () => ({ sound }) },
   });
   return { board, contexts: FakeAudioContext.created };
@@ -111,8 +119,16 @@ test('hit pitch climbs as the rally grows', () => {
 test('every event type has a sound, and milestone rallies add a chime', () => {
   const { board, contexts } = setup();
   const events = [
+    { type: 'countdown', value: 3 },
+    { type: 'countdown', value: 1 },
     { type: 'serve', x: 0, y: 0 },
+    { type: 'pickup-spawn', kind: 'wide', x: 0, y: 0 },
+    { type: 'pickup', kind: 'wide', side: 'player', x: 0, y: 0 },
+    { type: 'pickup', kind: 'ghost', side: 'opponent', x: 0, y: 0 },
+    { type: 'paddle-graze', side: 'player', x: 0, y: 0, speed: 500 },
     { type: 'wall-bounce', x: 0, y: 0, speed: 400 },
+    { type: 'match-point', side: 'player' },
+    { type: 'life-lost', lives: 2 },
     { type: 'point', scorer: 'player', x: 0, y: 0 },
     { type: 'point', scorer: 'opponent', x: 0, y: 0 },
     { type: 'game-over', winner: 'player' },
@@ -130,4 +146,18 @@ test('every event type has a sound, and milestone rallies add a chime', () => {
   const beforeMilestone = contexts[0].oscillators.length;
   board.handle([hit(5, 'opponent')]);
   assert.equal(contexts[0].oscillators.length - beforeMilestone, 5);
+});
+
+test('sound effects and music share one audio context', () => {
+  FakeAudioContext.created = [];
+  const audio = new AudioOutput({ AudioContext: FakeAudioContext });
+  const preferences = { get: () => ({ sound: true, music: true }) };
+  const board = new SoundBoard({ audio, preferences });
+  const music = new MusicPlayer({ audio, timers: { setInterval: () => 1, clearInterval: () => {} }, preferences });
+
+  board.handle([{ type: 'match-start' }]);
+  music.handle([{ type: 'match-start' }], { phase: 'running' });
+
+  assert.equal(FakeAudioContext.created.length, 1);
+  assert.strictEqual(board.context, music.context);
 });

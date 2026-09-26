@@ -188,25 +188,56 @@ test('on a touch screen the thumb rail below the board steers the paddle', async
   await expect.poll(() => readPlayerX(page)).toBeCloseTo(0.7 * GAME_CONFIG.width, -1);
 });
 
+// On a phone the layout viewport widens to fit content that overflows, so innerWidth would
+// hide the overflow; clientWidth is the width of the screen itself.
+const phoneLayout = (page) => page.evaluate(() => {
+  const boardBox = document.querySelector('.board').getBoundingClientRect();
+  const screenWidth = document.documentElement.clientWidth;
+  return {
+    boardHeightShare: boardBox.height / window.innerHeight,
+    boardWidthShare: boardBox.width / screenWidth,
+    fitsVertically: boardBox.bottom <= window.innerHeight,
+    overflowsSideways: document.documentElement.scrollWidth > screenWidth,
+  };
+});
+
 test('the game fills a phone screen without sideways scrolling', async ({ page, hasTouch }) => {
   test.skip(!hasTouch, 'phone layout');
 
   await page.goto('/');
-
-  const layout = await page.evaluate(() => {
-    const boardBox = document.querySelector('.board').getBoundingClientRect();
-    return {
-      boardHeightShare: boardBox.height / window.innerHeight,
-      boardWidthShare: boardBox.width / window.innerWidth,
-      fitsVertically: boardBox.bottom <= window.innerHeight,
-      overflowsSideways: document.documentElement.scrollWidth > window.innerWidth,
-    };
-  });
+  const layout = await phoneLayout(page);
 
   expect(layout.boardHeightShare).toBeGreaterThan(0.6);
   expect(layout.boardWidthShare).toBeGreaterThan(0.75);
   expect(layout.fitsVertically).toBe(true);
   expect(layout.overflowsSideways).toBe(false);
+});
+
+test.describe('on the narrowest phones', () => {
+  test.use({ viewport: { width: 320, height: 568 } });
+
+  test('the heads-up display tightens instead of scrolling the page sideways', async ({ page, hasTouch }) => {
+    test.skip(!hasTouch, 'phone layout');
+
+    await page.goto('/');
+
+    expect((await phoneLayout(page)).overflowsSideways).toBe(false);
+    await expect(page.getByRole('button', { name: 'Sound' }).first()).toBeInViewport({ ratio: 1 });
+
+    // The scores sit between the buttons without touching them.
+    const clearance = await page.evaluate(() => {
+      const box = (selector) => document.querySelector(selector).getBoundingClientRect();
+      const parts = [...document.querySelectorAll('.scoreboard > *:not(.lives)')]
+        .map((element) => element.getBoundingClientRect())
+        .filter((part) => part.width > 0);
+      return {
+        left: Math.min(...parts.map((part) => part.left)) - box('[data-hud-pause]').right,
+        right: box('.hud__group').left - Math.max(...parts.map((part) => part.right)),
+      };
+    });
+    expect(clearance.left).toBeGreaterThanOrEqual(0);
+    expect(clearance.right).toBeGreaterThanOrEqual(0);
+  });
 });
 
 test('starting a match on a phone keeps the whole court in view and locks scrolling', async ({ page, hasTouch }) => {
@@ -366,18 +397,42 @@ test('the page is installable as an app', async ({ page, request }) => {
 test.describe('first visit', () => {
   test.use({ tutorialSeen: false });
 
-  test('the tutorial opens once, and dismissing it is remembered across reloads', async ({ page }) => {
+  const tutorial = (page) => page.getByRole('dialog', { name: 'How to play' });
+  const phase = (page) => page.locator('[data-arena]').getAttribute('data-phase');
+
+  test('the tutorial opens once as a modal dialog, and Space closes it without starting a match', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page.getByRole('heading', { name: 'How to play' })).toBeVisible();
-    await expect(playButton(page)).toBeHidden();
+    await expect(tutorial(page)).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Got it' })).toBeFocused();
 
-    await page.getByRole('button', { name: 'Got it' }).click();
+    // Space belongs to the dialog: it presses the focused button, and no match starts behind it.
+    await page.keyboard.press('Space');
+    await expect(tutorial(page)).toBeHidden();
     await expect(playButton(page)).toBeVisible();
+    expect(await phase(page)).toBe('ready');
 
     await page.reload();
     await expect(playButton(page)).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'How to play' })).toBeHidden();
+    await expect(tutorial(page)).toBeHidden();
+
+    // It can be read again from the menu.
+    await page.getByRole('button', { name: 'How to play' }).click();
+    await expect(tutorial(page)).toBeVisible();
+    await page.getByRole('button', { name: 'Got it' }).click();
+    await expect(tutorial(page)).toBeHidden();
+  });
+
+  test('Escape closes the tutorial, counts as having seen it, and pauses nothing', async ({ page }) => {
+    await page.goto('/');
+    await expect(tutorial(page)).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await expect(tutorial(page)).toBeHidden();
+    expect(await phase(page)).toBe('ready');
+
+    await page.reload();
+    await expect(tutorial(page)).toBeHidden();
   });
 });
 

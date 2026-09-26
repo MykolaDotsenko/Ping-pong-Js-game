@@ -17,6 +17,7 @@ class FakeElement extends EventTarget {
     this.innerHTML = '';
     this.offsetWidth = 100;
     this.children = [];
+    this.focusCalls = [];
     this.ownerDocument = { createElement: () => new FakeElement() };
     this.classes = new Set();
     this.classList = {
@@ -44,12 +45,29 @@ class FakeElement extends EventTarget {
     this.children.push(child);
   }
 
+  replaceChildren(...nodes) {
+    this.children = nodes;
+    this.textContent = nodes.map((node) => (typeof node === 'string' ? node : node.textContent)).join('');
+  }
+
   setAttribute(name, value) {
     this.attributes.set(name, value);
   }
 
   getAttribute(name) {
     return this.attributes.get(name) ?? null;
+  }
+
+  hasAttribute(name) {
+    return this.attributes.has(name);
+  }
+
+  removeAttribute(name) {
+    this.attributes.delete(name);
+  }
+
+  focus(options) {
+    this.focusCalls.push(options);
   }
 
   toggleAttribute(name, force) {
@@ -63,7 +81,22 @@ class FakeElement extends EventTarget {
   }
 }
 
-function createRoot() {
+// A <dialog>: showModal() opens it as a modal, close() closes it and announces 'close',
+// as browsers do for the close button and for Escape alike.
+class FakeDialog extends FakeElement {
+  showModal() {
+    this.modal = true;
+    this.setAttribute('open', '');
+  }
+
+  close() {
+    this.modal = false;
+    this.removeAttribute('open');
+    this.dispatchEvent(new Event('close'));
+  }
+}
+
+function createRoot({ modalDialogs = true } = {}) {
   const elements = [
     ['status', { 'data-game-status': '' }],
     ['playerScore', { 'data-score': 'player' }],
@@ -91,11 +124,13 @@ function createRoot() {
     ['normal', { 'data-difficulty': 'normal' }],
     ['hard', { 'data-difficulty': 'hard' }],
     ['play', { 'data-command': 'start' }],
-    ['resume', { 'data-command': 'toggle-pause' }],
+    ['resume', { 'data-command': 'toggle-pause', 'data-focus': 'pause' }],
+    ['playAgain', { 'data-command': 'start', 'data-focus': 'over' }],
     ['restart', { 'data-command': 'restart' }],
     ['menuButton', { 'data-command': 'reset' }],
     ['bogus', { 'data-command': 'self-destruct' }],
     ['menuMeta', { 'data-menu-meta': '' }],
+    ['rushLives', { 'data-rush-lives': '' }],
     ['stats', { 'data-stats': '' }],
     ['modeTip', { 'data-mode-tip': '' }],
     ['showTutorial', { 'data-show-tutorial': '' }],
@@ -108,18 +143,27 @@ function createRoot() {
     ['overDifficulty', { 'data-over-difficulty': '' }],
     ['overBest', { 'data-over-best': '' }],
     ['overBestRush', { 'data-over-best-rush': '' }],
-  ].map(([name, attributes]) => [name, new FakeElement(attributes)]);
+  ].map(([name, attributes]) => [
+    name,
+    name === 'tutorial' && modalDialogs ? new FakeDialog(attributes) : new FakeElement(attributes),
+  ]);
   const byName = Object.fromEntries(elements);
   const all = elements.map(([, element]) => element);
+  const board = new FakeElement({ 'data-game-canvas': '' });
+  const document = { body: new FakeElement(), activeElement: null };
 
   return {
     ...byName,
+    board,
+    document,
     root: {
       dataset: {},
       scrolls: [],
+      ownerDocument: document,
       scrollIntoView(options) {
         this.scrolls.push(options);
       },
+      contains: (element) => element === board || all.includes(element),
       querySelector: (selector) => all.find((element) => element.matches(selector)) ?? null,
       querySelectorAll: (selector) => all.filter((element) => element.matches(selector)),
     },
@@ -167,15 +211,10 @@ function createDevice(overrides = {}) {
   };
 }
 
-function setup({ canVibrate = true, preferences = createPreferences(), device = createDevice() } = {}) {
-  const dom = createRoot();
-  const board = {
-    focusCalls: [],
-    focus(options) {
-      this.focusCalls.push(options);
-    },
-  };
-  const view = new DomGameView({ root: dom.root, board, preferences, canVibrate, device });
+function setup({ canVibrate = true, preferences = createPreferences(), device = createDevice(), modalDialogs = true } = {}) {
+  const dom = createRoot({ modalDialogs });
+  const { board } = dom;
+  const view = new DomGameView({ root: dom.root, board, preferences, canVibrate, device, rushLives: 3 });
   const commands = [];
 
   view.onCommand((command) => commands.push({ command, focusedBefore: board.focusCalls.length }));
@@ -192,6 +231,7 @@ function presentation(overrides = {}) {
     phase: GAME_PHASE.READY,
     mode: 'solo',
     difficulty: 'normal',
+    rules: { kind: 'match', winningScore: 7 },
     status: 'First to 7. Start when ready.',
     score: { player: 0, opponent: 0 },
     hits: { player: 0, opponent: 0 },
@@ -237,9 +277,12 @@ test('command buttons hand focus back to the board before sending their command'
   assert.deepEqual(board.focusCalls[0], { preventScroll: true });
 });
 
+const tutorialOpen = (dom) => dom.tutorial.hasAttribute('open');
+
 test('overlays and the pause button follow the match phase', () => {
   const { view, dom } = setup();
-  const visible = () => ['menu', 'tutorial', 'pause', 'over'].filter((name) => !dom[name].hidden);
+  const visible = () => ['menu', 'pause', 'over'].filter((name) => !dom[name].hidden)
+    .concat(tutorialOpen(dom) ? ['tutorial'] : []);
 
   view.render(presentation());
   assert.deepEqual(visible(), ['menu']);
@@ -331,21 +374,47 @@ test('share and full-screen buttons appear only where the browser supports them'
   assert.equal(limited.dom.fullscreen.hidden, true);
 });
 
-test('the tutorial opens on a first visit, and dismissing it remembers that', () => {
+test('the tutorial opens as a modal dialog on a first visit, and dismissing it remembers that', () => {
   const preferences = createPreferences({ tutorialSeen: false });
   const { view, dom } = setup({ preferences });
 
   view.render(presentation());
-  assert.equal(dom.tutorial.hidden, false);
-  assert.equal(dom.menu.hidden, true);
+  assert.equal(tutorialOpen(dom), true);
+  assert.equal(dom.tutorial.modal, true, 'the page behind it is inert');
+  assert.equal(dom.menu.hidden, false, 'the menu waits, dimmed, behind the dialog');
+  assert.equal(preferences.get().tutorialSeen, false);
 
   click(dom.dismissTutorial);
+  assert.equal(tutorialOpen(dom), false);
   assert.equal(preferences.get().tutorialSeen, true);
-  assert.equal(dom.tutorial.hidden, true);
-  assert.equal(dom.menu.hidden, false);
 
   click(dom.showTutorial);
-  assert.equal(dom.tutorial.hidden, false);
+  assert.equal(tutorialOpen(dom), true);
+  assert.equal(dom.tutorial.modal, true);
+});
+
+test('closing the tutorial with Escape counts as having seen it, saved before it even closes', () => {
+  const preferences = createPreferences({ tutorialSeen: false });
+  const { dom } = setup({ preferences });
+
+  // Escape fires 'cancel' right away; the browser announces 'close' only in a later task.
+  dom.tutorial.dispatchEvent(new Event('cancel'));
+  assert.equal(preferences.get().tutorialSeen, true);
+
+  const other = createPreferences({ tutorialSeen: false });
+  setup({ preferences: other }).dom.tutorial.close();
+  assert.equal(other.get().tutorialSeen, true, 'any other way of closing it counts too');
+});
+
+test('without modal dialog support the tutorial still opens and closes', () => {
+  const preferences = createPreferences({ tutorialSeen: false });
+  const { dom } = setup({ preferences, modalDialogs: false });
+
+  assert.equal(tutorialOpen(dom), true);
+
+  click(dom.dismissTutorial);
+  assert.equal(tutorialOpen(dom), false);
+  assert.equal(preferences.get().tutorialSeen, true);
 });
 
 test('a returning player goes straight to the menu', () => {
@@ -353,8 +422,40 @@ test('a returning player goes straight to the menu', () => {
 
   view.render(presentation());
 
-  assert.equal(dom.tutorial.hidden, true);
+  assert.equal(tutorialOpen(dom), false);
   assert.equal(dom.menu.hidden, false);
+});
+
+test('the pause and result screens take keyboard focus, and play hands it back to the board', () => {
+  const { view, dom, board } = setup();
+
+  view.render(presentation());
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  assert.equal(board.focusCalls.length, 1, 'a match started from the keyboard focuses the board');
+
+  view.render(presentation({ phase: GAME_PHASE.PAUSED }));
+  assert.deepEqual(dom.resume.focusCalls, [{ preventScroll: true }]);
+
+  dom.document.activeElement = dom.resume;
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  assert.equal(board.focusCalls.length, 2);
+
+  dom.document.activeElement = board;
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
+  assert.deepEqual(dom.playAgain.focusCalls, [{ preventScroll: true }]);
+});
+
+test('focus the player moved elsewhere on the page is left alone', () => {
+  const { view, dom, board } = setup();
+  const elsewhere = new FakeElement();
+
+  view.render(presentation());
+  dom.document.activeElement = elsewhere;
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ phase: GAME_PHASE.PAUSED }));
+
+  assert.equal(board.focusCalls.length, 0);
+  assert.deepEqual(dom.resume.focusCalls, []);
 });
 
 test('an unchanged status is not rewritten, keeping the live region quiet', () => {
@@ -416,16 +517,39 @@ test('match point is announced on the side that is one point away', () => {
   assert.equal(dom.matchPoint.dataset.side, 'opponent');
 });
 
-test('the menu shows the record for the chosen mode and the Solo win statistics', () => {
+test('the menu states the rules and the record for the chosen mode, from the match config', () => {
+  const { view, dom } = setup();
+  const record = () => dom.menuMeta.children.find((child) => typeof child !== 'string');
+
+  view.render(presentation({ bestRally: 14, rules: { kind: 'match', winningScore: 11 } }));
+  assert.equal(dom.menuMeta.textContent, 'First to 11 · Best rally 14');
+  assert.equal(record().textContent, '14', 'the record stands out');
+
+  view.render(presentation({ mode: 'rush', bestRush: 27, rules: { kind: 'rush', lives: 5 } }));
+  assert.equal(dom.menuMeta.textContent, '5 lives · Best run 27 hits');
+  assert.equal(record().textContent, '27');
+
+  view.render(presentation({ mode: 'duo', bestRally: 14 }));
+  assert.equal(dom.menuMeta.textContent, 'First to 7 · Two players, one screen', 'a Solo record is not a two-player one');
+});
+
+test('the Rush button names its lives from the configuration', () => {
+  assert.equal(setup().dom.rushLives.textContent, '3 lives');
+});
+
+test('the menu shows Solo win statistics, with the streak flame hidden from screen readers', () => {
   const { view, dom } = setup();
 
-  view.render(presentation({ bestRally: 14, stats: { matches: 5, wins: 3, streak: 2, bestStreak: 2 } }));
-  assert.match(dom.menuMeta.innerHTML, /Best rally <strong[^>]*>14</);
+  view.render(presentation({ stats: { matches: 5, wins: 3, streak: 2, bestStreak: 2 } }));
   assert.equal(dom.stats.hidden, false);
   assert.equal(dom.stats.textContent, '3/5 won (60%) · 2 in a row 🔥');
+  const flame = dom.stats.children.find((child) => typeof child !== 'string');
+  assert.equal(flame.getAttribute('aria-hidden'), 'true');
 
-  view.render(presentation({ mode: 'rush', bestRush: 27 }));
-  assert.match(dom.menuMeta.innerHTML, /Best run <strong[^>]*>27</);
+  view.render(presentation({ stats: { matches: 5, wins: 3, streak: 0, bestStreak: 2 } }));
+  assert.equal(dom.stats.textContent, '3/5 won (60%)');
+
+  view.render(presentation({ mode: 'rush' }));
   assert.equal(dom.stats.hidden, true);
 });
 

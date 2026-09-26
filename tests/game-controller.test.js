@@ -162,6 +162,7 @@ test('connecting draws the ready screen, sets up one player, and leaves the loop
     phase: GAME_PHASE.READY,
     mode: 'solo',
     difficulty: 'normal',
+    rules: GAME_CONFIG.rules,
     status: 'First to 7. Start when ready.',
     score: { player: 0, opponent: 0 },
     hits: { player: 0, opponent: 0 },
@@ -463,6 +464,79 @@ test('a longer rally than ever before is remembered and flagged for this match',
   view.handler(GAME_COMMAND.RESTART);
   assert.equal(lastOf(view.presentations).newBest, false);
   assert.equal(lastOf(view.presentations).bestRally, 4);
+});
+
+test('rallies in Rush and two-player matches do not touch the Solo best rally', () => {
+  for (const mode of ['rush', 'duo']) {
+    const { controller, scheduler, view, preferences } = setup({ mode, bestRally: 2 });
+
+    view.handler(GAME_COMMAND.START);
+    inPlay(controller, { rally: 9, longestRally: 9, ball: ballAtPlayerPaddle });
+    scheduler.flush(1000);
+    scheduler.flush(1020);
+
+    assert.equal(controller.state.longestRally, 10, mode);
+    assert.ok(preferences.writes.every((write) => !('bestRally' in write)), mode);
+    assert.equal(lastOf(view.presentations).newBest, false, mode);
+  }
+});
+
+test('records are read fresh, so a higher one saved by another tab is not overwritten', () => {
+  const { controller, scheduler, view, preferences } = setup({ bestRally: 3 });
+
+  view.handler(GAME_COMMAND.START);
+  // Meanwhile another tab raised the record to 12.
+  preferences.set({ bestRally: 12 });
+  preferences.writes.length = 0;
+  inPlay(controller, { rally: 3, longestRally: 3, ball: ballAtPlayerPaddle });
+  scheduler.flush(1000);
+  scheduler.flush(1020);
+
+  assert.deepEqual(preferences.writes, []);
+  assert.equal(lastOf(view.presentations).bestRally, 12);
+});
+
+test('leaving a Solo match after a point has been played counts as a loss', () => {
+  for (const command of [GAME_COMMAND.RESTART, GAME_COMMAND.RESET]) {
+    const { controller, view, preferences } = setup({ stats: { matches: 9, wins: 9, streak: 9, bestStreak: 9 } });
+
+    view.handler(GAME_COMMAND.START);
+    inPlay(controller, { score: { player: 0, opponent: 6 } });
+    view.handler(GAME_COMMAND.TOGGLE_PAUSE);
+    view.handler(command);
+
+    assert.deepEqual(preferences.get().stats, { matches: 10, wins: 9, streak: 0, bestStreak: 9 }, command);
+  }
+});
+
+test('a Solo match left before its first point, or a finished one, is not counted again', () => {
+  const { controller, scheduler, view, preferences } = setup();
+
+  view.handler(GAME_COMMAND.START);
+  view.handler(GAME_COMMAND.RESTART);
+  assert.deepEqual(preferences.get().stats, DEFAULT_STATS, 'no point played yet');
+
+  inPlay(controller, {
+    score: { player: 0, opponent: GAME_CONFIG.rules.winningScore - 1 },
+    ball: { x: 250, y: GAME_CONFIG.height + GAME_CONFIG.ball.radius + 1, vx: 0, vy: 300, spin: 0 },
+  });
+  scheduler.flush(1000);
+  scheduler.flush(1020);
+  view.handler(GAME_COMMAND.RESTART);
+
+  assert.equal(preferences.get().stats.matches, 1, 'the finished match counts once');
+});
+
+test('leaving a Rush run or a two-player match records no Solo statistics', () => {
+  for (const mode of ['rush', 'duo']) {
+    const { controller, view, preferences } = setup({ mode });
+
+    view.handler(GAME_COMMAND.START);
+    inPlay(controller, { score: { player: 2, opponent: 3 } });
+    view.handler(GAME_COMMAND.RESET);
+
+    assert.deepEqual(preferences.get().stats, DEFAULT_STATS, mode);
+  }
 });
 
 test('a short first rally is saved as the record without being celebrated', () => {

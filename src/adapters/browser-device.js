@@ -24,10 +24,11 @@ export class BrowserDevice {
   }
 
   /**
-   * Shares through the system sheet where there is one, else copies the text.
+   * Shares through the system sheet where there is one, else copies the text. Closing the
+   * sheet is the player's choice, so nothing is copied behind their back.
    *
    * @param {string} text
-   * @returns {Promise<'shared' | 'copied' | 'failed'>}
+   * @returns {Promise<'shared' | 'copied' | 'cancelled' | 'failed'>}
    */
   async share(text) {
     const url = this.location.href.split('#')[0];
@@ -36,13 +37,20 @@ export class BrowserDevice {
       try {
         await this.navigator.share({ title: 'Ping Pong Architecture Lab', text, url });
         return 'shared';
-      } catch {
-        // Cancelled or unavailable: fall through to the clipboard.
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return 'cancelled';
+        }
+        // Refused or unavailable here: try the clipboard instead.
       }
     }
 
+    if (typeof this.navigator.clipboard?.writeText !== 'function') {
+      return 'failed';
+    }
+
     try {
-      await this.navigator.clipboard?.writeText(`${text} ${url}`);
+      await this.navigator.clipboard.writeText(`${text} ${url}`);
       return 'copied';
     } catch {
       return 'failed';

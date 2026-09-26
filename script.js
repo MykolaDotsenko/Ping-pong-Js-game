@@ -1,4 +1,5 @@
-import { GAME_CONFIG, MATCH_CATALOG } from './src/config.js';
+import { GAME_CONFIG, MATCH_CATALOG, RUSH_LIVES } from './src/config.js';
+import { AudioOutput } from './src/adapters/audio-output.js';
 import { BrowserDevice } from './src/adapters/browser-device.js';
 import { BrowserFrameScheduler } from './src/adapters/browser-frame-scheduler.js';
 import { CanvasRenderer } from './src/adapters/canvas-renderer.js';
@@ -32,22 +33,24 @@ function requireElement(selector, type) {
 const arena = requireElement('[data-arena]', HTMLElement);
 const canvas = requireElement('[data-game-canvas]', HTMLCanvasElement);
 const preferences = new LocalPreferences(window);
+preferences.connect();
 const scheduler = new BrowserFrameScheduler(window);
 const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CONFIG });
 const haptics = new Haptics({ navigator: window.navigator, preferences });
 const device = new BrowserDevice({ navigator: window.navigator, document, location: window.location });
+const audio = new AudioOutput(window);
 
 const controller = new GameController({
   catalog: MATCH_CATALOG,
   preferences,
   renderer,
   input: new InputController({ surface: arena, board: canvas, window, document, config: GAME_CONFIG }),
-  view: new DomGameView({ root: arena, board: canvas, preferences, canVibrate: haptics.supported, device }),
+  view: new DomGameView({ root: arena, board: canvas, preferences, canVibrate: haptics.supported, device, rushLives: RUSH_LIVES }),
   scheduler,
   feedback: [
     renderer,
-    new SoundBoard({ window, preferences }),
-    new MusicPlayer({ window, preferences }),
+    new SoundBoard({ audio, preferences }),
+    new MusicPlayer({ audio, timers: window, preferences }),
     haptics,
     new WakeLock(window.navigator),
   ],

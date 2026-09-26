@@ -35,6 +35,7 @@
  *   | { type: 'countdown', value: number }
  *   | { type: 'serve', x: number, y: number }
  *   | { type: 'paddle-hit', side: Side, x: number, y: number, speed: number, spin: number, offset: number, rally: number }
+ *   | { type: 'paddle-graze', side: Side, x: number, y: number, speed: number }
  *   | { type: 'wall-bounce', x: number, y: number, speed: number }
  *   | { type: 'pickup-spawn', kind: PowerUpKind, x: number, y: number }
  *   | { type: 'pickup', kind: PowerUpKind, side: Side, x: number, y: number }
@@ -59,7 +60,7 @@
  * @property {readonly Pickup[]} pickups
  * @property {number} nextPickupIn Seconds until the next power-up may appear.
  * @property {Record<Side, Modifiers>} modifiers
- * @property {number} turbo Seconds left of the Turbo burst on the ball.
+ * @property {number} turbo Seconds left of the Turbo shot in flight; the next return ends it early.
  * @property {number} seed State of the deterministic random source.
  * @property {readonly GameEvent[]} events What happened in the transition that produced this state.
  *

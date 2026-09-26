@@ -21,6 +21,8 @@ export class WakeLock {
     this.navigator = navigator;
     /** @type {WakeLockSentinel | null} */
     this.sentinel = null;
+    /** Whether a request is on its way; at most one is, so no lock can be left unreleased. */
+    this.requesting = false;
     this.wanted = false;
   }
 
@@ -42,13 +44,18 @@ export class WakeLock {
   acquire() {
     this.wanted = true;
 
-    if (!this.supported || this.sentinel) {
+    // A lock already held, or one on its way, serves this request too: a second request in
+    // flight would replace the first sentinel and leave it holding the screen on for good.
+    if (!this.supported || this.sentinel || this.requesting) {
       return;
     }
 
+    this.requesting = true;
     /** @type {NonNullable<WakeLockNavigator['wakeLock']>} */ (this.navigator.wakeLock)
       .request('screen')
       .then((sentinel) => {
+        this.requesting = false;
+
         // The lock may have been asked to go away while the request was in flight.
         if (!this.wanted) {
           sentinel.release().catch(() => {});
@@ -57,11 +64,14 @@ export class WakeLock {
 
         this.sentinel = sentinel;
         sentinel.addEventListener('release', () => {
-          this.sentinel = null;
+          if (this.sentinel === sentinel) {
+            this.sentinel = null;
+          }
         });
       })
       .catch(() => {
         // Denied (low battery, hidden page): the game plays on with the screen's own timeout.
+        this.requesting = false;
       });
   }
 

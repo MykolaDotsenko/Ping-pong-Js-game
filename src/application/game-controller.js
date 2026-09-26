@@ -14,7 +14,7 @@ import { interpolateState } from './interpolation.js';
 import { GAME_COMMAND } from './ports.js';
 
 /**
- * @import { GameConfig, GameEvent, GameState } from '../domain/types.js'
+ * @import { GameConfig, GameState } from '../domain/types.js'
  * @import {
  *   FeedbackPort,
  *   FrameScheduler,
@@ -89,8 +89,6 @@ export class GameController {
     this.state = createInitialState(this.config, seed());
     /** The state before the latest simulation step, used to interpolate rendering. */
     this.previousState = this.state;
-    this.bestRally = preferences.get().bestRally;
-    this.bestRush = preferences.get().bestRush;
     this.newBest = false;
     this.newBestRush = false;
     this.recorded = false;
@@ -202,6 +200,7 @@ export class GameController {
    * @returns {GameState}
    */
   newMatch() {
+    this.recordForfeit();
     this.applyChoices();
     this.newBest = false;
     this.newBestRush = false;
@@ -211,6 +210,7 @@ export class GameController {
 
   /** @returns {GameState} */
   menu() {
+    this.recordForfeit();
     this.applyChoices();
     return resetGame(this.config, this.seed());
   }
@@ -284,13 +284,18 @@ export class GameController {
     return (speed - initialSpeed) / (maxSpeed - initialSpeed);
   }
 
-  /** @param {number} longestRally */
+  /**
+   * The best rally is a Solo record: a Rush run keeps its own, and a rally between two people
+   * is not the player's alone. Records are read fresh from the preferences, which another tab
+   * may have raised in the meantime.
+   *
+   * @param {number} longestRally
+   */
   recordRally(longestRally) {
-    if (longestRally <= this.bestRally) {
+    if (this.mode !== 'solo' || longestRally <= this.preferences.get().bestRally) {
       return;
     }
 
-    this.bestRally = longestRally;
     this.newBest = longestRally >= CELEBRATED_RALLY;
     this.preferences.set({ bestRally: longestRally });
   }
@@ -308,8 +313,7 @@ export class GameController {
     this.recorded = true;
 
     if (this.mode === 'rush') {
-      if (state.hits.player > this.bestRush) {
-        this.bestRush = state.hits.player;
+      if (state.hits.player > this.preferences.get().bestRush) {
         this.newBestRush = true;
         this.preferences.set({ bestRush: state.hits.player });
       }
@@ -317,30 +321,51 @@ export class GameController {
     }
 
     if (this.mode === 'solo') {
-      const won = getWinner(state) === 'player';
-      const { stats } = this.preferences.get();
-      const streak = won ? stats.streak + 1 : 0;
-
-      this.preferences.set({
-        stats: {
-          matches: stats.matches + 1,
-          wins: stats.wins + (won ? 1 : 0),
-          streak,
-          bestStreak: Math.max(stats.bestStreak, streak),
-        },
-      });
+      this.recordSoloResult(getWinner(state) === 'player');
     }
+  }
+
+  /**
+   * Leaving a Solo match once a point has been played counts as a loss, so restarting cannot
+   * protect a winning streak. A match left before its first point is not counted.
+   */
+  recordForfeit() {
+    const { phase, score } = this.state;
+    const inProgress = phase === GAME_PHASE.RUNNING || phase === GAME_PHASE.PAUSED;
+
+    if (this.mode !== 'solo' || !inProgress || this.recorded || score.player + score.opponent === 0) {
+      return;
+    }
+
+    this.recorded = true;
+    this.recordSoloResult(false);
+  }
+
+  /** @param {boolean} won */
+  recordSoloResult(won) {
+    const { stats } = this.preferences.get();
+    const streak = won ? stats.streak + 1 : 0;
+
+    this.preferences.set({
+      stats: {
+        matches: stats.matches + 1,
+        wins: stats.wins + (won ? 1 : 0),
+        streak,
+        bestStreak: Math.max(stats.bestStreak, streak),
+      },
+    });
   }
 
   /** @returns {Presentation} */
   presentation() {
     const { phase, score, hits, lives, rally, longestRally, modifiers } = this.state;
-    const { difficulty, stats } = this.preferences.get();
+    const { difficulty, stats, bestRally, bestRush } = this.preferences.get();
 
     return {
       phase,
       mode: this.mode,
       difficulty,
+      rules: this.config.rules,
       status: this.statusText(),
       score,
       hits,
@@ -348,9 +373,9 @@ export class GameController {
       maxLives: this.config.rules.kind === 'rush' ? this.config.rules.lives : 0,
       rally,
       longestRally,
-      bestRally: this.bestRally,
+      bestRally,
       newBest: this.newBest,
-      bestRush: this.bestRush,
+      bestRush,
       newBestRush: this.newBestRush,
       matchPoint: matchPointSide(this.state, this.config),
       modifiers,
@@ -387,12 +412,4 @@ export class GameController {
       ? `${hits.player} hits, ${this.state.lives} lives left`
       : `You ${score.player} — ${score.opponent} ${opponentName}`;
   }
-}
-
-/**
- * @param {GameEvent} event
- * @returns {event is Extract<GameEvent, { type: 'paddle-hit' }>}
- */
-export function isPaddleHit(event) {
-  return event.type === 'paddle-hit';
 }

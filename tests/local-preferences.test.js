@@ -108,3 +108,65 @@ test('a window whose localStorage getter throws still gets defaults', () => {
 
   assert.equal(preferences.get().difficulty, 'hard');
 });
+
+/** A window whose tabs share one localStorage and hear each other's saves. */
+function createTab(storage) {
+  const events = new EventTarget();
+  const window = {
+    localStorage: storage,
+    addEventListener: (type, listener) => events.addEventListener(type, (event) => listener(event.detail)),
+    removeEventListener: () => {},
+    // What the browser does in the other tabs after one of them saves.
+    hearSave: (key = KEY) => events.dispatchEvent(Object.assign(new Event('storage'), { detail: { key } })),
+  };
+  const preferences = new LocalPreferences(window);
+  preferences.connect();
+  return { window, preferences };
+}
+
+test('a tab merges its change into what another tab saved, so records are never rolled back', () => {
+  const storage = createStorage();
+  const first = createTab(storage);
+  const second = createTab(storage);
+
+  first.preferences.set({ stats: { matches: 4, wins: 4, streak: 4, bestStreak: 4 } });
+  // The second tab has not heard of that save yet, and records a rally of its own.
+  second.preferences.set({ bestRally: 5 });
+
+  const stored = JSON.parse(storage.entries.get(KEY));
+  assert.deepEqual(stored.stats, { matches: 4, wins: 4, streak: 4, bestStreak: 4 });
+  assert.equal(stored.bestRally, 5);
+});
+
+test('a tab follows another tab\'s saves through the storage event', () => {
+  const storage = createStorage();
+  const first = createTab(storage);
+  const second = createTab(storage);
+
+  first.preferences.set({ difficulty: 'hard', bestRush: 30 });
+  second.window.hearSave('some-other-key');
+  assert.equal(second.preferences.get().difficulty, 'normal', 'other keys are not ours');
+
+  second.window.hearSave();
+  assert.equal(second.preferences.get().difficulty, 'hard');
+  assert.equal(second.preferences.get().bestRush, 30);
+
+  // Clearing the site's storage in one tab reaches the others as a null key.
+  storage.entries.clear();
+  second.window.hearSave(null);
+  assert.deepEqual(second.preferences.get(), DEFAULTS);
+});
+
+test('after a save fails, the tab trusts its own newer values over what storage still holds', () => {
+  const storage = createStorage({ [KEY]: JSON.stringify({ sound: true }) });
+  storage.setItem = () => {
+    throw new Error('QuotaExceededError');
+  };
+  const preferences = new LocalPreferences({ localStorage: storage });
+
+  preferences.set({ sound: false });
+  preferences.set({ music: false });
+
+  assert.equal(preferences.get().sound, false, 'not reverted by the stale stored value');
+  assert.equal(preferences.get().music, false);
+});

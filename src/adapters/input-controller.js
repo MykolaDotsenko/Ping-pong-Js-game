@@ -172,10 +172,22 @@ export class InputController {
     return false;
   }
 
+  /**
+   * Whether a dialog is open over the game, such as the tutorial. The page behind a modal
+   * dialog takes no input, and its keys (Space, Escape, Enter) belong to the dialog.
+   */
+  dialogOpen() {
+    return Boolean(this.document.querySelector?.('dialog[open]'));
+  }
+
   /** @param {KeyboardEvent} event */
   handleKeyDown(event) {
     if (event.ctrlKey || event.metaKey || event.altKey) {
       return; // Leave browser and system shortcuts such as Ctrl+A or Alt+← alone.
+    }
+
+    if (this.dialogOpen()) {
+      return;
     }
 
     if (this.steerByKey(event, true)) {
@@ -236,8 +248,8 @@ export class InputController {
    * @param {boolean} isPress a press (click or tap) always takes over steering
    */
   handlePointer(event, isPress) {
-    if (isInteractiveTarget(event.target)) {
-      return; // Buttons on the surface keep their own meaning.
+    if (isInteractiveTarget(event.target) || this.dialogOpen()) {
+      return; // Buttons on the surface, and any open dialog, keep their own meaning.
     }
 
     const rect = this.board.getBoundingClientRect();
@@ -248,9 +260,9 @@ export class InputController {
       return;
     }
 
-    // In a two-player match a finger commits to a paddle only by pressing, so a hover from
-    // the other half cannot steal it.
-    if (this.players === 2 && !isPress && paddle.pointerId !== event.pointerId && paddle.pointerId !== null) {
+    // In a two-player match a finger or mouse commits to a paddle only by pressing, so a
+    // hovering mouse steers nothing and cannot claim the other player's paddle.
+    if (this.players === 2 && !isPress && paddle.pointerId !== event.pointerId) {
       return;
     }
 

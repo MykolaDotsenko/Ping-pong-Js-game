@@ -12,7 +12,14 @@ const board = {
 
 function setup() {
   const window = new EventTarget();
-  const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+  // openDialog stands for a <dialog open> somewhere on the page, such as the tutorial.
+  const document = Object.assign(new EventTarget(), {
+    visibilityState: 'visible',
+    openDialog: null,
+    querySelector(selector) {
+      return selector === 'dialog[open]' ? this.openDialog : null;
+    },
+  });
   const input = new InputController({ surface: new EventTarget(), board, window, document, config: { width: 800 } });
   const commands = [];
 
@@ -253,6 +260,21 @@ test('lifting a finger keeps the paddle where it was and frees the paddle for th
   assert.equal(input.snapshot().opponentPointerX, 500);
 });
 
+test('with two players a hovering mouse steers nothing, and clicking takes the half it clicks', () => {
+  const { input, surface } = setup();
+
+  input.configure({ players: 2 });
+  // The mouse enters over the top half and hovers there without pressing.
+  surface.dispatchEvent(pointerEvent('pointermove', 150, { clientY: 100, pointerId: 1 }));
+  surface.dispatchEvent(pointerEvent('pointermove', 180, { clientY: 110, pointerId: 1 }));
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: null, opponentAxis: 0, opponentPointerX: null });
+
+  // A click in Player 1's half steers Player 1's paddle, not the one it hovered over.
+  surface.dispatchEvent(pointerEvent('pointerdown', 250, { clientY: 600, pointerId: 1 }));
+  assert.equal(input.snapshot().pointerX, 300);
+  assert.equal(input.snapshot().opponentPointerX, null);
+});
+
 test('switching back to one player releases the second paddle', () => {
   const { input, surface } = setup();
 
@@ -261,4 +283,33 @@ test('switching back to one player releases the second paddle', () => {
   input.configure({ players: 1 });
 
   assert.equal(input.snapshot().opponentPointerX, null);
+});
+
+test('while a dialog is open the game takes no keys or touches, so Space cannot start a match behind it', () => {
+  const { input, window, document, surface, commands } = setup();
+  document.openDialog = { tagName: 'DIALOG' };
+
+  const space = press(window, { code: 'Space', key: ' ' });
+  press(window, { code: 'Escape', key: 'Escape' });
+  press(window, { code: 'ArrowLeft', key: 'ArrowLeft' });
+  surface.dispatchEvent(pointerEvent('pointerdown', 300));
+
+  assert.deepEqual(commands, []);
+  assert.equal(space.defaultPrevented, false, 'Space stays with the dialog');
+  assert.deepEqual(input.snapshot(), { horizontalAxis: 0, pointerX: null, opponentAxis: 0, opponentPointerX: null });
+
+  // Once it closes, the same keys drive the game again.
+  document.openDialog = null;
+  press(window, { code: 'Space', key: ' ' });
+  assert.deepEqual(commands, [GAME_COMMAND.PRIMARY]);
+});
+
+test('a key released while a dialog is open is still let go, so it cannot get stuck', () => {
+  const { input, window, document } = setup();
+
+  press(window, { code: 'KeyD', key: 'd' });
+  document.openDialog = { tagName: 'DIALOG' };
+  release(window, { code: 'KeyD', key: 'd' });
+
+  assert.equal(input.snapshot().horizontalAxis, 0);
 });

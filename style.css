@@ -145,12 +145,42 @@ canvas:focus-visible {
   flex: none;
 }
 
+/* The HUD is as wide as the board, which on the smallest phones is under 270px. It is a size
+   container, so its buttons and spacing scale with it and the scoreboard sheds its labels
+   before anything could overlap or push the page sideways. */
 .hud {
+  container: hud / inline-size;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: clamp(6px, calc(var(--board-w) * 0.025), 10px);
   height: var(--hud-h);
+}
+
+.hud .icon-button {
+  width: clamp(38px, 13cqw, 44px);
+  height: clamp(38px, 13cqw, 44px);
+}
+
+@container hud (max-width: 330px) {
+  .scoreboard {
+    gap: 8px;
+  }
+
+  .scoreboard__side {
+    gap: 5px;
+  }
+
+  .scoreboard__label {
+    letter-spacing: 0.08em;
+  }
+}
+
+/* The colors already tell the sides apart: cyan is yours at the bottom, pink theirs on top. */
+@container hud (max-width: 290px) {
+  .scoreboard__label {
+    display: none;
+  }
 }
 
 .icon-button {
@@ -672,7 +702,7 @@ kbd {
 
 .hud__group {
   display: flex;
-  gap: 8px;
+  gap: clamp(4px, 2cqw, 8px);
 }
 
 .segmented--modes button {
@@ -780,21 +810,43 @@ kbd {
 
 /* ---------- Tutorial ---------- */
 
-/* The tutorial can be taller than a small phone's board, so its steps scroll inside the
-   overlay. The overlay's own row must be definite for the panel's max-height to bind. */
-.overlay:has(.panel--tutorial) {
-  grid-template-rows: minmax(0, 1fr);
+/* A modal dialog in the browser's top layer: the page behind it is inert and dimmed, focus
+   starts on its button and Escape closes it. It is its own size container, so it reads the
+   same over a phone's court and beside a desktop cabinet. */
+.dialog {
+  container-type: inline-size;
+  width: min(92vw, 30rem);
+  max-height: min(88dvh, 46rem);
+  padding: 6cqw;
+  border: 1px solid rgba(var(--violet-rgb), 0.45);
+  border-radius: 22px;
+  background: radial-gradient(circle at 50% 0%, rgba(var(--violet-rgb), 0.16), transparent 60%), rgba(9, 11, 28, 0.96);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04), 0 18px 70px rgba(0, 0, 0, 0.6), 0 0 60px rgba(var(--violet-rgb), 0.25);
+  color: var(--text);
+  overflow: hidden;
 }
 
+.dialog[open] {
+  display: grid;
+  animation: overlay-in 280ms ease-out both;
+}
+
+.dialog::backdrop {
+  background: radial-gradient(circle at 50% 42%, rgba(9, 11, 28, 0.55), rgba(5, 6, 15, 0.88));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* The steps scroll when the dialog is taller than a small screen; the title and button stay put. */
 .panel--tutorial {
-  justify-self: stretch;
-  gap: 3cqw;
-  max-height: 100%;
+  gap: 4cqw;
+  min-height: 0;
+  max-height: calc(min(88dvh, 46rem) - 12cqw - 2px);
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .panel--tutorial .panel__title {
-  font-size: 8cqw;
+  font-size: 9cqw;
 }
 
 .panel--tutorial .tutorial {
@@ -819,11 +871,11 @@ kbd {
   align-items: center;
   gap: 2.6cqw;
   width: 100%;
-  padding: 2.4cqw 3cqw;
+  padding: 2.6cqw 3cqw;
   border: 1px solid var(--line);
   border-radius: 3cqw;
   background: rgba(15, 18, 40, 0.7);
-  font-size: 3.4cqw;
+  font-size: max(13px, 3.8cqw);
   line-height: 1.4;
   color: var(--muted);
 }
