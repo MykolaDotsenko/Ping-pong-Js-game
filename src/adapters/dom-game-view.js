@@ -49,13 +49,15 @@ export class DomGameView {
    * @param {PreferencesPort} options.preferences
    * @param {boolean} options.canVibrate hides the vibration setting where it would do nothing
    * @param {Device} options.device sharing and full screen, hidden where unsupported
+   * @param {number} options.rushLives shown on the Rush button before that mode is chosen
    */
-  constructor({ root, board, preferences, canVibrate, device }) {
+  constructor({ root, board, preferences, canVibrate, device, rushLives }) {
     this.root = root;
     this.board = board;
     this.preferences = preferences;
     this.canVibrate = canVibrate;
     this.device = device;
+    this.rushLives = rushLives;
     this.status = this.find('[data-game-status]');
     this.scores = { player: this.find('[data-score="player"]'), opponent: this.find('[data-score="opponent"]') };
     this.overlays = {
@@ -161,7 +163,9 @@ export class DomGameView {
     }
 
     // Escape closes the dialog natively, the button through showTutorial; either way the
-    // player has seen it.
+    // player has seen it. Escape fires 'cancel' at once and 'close' only in a later task, so
+    // listening to both saves the choice even if the page is left right away.
+    this.listen(this.overlays.tutorial, () => this.markTutorialSeen(), 'cancel');
     this.listen(this.overlays.tutorial, () => this.markTutorialSeen(), 'close');
 
     for (const button of this.findAll('[data-share]')) {
@@ -178,6 +182,10 @@ export class DomGameView {
 
     for (const element of this.findAll('[data-setting="vibration"]')) {
       element.hidden = !this.canVibrate;
+    }
+
+    for (const element of this.findAll('[data-rush-lives]')) {
+      element.textContent = `${this.rushLives} lives`;
     }
 
     this.showChoices();
@@ -353,7 +361,12 @@ export class DomGameView {
       this.matchPoint.dataset.side = presentation.matchPoint ?? '';
     }
 
-    if (presentation.bestRally !== previous?.bestRally || presentation.bestRush !== previous?.bestRush || presentation.mode !== previous?.mode) {
+    if (
+      presentation.bestRally !== previous?.bestRally
+      || presentation.bestRush !== previous?.bestRush
+      || presentation.mode !== previous?.mode
+      || presentation.rules !== previous?.rules
+    ) {
       this.showMenuMeta(presentation);
     }
 
@@ -387,8 +400,8 @@ export class DomGameView {
     }
     this.pauseButton.toggleAttribute('disabled', !inMatch);
     this.pauseButton.setAttribute('aria-label', phase === GAME_PHASE.PAUSED ? 'Resume' : 'Pause');
-    this.find('[data-label="opponent"]').textContent = mode === 'duo' ? 'P2' : mode === 'rush' ? 'CPU' : 'CPU';
-    this.find('[data-label="player"]').textContent = mode === 'duo' ? 'P1' : mode === 'rush' ? 'Hits' : 'You';
+    this.find('[data-label="opponent"]').textContent = mode === 'duo' ? 'P2' : 'CPU';
+    this.find('[data-label="player"]').textContent = { solo: 'You', rush: 'Hits', duo: 'P1' }[mode];
 
     if (phase !== GAME_PHASE.READY) {
       this.find('[data-share-note]').textContent = '';
@@ -411,25 +424,53 @@ export class DomGameView {
     }
   }
 
-  /** @param {Presentation} presentation */
-  showMenuMeta({ mode, bestRally, bestRush }) {
+  /**
+   * The menu's summary line: how this mode is won, and the record that goes with it. The
+   * rules come from the match configuration, so the text cannot drift from the game.
+   *
+   * @param {Presentation} presentation
+   */
+  showMenuMeta({ mode, rules, bestRally, bestRush }) {
+    const goal = rules.kind === 'rush' ? `${rules.lives} lives` : `First to ${rules.winningScore}`;
+
     for (const element of this.findAll('[data-menu-meta]')) {
-      element.innerHTML = mode === 'rush'
-        ? `3 lives · Best run <strong data-best-rush>${bestRush}</strong> hits`
-        : `First to 7 · Best rally <strong data-best-rally>${bestRally}</strong>`;
+      if (mode === 'duo') {
+        element.replaceChildren(`${goal} · Two players, one screen`);
+        continue;
+      }
+
+      const record = element.ownerDocument.createElement('strong');
+      record.textContent = String(mode === 'rush' ? bestRush : bestRally);
+      element.replaceChildren(...(mode === 'rush'
+        ? [`${goal} · Best run `, record, ' hits']
+        : [`${goal} · Best rally `, record]));
     }
   }
 
-  /** @param {Presentation} presentation */
+  /**
+   * Solo win statistics. A streak earns a flame, which is decoration: screen readers skip it.
+   *
+   * @param {Presentation} presentation
+   */
   showStats({ mode, stats }) {
     for (const element of this.findAll('[data-stats]')) {
       const show = mode === 'solo' && stats.matches > 0;
       element.hidden = !show;
 
-      if (show) {
-        const rate = Math.round((stats.wins / stats.matches) * 100);
-        const streak = stats.streak >= 2 ? ` · ${stats.streak} in a row 🔥` : '';
-        element.textContent = `${stats.wins}/${stats.matches} won (${rate}%)${streak}`;
+      if (!show) {
+        continue;
+      }
+
+      const rate = Math.round((stats.wins / stats.matches) * 100);
+      const summary = `${stats.wins}/${stats.matches} won (${rate}%)`;
+
+      if (stats.streak >= 2) {
+        const flame = element.ownerDocument.createElement('span');
+        flame.setAttribute('aria-hidden', 'true');
+        flame.textContent = '🔥';
+        element.replaceChildren(`${summary} · ${stats.streak} in a row `, flame);
+      } else {
+        element.replaceChildren(summary);
       }
     }
   }

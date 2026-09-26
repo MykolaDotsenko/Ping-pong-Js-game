@@ -28,6 +28,7 @@ const requiredFiles = [
   'src/adapters/canvas/event-effects.js',
   'src/adapters/effects.js',
   'src/adapters/dom-game-view.js',
+  'src/adapters/audio-output.js',
   'src/adapters/sound-board.js',
   'src/adapters/music-player.js',
   'src/adapters/haptics.js',

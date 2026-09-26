@@ -1,6 +1,7 @@
 /**
  * @import { GameEvent } from '../domain/types.js'
  * @import { FeedbackPort, PreferencesPort } from '../application/ports.js'
+ * @import { AudioOutput } from './audio-output.js'
  */
 
 // Equal-tempered note frequencies in Hz.
@@ -30,19 +31,19 @@ const MASTER_VOLUME = 0.28;
 
 /**
  * Synthesized arcade sound effects: every sound is built from oscillators at play time, so
- * there are no audio files to load. The audio context is created on the first event, which
- * always follows a click or key press, as browsers require before playing sound.
+ * there are no audio files to load. They play through the audio context shared with the
+ * music, opened on the first event, which always follows a click or key press.
  *
  * @implements {FeedbackPort}
  */
 export class SoundBoard {
   /**
    * @param {object} options
-   * @param {{ AudioContext?: typeof AudioContext, webkitAudioContext?: typeof AudioContext }} options.window
+   * @param {AudioOutput} options.audio
    * @param {PreferencesPort} options.preferences
    */
-  constructor({ window, preferences }) {
-    this.window = window;
+  constructor({ audio, preferences }) {
+    this.audio = audio;
     this.preferences = preferences;
     /** @type {AudioContext | null} */
     this.context = null;
@@ -63,21 +64,17 @@ export class SoundBoard {
 
   /** @returns {boolean} whether sound can play */
   ensureContext() {
-    if (!this.context) {
-      const AudioContextClass = this.window.AudioContext ?? this.window.webkitAudioContext;
+    const context = this.audio.acquire();
 
-      if (!AudioContextClass) {
-        return false;
-      }
-
-      this.context = new AudioContextClass();
-      this.master = this.context.createGain();
-      this.master.gain.value = MASTER_VOLUME;
-      this.master.connect(this.context.destination);
+    if (!context) {
+      return false;
     }
 
-    if (this.context.state === 'suspended') {
-      this.context.resume().catch(() => {});
+    if (!this.master) {
+      this.context = context;
+      this.master = context.createGain();
+      this.master.gain.value = MASTER_VOLUME;
+      this.master.connect(context.destination);
     }
 
     return true;

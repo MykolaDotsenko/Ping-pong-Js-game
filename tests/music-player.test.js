@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { AudioOutput } from '../src/adapters/audio-output.js';
 import { MusicPlayer } from '../src/adapters/music-player.js';
 
 // A small Web Audio stand-in that records what the player schedules.
@@ -98,7 +99,7 @@ function setup({ music = true, audio = true } = {}) {
   };
   let values = { music };
   const preferences = { get: () => values, set: (changes) => { values = { ...values, ...changes }; } };
-  const player = new MusicPlayer({ window, preferences });
+  const player = new MusicPlayer({ audio: new AudioOutput(window), timers: window, preferences });
 
   return { player, contexts, timers, preferences, context: () => contexts[0] };
 }

@@ -1,6 +1,9 @@
+import { GAME_PHASE } from '../domain/game.js';
+
 /**
  * @import { GameEvent, GameState } from '../domain/types.js'
  * @import { FeedbackPort, PreferencesPort } from '../application/ports.js'
+ * @import { AudioOutput } from './audio-output.js'
  */
 
 // A four-bar loop in A minor: bass on the root, a pulsing chord and a lead line that only
@@ -36,11 +39,13 @@ const pitch = (semitones) => A2 * 2 ** (semitones / 12);
 export class MusicPlayer {
   /**
    * @param {object} options
-   * @param {{ AudioContext?: typeof AudioContext, webkitAudioContext?: typeof AudioContext, setInterval: typeof setInterval, clearInterval: typeof clearInterval }} options.window
+   * @param {AudioOutput} options.audio the audio context shared with the sound effects
+   * @param {{ setInterval: typeof setInterval, clearInterval: typeof clearInterval }} options.timers
    * @param {PreferencesPort} options.preferences
    */
-  constructor({ window, preferences }) {
-    this.window = window;
+  constructor({ audio, timers, preferences }) {
+    this.audio = audio;
+    this.timers = timers;
     this.preferences = preferences;
     /** @type {AudioContext | null} */
     this.context = null;
@@ -95,7 +100,7 @@ export class MusicPlayer {
     }
 
     // A change to the music switch takes effect at the next event, without a restart.
-    if (state.phase === 'running' && this.playing !== this.enabled) {
+    if (state.phase === GAME_PHASE.RUNNING && this.playing !== this.enabled) {
       if (this.enabled) this.start();
       else this.stop();
     }
@@ -103,27 +108,23 @@ export class MusicPlayer {
 
   /** @returns {boolean} whether the audio graph is ready */
   ensureContext() {
-    if (!this.context) {
-      const AudioContextClass = this.window.AudioContext ?? this.window.webkitAudioContext;
+    const context = this.audio.acquire();
 
-      if (!AudioContextClass) {
-        return false;
-      }
+    if (!context) {
+      return false;
+    }
 
-      this.context = new AudioContextClass();
-      this.master = this.context.createGain();
+    if (!this.master) {
+      this.context = context;
+      this.master = context.createGain();
       this.master.gain.value = 0;
-      this.master.connect(this.context.destination);
-      this.layers = { bass: this.context.createGain(), chord: this.context.createGain(), lead: this.context.createGain() };
+      this.master.connect(context.destination);
+      this.layers = { bass: context.createGain(), chord: context.createGain(), lead: context.createGain() };
 
       for (const [name, gain] of Object.entries(this.layers)) {
         gain.gain.value = name === 'bass' ? 1 : 0;
         gain.connect(this.master);
       }
-    }
-
-    if (this.context.state === 'suspended') {
-      this.context.resume().catch(() => {});
     }
 
     return true;
@@ -142,7 +143,7 @@ export class MusicPlayer {
     master.gain.cancelScheduledValues(context.currentTime);
     master.gain.setValueAtTime(master.gain.value, context.currentTime);
     master.gain.linearRampToValueAtTime(1, context.currentTime + FADE_SECONDS);
-    this.timer = this.window.setInterval(() => this.schedule(), SCHEDULE_INTERVAL_MS);
+    this.timer = this.timers.setInterval(() => this.schedule(), SCHEDULE_INTERVAL_MS);
     this.schedule();
   }
 
@@ -160,7 +161,7 @@ export class MusicPlayer {
     master.gain.linearRampToValueAtTime(0, context.currentTime + FADE_SECONDS);
 
     if (this.timer !== null) {
-      this.window.clearInterval(this.timer);
+      this.timers.clearInterval(this.timer);
       this.timer = null;
     }
   }

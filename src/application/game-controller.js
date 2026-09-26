@@ -14,7 +14,7 @@ import { interpolateState } from './interpolation.js';
 import { GAME_COMMAND } from './ports.js';
 
 /**
- * @import { GameConfig, GameEvent, GameState } from '../domain/types.js'
+ * @import { GameConfig, GameState } from '../domain/types.js'
  * @import {
  *   FeedbackPort,
  *   FrameScheduler,
@@ -365,6 +365,7 @@ export class GameController {
       phase,
       mode: this.mode,
       difficulty,
+      rules: this.config.rules,
       status: this.statusText(),
       score,
       hits,
@@ -411,12 +412,4 @@ export class GameController {
       ? `${hits.player} hits, ${this.state.lives} lives left`
       : `You ${score.player} — ${score.opponent} ${opponentName}`;
   }
-}
-
-/**
- * @param {GameEvent} event
- * @returns {event is Extract<GameEvent, { type: 'paddle-hit' }>}
- */
-export function isPaddleHit(event) {
-  return event.type === 'paddle-hit';
 }

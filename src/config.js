@@ -3,6 +3,9 @@
  * @import { Difficulty, MatchCatalog } from './application/ports.js'
  */
 
+/** Misses a Rush run allows; the menu names it on the Rush button. */
+export const RUSH_LIVES = 3;
+
 // A portrait 5:8 court: it fills a phone held upright and reads as a vertical arcade on desktop.
 /** @satisfies {GameConfig} */
 export const GAME_CONFIG = Object.freeze({
@@ -94,7 +97,7 @@ export const DIFFICULTY_CONFIGS = Object.freeze({
 // Rush: a survival run against a computer that returns everything but a curve, with a ball
 // that keeps accelerating. Three misses end the run; the score is the number of hits.
 export const RUSH_CONFIG = tuned(GAME_CONFIG, {
-  rules: Object.freeze({ kind: 'rush', lives: 3 }),
+  rules: Object.freeze({ kind: 'rush', lives: RUSH_LIVES }),
   ball: { initialSpeed: 440, maxSpeed: 1500, speedIncrease: 1.05 },
   opponent: { maxSpeed: 1400, reach: 1, predictionWeight: 1, error: 0, aim: 0.35 },
   powerUps: { enabled: false },

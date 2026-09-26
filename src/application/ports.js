@@ -2,7 +2,7 @@
  * Contracts between the application core and its adapters. Adapters implement these
  * shapes and receive them at the composition root; the core never imports an adapter.
  *
- * @import { GameConfig, GameEvent, GamePhase, GameState, InputSnapshot, Modifiers, Side } from '../domain/types.js'
+ * @import { GameConfig, GameEvent, GamePhase, GameState, InputSnapshot, Modifiers, Rules, Side } from '../domain/types.js'
  */
 
 /** The commands adapters may send to the application. */
@@ -63,6 +63,7 @@ export const MODES = Object.freeze(['solo', 'rush', 'duo']);
  * @property {GamePhase} phase
  * @property {Mode} mode
  * @property {Difficulty} difficulty
+ * @property {Rules} rules how the match is won, so the view never repeats them from memory
  * @property {string} status
  * @property {Record<Side, number>} score
  * @property {Record<Side, number>} hits

@@ -45,6 +45,11 @@ class FakeElement extends EventTarget {
     this.children.push(child);
   }
 
+  replaceChildren(...nodes) {
+    this.children = nodes;
+    this.textContent = nodes.map((node) => (typeof node === 'string' ? node : node.textContent)).join('');
+  }
+
   setAttribute(name, value) {
     this.attributes.set(name, value);
   }
@@ -125,6 +130,7 @@ function createRoot({ modalDialogs = true } = {}) {
     ['menuButton', { 'data-command': 'reset' }],
     ['bogus', { 'data-command': 'self-destruct' }],
     ['menuMeta', { 'data-menu-meta': '' }],
+    ['rushLives', { 'data-rush-lives': '' }],
     ['stats', { 'data-stats': '' }],
     ['modeTip', { 'data-mode-tip': '' }],
     ['showTutorial', { 'data-show-tutorial': '' }],
@@ -208,7 +214,7 @@ function createDevice(overrides = {}) {
 function setup({ canVibrate = true, preferences = createPreferences(), device = createDevice(), modalDialogs = true } = {}) {
   const dom = createRoot({ modalDialogs });
   const { board } = dom;
-  const view = new DomGameView({ root: dom.root, board, preferences, canVibrate, device });
+  const view = new DomGameView({ root: dom.root, board, preferences, canVibrate, device, rushLives: 3 });
   const commands = [];
 
   view.onCommand((command) => commands.push({ command, focusedBefore: board.focusCalls.length }));
@@ -225,6 +231,7 @@ function presentation(overrides = {}) {
     phase: GAME_PHASE.READY,
     mode: 'solo',
     difficulty: 'normal',
+    rules: { kind: 'match', winningScore: 7 },
     status: 'First to 7. Start when ready.',
     score: { player: 0, opponent: 0 },
     hits: { player: 0, opponent: 0 },
@@ -386,14 +393,17 @@ test('the tutorial opens as a modal dialog on a first visit, and dismissing it r
   assert.equal(dom.tutorial.modal, true);
 });
 
-test('closing the tutorial with Escape counts as having seen it', () => {
+test('closing the tutorial with Escape counts as having seen it, saved before it even closes', () => {
   const preferences = createPreferences({ tutorialSeen: false });
   const { dom } = setup({ preferences });
 
-  // Escape makes the browser close the dialog, which announces 'close'.
-  dom.tutorial.close();
-
+  // Escape fires 'cancel' right away; the browser announces 'close' only in a later task.
+  dom.tutorial.dispatchEvent(new Event('cancel'));
   assert.equal(preferences.get().tutorialSeen, true);
+
+  const other = createPreferences({ tutorialSeen: false });
+  setup({ preferences: other }).dom.tutorial.close();
+  assert.equal(other.get().tutorialSeen, true, 'any other way of closing it counts too');
 });
 
 test('without modal dialog support the tutorial still opens and closes', () => {
@@ -507,16 +517,39 @@ test('match point is announced on the side that is one point away', () => {
   assert.equal(dom.matchPoint.dataset.side, 'opponent');
 });
 
-test('the menu shows the record for the chosen mode and the Solo win statistics', () => {
+test('the menu states the rules and the record for the chosen mode, from the match config', () => {
+  const { view, dom } = setup();
+  const record = () => dom.menuMeta.children.find((child) => typeof child !== 'string');
+
+  view.render(presentation({ bestRally: 14, rules: { kind: 'match', winningScore: 11 } }));
+  assert.equal(dom.menuMeta.textContent, 'First to 11 · Best rally 14');
+  assert.equal(record().textContent, '14', 'the record stands out');
+
+  view.render(presentation({ mode: 'rush', bestRush: 27, rules: { kind: 'rush', lives: 5 } }));
+  assert.equal(dom.menuMeta.textContent, '5 lives · Best run 27 hits');
+  assert.equal(record().textContent, '27');
+
+  view.render(presentation({ mode: 'duo', bestRally: 14 }));
+  assert.equal(dom.menuMeta.textContent, 'First to 7 · Two players, one screen', 'a Solo record is not a two-player one');
+});
+
+test('the Rush button names its lives from the configuration', () => {
+  assert.equal(setup().dom.rushLives.textContent, '3 lives');
+});
+
+test('the menu shows Solo win statistics, with the streak flame hidden from screen readers', () => {
   const { view, dom } = setup();
 
-  view.render(presentation({ bestRally: 14, stats: { matches: 5, wins: 3, streak: 2, bestStreak: 2 } }));
-  assert.match(dom.menuMeta.innerHTML, /Best rally <strong[^>]*>14</);
+  view.render(presentation({ stats: { matches: 5, wins: 3, streak: 2, bestStreak: 2 } }));
   assert.equal(dom.stats.hidden, false);
   assert.equal(dom.stats.textContent, '3/5 won (60%) · 2 in a row 🔥');
+  const flame = dom.stats.children.find((child) => typeof child !== 'string');
+  assert.equal(flame.getAttribute('aria-hidden'), 'true');
 
-  view.render(presentation({ mode: 'rush', bestRush: 27 }));
-  assert.match(dom.menuMeta.innerHTML, /Best run <strong[^>]*>27</);
+  view.render(presentation({ stats: { matches: 5, wins: 3, streak: 0, bestStreak: 2 } }));
+  assert.equal(dom.stats.textContent, '3/5 won (60%)');
+
+  view.render(presentation({ mode: 'rush' }));
   assert.equal(dom.stats.hidden, true);
 });
 

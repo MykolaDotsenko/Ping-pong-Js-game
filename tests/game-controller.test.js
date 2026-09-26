@@ -162,6 +162,7 @@ test('connecting draws the ready screen, sets up one player, and leaves the loop
     phase: GAME_PHASE.READY,
     mode: 'solo',
     difficulty: 'normal',
+    rules: GAME_CONFIG.rules,
     status: 'First to 7. Start when ready.',
     score: { player: 0, opponent: 0 },
     hits: { player: 0, opponent: 0 },
