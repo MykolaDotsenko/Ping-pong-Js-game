@@ -1,8 +1,8 @@
 import { GAME_PHASE } from '../../domain/game.js';
-import { BEAM_HALF_WIDTH, DRIP_RADIUS } from '../../domain/hazards.js';
+import { BEAM_HALF_WIDTH, bossAttacks, DRIP_RADIUS, isFinalBoss } from '../../domain/hazards.js';
 import { paddleWidth } from '../../domain/power-ups.js';
 import { phantomBand, phantomHidden } from '../../domain/supers.js';
-import { FEVER_RALLY, FONT, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, SUPER_STYLE, THEME } from './theme.js';
+import { FEVER_RALLY, FONT, mixRgb, phaseStyle, PICKUP_STYLE, roundedRect, speedIntensity, SUPER_STYLE, THEME } from './theme.js';
 
 /**
  * The moving parts of the court: the ball and its trail, the paddles, the power-ups and the
@@ -446,7 +446,7 @@ export function drawHazards(ctx, state, config) {
 
 /**
  * A paddle with its glow. It squashes on a hit, and glows lime while enlarged or rose while
- * shrunk, so a power-up reads at a glance.
+ * shrunk, so a power-up reads at a glance; the final boss's glows in the color of its phase.
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {GameState} state
@@ -465,7 +465,8 @@ export function drawPaddle(ctx, state, side, config, squash, glows) {
   const left = centerX - width / 2;
   const middle = top + paddle.height / 2;
   const { wide, tiny } = state.modifiers[side];
-  const glowRgb = wide > 0 ? THEME.lime : tiny > 0 ? THEME.rose : colors.rgb;
+  const bossRgb = side === 'opponent' && isFinalBoss(config) ? phaseStyle(bossAttacks(state.score, config)).rgb : null;
+  const glowRgb = wide > 0 ? THEME.lime : tiny > 0 ? THEME.rose : bossRgb ?? colors.rgb;
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';

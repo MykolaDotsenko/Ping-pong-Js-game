@@ -5,7 +5,8 @@ import { BallTrail } from '../src/adapters/canvas/ball-trail.js';
 import { GlowSprites, paintCourt, paintGrid } from '../src/adapters/canvas/court.js';
 import { drawLabels, drawRally, drawServeCountdown } from '../src/adapters/canvas/hud.js';
 import { ballColor, drawBall, drawExtraBalls, drawGhostFog, drawHazards, drawPaddle, drawPickups, drawTrail, hiddenBand, isHidden } from '../src/adapters/canvas/scene.js';
-import { FEVER_RALLY, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, THEME } from '../src/adapters/canvas/theme.js';
+import { FEVER_RALLY, mixRgb, PHASE_STYLE, PICKUP_STYLE, roundedRect, speedIntensity, THEME } from '../src/adapters/canvas/theme.js';
+import { RIVALS } from '../src/catalog.js';
 import { GAME_CONFIG } from '../src/config.js';
 import { createInitialState, GAME_PHASE, startGame } from '../src/domain/game.js';
 import { callsNamed, createRecordingContext, FakeCanvas } from './support/fake-canvas.js';
@@ -187,6 +188,22 @@ test('a widened paddle glows lime and a shrunk one rose, like their power-ups', 
 
   assert.equal(glowOf(playing({ modifiers: { player: { ...noGhost, wide: 4 }, opponent: noGhost } }), 'player'), THEME.lime);
   assert.equal(glowOf(playing({ modifiers: { player: noGhost, opponent: { ...noGhost, tiny: 4 } } }), 'opponent'), THEME.rose);
+});
+
+test('the final boss\'s paddle glows in the color of its phase', () => {
+  const landlord = RIVALS.at(-1).config;
+  const glowOf = (score, config = landlord, side = 'opponent') => {
+    const asked = [];
+    drawPaddle(createRecordingContext(), playing({ score }), side, config, 0, { get: (rgb) => asked.push(rgb) && new FakeCanvas() });
+    return asked[0];
+  };
+
+  assert.deepEqual(
+    [0, 2, 4, 6].map((player) => glowOf({ player, opponent: 0 })),
+    [PHASE_STYLE.drip.rgb, PHASE_STYLE.beam.rgb, PHASE_STYLE.lag.rgb, PHASE_STYLE.all.rgb],
+  );
+  assert.equal(glowOf({ player: 6, opponent: 0 }, landlord, 'player'), THEME.side.player.rgb, 'the player\'s paddle keeps its own');
+  assert.equal(glowOf({ player: 6, opponent: 0 }, RIVALS[8].config), THEME.side.opponent.rgb, 'as does any other boss');
 });
 
 test('a squashed paddle is wider and thinner for a moment after a hit', () => {

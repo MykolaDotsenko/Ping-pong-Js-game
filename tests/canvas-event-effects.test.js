@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { calloutFor, CURVE_SPIN, EDGE_OFFSET, finish, playEvents } from '../src/adapters/canvas/event-effects.js';
+import { calloutFor, CURVE_SPIN, EDGE_OFFSET, finish, LAST_WORD, playEvents, TAUNTS } from '../src/adapters/canvas/event-effects.js';
 import { SUPER_STYLE, THEME } from '../src/adapters/canvas/theme.js';
 import { Effects } from '../src/adapters/effects.js';
 import { COMIC_TITLES, FINISHER_KINDS, FINISHER_SECONDS, finisherFor, SUPER_FINISHERS } from '../src/adapters/finisher.js';
+import { RIVALS } from '../src/catalog.js';
 import { GAME_CONFIG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
-import { createInitialState } from '../src/domain/game.js';
+import { createInitialState, GAME_PHASE } from '../src/domain/game.js';
 
 const { width, height, ball } = GAME_CONFIG;
 const context = { config: GAME_CONFIG, random: () => 0.5 };
@@ -310,4 +311,59 @@ test('a boss\'s attacks are announced and land with effects of their own', () =>
 
   const lagged = play([{ type: 'hazard-hit', kind: 'lag', x: 250, y: 400 }]);
   assert.equal(lagged.labels[0].text, 'LAG!');
+});
+
+// The final boss: the landlord who wants the arcade gone.
+const LANDLORD = RIVALS.at(-1).config;
+const landlordState = (overrides = {}) => ({ ...createInitialState(LANDLORD, 1), phase: GAME_PHASE.RUNNING, ...overrides });
+const texts = (effects) => effects.labels.map((label) => label.text);
+
+function against(events, { jokes = true, state = landlordState(), config = LANDLORD } = {}) {
+  const effects = new Effects({ random: () => 0.5 });
+  playEvents(effects, events, { config, random: () => 0.5, jokes, state });
+  return effects;
+}
+
+test('the final boss opens the match with FIGHT! on the first serve', () => {
+  const serve = { type: 'serve', x: width / 2, y: height / 2 };
+
+  assert.deepEqual(texts(against([serve])), ['FIGHT!']);
+  assert.deepEqual(texts(against([serve], { state: landlordState({ serveNumber: 3 }) })), [], 'not on later serves');
+  assert.deepEqual(texts(against([serve], { config: RIVALS[8].config })), [], 'nor against any other rival');
+});
+
+test('the final boss flares into each new phase at its paddle, under the title of what it brings', () => {
+  const titles = [1, 2, 3].map((phase) => {
+    const effects = against([{ type: 'boss-phase', phase }]);
+    assert.ok(effects.rings.some((ring) => Math.abs(ring.y - 48) < 1), 'at the boss\'s paddle');
+    return texts(effects)[0];
+  });
+
+  assert.deepEqual(titles, ['BAD WIRING!', 'BAD WI-FI!', 'FINAL NOTICE!']);
+  assert.equal(against([{ type: 'boss-phase', phase: 1 }], { state: null }).active, false, 'without the state it cannot place it');
+  assert.equal(against([{ type: 'boss-phase', phase: 1 }], { config: GAME_CONFIG }).active, false);
+});
+
+test('with the fun extras on the landlord taunts every point it takes, and has the last word', () => {
+  const point = { type: 'point', scorer: 'opponent', x: 250, y: height };
+  const scored = (opponent, extra = []) => against([point, ...extra], { state: landlordState({ score: { player: 2, opponent } }) });
+
+  assert.deepEqual(texts(scored(1)), [TAUNTS[0]]);
+  assert.deepEqual(texts(scored(5)), [TAUNTS[4]]);
+  assert.deepEqual(texts(scored(6, [{ type: 'match-point', side: 'opponent' }])), ['MATCH POINT', TAUNTS[5]], 'after the match point, not instead');
+  assert.deepEqual(texts(against([point], { jokes: false, state: landlordState({ score: { player: 0, opponent: 1 } }) })), [], 'only with the fun extras');
+  assert.deepEqual(texts(against([{ ...point, scorer: 'player', y: 0 }], { state: landlordState({ score: { player: 1, opponent: 0 } }) })), [], 'not on the player\'s points');
+  assert.deepEqual(texts(against([point], { config: RIVALS[8].config, state: landlordState({ score: { player: 0, opponent: 1 } }) })), [], 'no other rival taunts');
+
+  const over = landlordState({ phase: GAME_PHASE.GAME_OVER, score: { player: 3, opponent: 7 } });
+  assert.deepEqual(texts(against([point, { type: 'game-over', winner: 'opponent' }], { state: over })), [LAST_WORD], 'the winning point gets the last word instead');
+  assert.deepEqual(texts(against([{ type: 'game-over', winner: 'opponent' }], { jokes: false, state: over })), []);
+});
+
+test('beating the final boss with the fun extras on is an EVICTALITY', () => {
+  const effects = against([{ type: 'game-over', winner: 'player' }], { state: landlordState({ phase: GAME_PHASE.GAME_OVER, score: { player: 7, opponent: 2 } }) });
+
+  assert.deepEqual(texts(effects), ['EVICTALITY']);
+  assert.equal(effects.labels[0].color, `rgb(${THEME.red})`);
+  assert.equal(effects.hiddenPaddle, 'opponent');
 });

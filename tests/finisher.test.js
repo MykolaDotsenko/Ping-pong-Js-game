@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   COMIC_TITLES,
+  FINAL_TITLE,
   FINISHER_KINDS,
   FINISHER_SECONDS,
   finisherApplies,
@@ -11,6 +12,7 @@ import {
   REGULAR_FINISHERS,
   SUPER_FINISHERS,
 } from '../src/adapters/finisher.js';
+import { RIVALS } from '../src/catalog.js';
 import { GAME_CONFIG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
 import { createInitialState } from '../src/domain/game.js';
 
@@ -71,7 +73,29 @@ test('a match won with a super ends in that super\'s own finisher, whatever the 
 
   assert.equal(finisherFor({ ...solo, winner: 'opponent', seed: 1, super: 'zigzag' }), null, 'still none on the player');
   assert.equal(new Set(FINISHER_KINDS).size, FINISHER_KINDS.length);
-  assert.equal(FINISHER_KINDS.length, 13);
+  assert.equal(FINISHER_KINDS.length, 14);
+});
+
+test('beating the final boss is an EVICTALITY, whatever won the match', () => {
+  for (const seed of [1, 2, 3]) {
+    assert.deepEqual(finisherFor({ ...solo, final: true, winner: 'player', seed }), {
+      kind: 'evict',
+      loser: 'opponent',
+      title: FINAL_TITLE,
+      super: null,
+      perfect: false,
+    });
+  }
+
+  assert.equal(FINAL_TITLE, 'EVICTALITY');
+  assert.deepEqual(finisherFor({ ...solo, final: true, winner: 'player', seed: 1, super: 'fireball', perfect: true })?.super, 'fireball', 'a super still gets its due');
+  assert.equal(finisherFor({ ...solo, final: true, winner: 'opponent', seed: 1 }), null, 'the landlord does not evict the player like that');
+  assert.equal(finisherFor({ ...solo, final: true, jokes: false, winner: 'player', seed: 1 }), null);
+
+  const landlord = RIVALS.at(-1).config;
+  const over = { ...createInitialState(landlord, 1), score: { player: 7, opponent: 4 } };
+  assert.equal(finisherAt({ type: 'game-over', winner: 'player' }, over, landlord, true)?.kind, 'evict');
+  assert.notEqual(finisherAt({ type: 'game-over', winner: 'player' }, over, RIVALS[8].config, true)?.kind, 'evict', 'the other bosses go the usual way');
 });
 
 test('the finisher is read from the game-over event and the final score: a super, and a win to nil', () => {

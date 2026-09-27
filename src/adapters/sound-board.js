@@ -1,3 +1,5 @@
+import { GAME_PHASE } from '../domain/game.js';
+import { isFinalBoss } from '../domain/hazards.js';
 import { finisherAt } from './finisher.js';
 
 /**
@@ -64,11 +66,18 @@ export class SoundBoard {
       return;
     }
 
+    const jokes = this.preferences.get().jokes === true;
+    const final = config ? isFinalBoss(config) : false;
+
     for (const event of events) {
       this.play(event);
 
+      if (final) {
+        this.finalBoss(event, state, jokes);
+      }
+
       const finisher = event.type === 'game-over' && state && config
-        ? finisherAt(event, state, config, this.preferences.get().jokes === true)
+        ? finisherAt(event, state, config, jokes)
         : null;
 
       if (finisher) {
@@ -102,6 +111,44 @@ export class SoundBoard {
 
     if (finisher.super) {
       this.superShot(finisher.super);
+    }
+
+    if (finisher.kind === 'evict') {
+      // The landlord's building comes down: a long, low rumble.
+      this.tone({ frequency: 70, endFrequency: 32, duration: 0.9, type: 'sawtooth', volume: 0.3, delay: 0.4 });
+    }
+  }
+
+  /**
+   * The final boss's own sounds: a gong on the first serve, a rising sting as it moves on to
+   * its next phase, and with the fun extras on a laugh for every point it takes, a longer one
+   * for the point that wins.
+   *
+   * @param {GameEvent} event
+   * @param {GameState | undefined} state
+   * @param {boolean} jokes
+   */
+  finalBoss(event, state, jokes) {
+    if (event.type === 'serve' && state?.serveNumber === 0) {
+      this.tone({ frequency: 98, endFrequency: 92, duration: 1, type: 'triangle', volume: 0.4 });
+      this.tone({ frequency: 196, endFrequency: 180, duration: 0.7, type: 'sine', volume: 0.2 });
+    } else if (event.type === 'boss-phase') {
+      this.tone({ frequency: 140, endFrequency: 560, duration: 0.35, type: 'sawtooth', volume: 0.16 });
+      this.arpeggio([NOTE.C4, 311.13, 369.99], 0.07, 'square', 0.12);
+    } else if (jokes && event.type === 'point' && event.scorer === 'opponent') {
+      this.laugh(state?.phase === GAME_PHASE.GAME_OVER ? 5 : 3);
+    }
+  }
+
+  /**
+   * A deep laugh, each "ha" a little lower than the last.
+   *
+   * @param {number} syllables
+   */
+  laugh(syllables) {
+    for (let index = 0; index < syllables; index += 1) {
+      const frequency = 150 - index * 9;
+      this.tone({ frequency: frequency * 1.2, endFrequency: frequency, duration: 0.13, type: 'sawtooth', volume: 0.2, delay: index * 0.16 });
     }
   }
 

@@ -9,7 +9,7 @@ import {
   movePaddle,
   reflectFromSideWalls,
 } from './physics.js';
-import { initialHazardState, NO_HAZARDS, tickHazards } from './hazards.js';
+import { bossPhase, initialHazardState, NO_HAZARDS, tickHazards } from './hazards.js';
 import { moveOpponent } from './opponent.js';
 import { collectPowerUps, initialPowerUpState, NO_EXTRA_BALLS, otherSide, paddleWidth, tickEffects, tickPowerUps } from './power-ups.js';
 import { chargeMeter, initialSuperState, returnCharge, scoringSuper, steerSuper, strikeBack } from './supers.js';
@@ -295,6 +295,13 @@ function awardPoint(state, scorer, x, config, events, superKind = null) {
 
     if (score[scorer] === rules.winningScore - 1) {
       events.push({ type: 'match-point', side: scorer });
+    }
+
+    // A final boss changes its attacks as the player closes in on winning.
+    const phase = bossPhase(score, config);
+
+    if (phase !== bossPhase(state.score, config)) {
+      events.push({ type: 'boss-phase', phase });
     }
   }
 

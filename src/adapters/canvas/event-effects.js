@@ -1,9 +1,10 @@
-import { matchPointSide } from '../../domain/game.js';
+import { GAME_PHASE, matchPointSide } from '../../domain/game.js';
+import { isFinalBoss } from '../../domain/hazards.js';
 import { paddleWidth } from '../../domain/power-ups.js';
 import { CURVE_SPIN, EDGE_OFFSET, isLoaded } from '../../domain/supers.js';
 import { COMIC_TITLES, finisherAt, FINISHER_SECONDS } from '../finisher.js';
 import { meterBox } from './hud.js';
-import { PICKUP_STYLE, speedIntensity, SUPER_STYLE, THEME } from './theme.js';
+import { phaseStyle, PICKUP_STYLE, speedIntensity, SUPER_STYLE, THEME } from './theme.js';
 
 /**
  * @import { GameConfig, GameEvent, GameState, Side } from '../../domain/types.js'
@@ -22,6 +23,10 @@ import { PICKUP_STYLE, speedIntensity, SUPER_STYLE, THEME } from './theme.js';
 export { CURVE_SPIN, EDGE_OFFSET };
 export const SMASH_SPEED_SHARE = 0.75;
 
+// The landlord's taunts, one for each point it takes on its way to winning, and its last word.
+export const TAUNTS = Object.freeze(["RENT'S DUE!", 'PAY UP!', 'NO REFUNDS!', 'LEASE DENIED!', 'RENT HIKE!', 'LAST WARNING!']);
+export const LAST_WORD = "YOU'RE EVICTED!";
+
 /**
  * The visual side of game events: sparks, shockwaves, screen shake, flashes and callouts.
  *
@@ -31,6 +36,8 @@ export const SMASH_SPEED_SHARE = 0.75;
  */
 export function playEvents(effects, events, { config, random, jokes = false, state }) {
   const { width, height, ball } = config;
+  // The final boss taunts the player once the step's other callouts are up, so it joins them.
+  let taunt = false;
 
   for (const event of events) {
     switch (event.type) {
@@ -47,6 +54,10 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
         effects.clearLabels();
         effects.ring({ x: event.x, y: event.y, color: `rgba(${THEME.violet}, 0.8)`, radius: ball.radius + 2, growth: 200, life: 0.35, width: 2 });
         effects.burst({ x: event.x, y: event.y, color: `rgb(${THEME.violet})`, count: 10, speed: 130, life: 0.4, size: 1.6 });
+
+        if (state?.serveNumber === 0 && isFinalBoss(config)) {
+          fight(effects, config);
+        }
         break;
       case 'paddle-hit':
         celebrateHit(effects, event, config);
@@ -93,6 +104,7 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
         effects.flash(color, 0.34);
         effects.shake(0.95);
         effects.pulse(1);
+        taunt ||= event.scorer === 'opponent' && jokes && isFinalBoss(config) && state?.phase !== GAME_PHASE.GAME_OVER;
         break;
       }
       case 'match-point':
@@ -114,6 +126,9 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
       case 'hazard-hit':
         landHazard(effects, event, config);
         break;
+      case 'boss-phase':
+        morph(effects, event, config, state);
+        break;
       case 'game-over': {
         const finisher = state ? finisherAt(event, state, config, jokes) : null;
 
@@ -124,12 +139,59 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
         } else {
           celebrate(effects, event.winner, config, random);
         }
+
+        if (event.winner === 'opponent' && jokes && isFinalBoss(config)) {
+          effects.label({ text: LAST_WORD, x: width / 2, y: height * 0.3, color: `rgb(${THEME.red})`, life: 1.6, size: 34, stack: true });
+        }
         break;
       }
       default:
         break;
     }
   }
+
+  if (taunt && state) {
+    const text = TAUNTS[Math.min(TAUNTS.length, Math.max(1, state.score.opponent)) - 1];
+    effects.label({ text, x: width / 2, y: height * 0.22, color: `rgb(${THEME.side.opponent.rgb})`, life: 0.9, size: 30, stack: true });
+  }
+}
+
+/**
+ * FIGHT!: the first serve against the final boss.
+ *
+ * @param {Effects} effects
+ * @param {GameConfig} config
+ */
+function fight(effects, config) {
+  effects.label({ text: 'FIGHT!', x: config.width / 2, y: config.height / 2 - 70, color: `rgb(${THEME.red})`, life: 0.8, size: 48 });
+  effects.flash(`rgb(${THEME.red})`, 0.12);
+}
+
+/**
+ * The final boss moves on to its next phase: its paddle flares in the phase's color, and the
+ * phase's title says what it brings.
+ *
+ * @param {Effects} effects
+ * @param {Extract<GameEvent, { type: 'boss-phase' }>} event
+ * @param {GameConfig} config
+ * @param {GameState} [state]
+ */
+function morph(effects, { phase }, config, state) {
+  const kinds = config.boss?.phases?.[phase];
+
+  if (!kinds || !state) {
+    return;
+  }
+
+  const style = phaseStyle(kinds);
+  const color = `rgb(${style.rgb})`;
+  const x = state.opponent.x;
+  const y = config.paddle.inset + config.paddle.height / 2;
+
+  effects.ring({ x, y, color, radius: 12, growth: 520, life: 0.5, width: 4 });
+  effects.burst({ x, y, color, count: 40, speed: 320, direction: Math.PI / 2, spread: 2.6, life: 0.6, size: 2.2 });
+  effects.flash(color, 0.12);
+  effects.label({ text: style.title, x: config.width / 2, y: config.height * 0.3, color, life: 0.9, size: 34, stack: true });
 }
 
 /**
@@ -329,6 +391,9 @@ const FROST = '#e0f2fe';
 // Ash from an incinerated paddle, and the light of an electrocuted one.
 const ASH = '#57534e';
 const CHARGED = '#bfdbfe';
+// The bricks and dust of an evicted landlord's paddle.
+const BRICK = '#b45309';
+const DUST = '#a8a29e';
 
 /**
  * The finisher, under its callout: PONGALITY in red, with SUPER above it in the color of the
@@ -583,5 +648,42 @@ const FINISHES = Object.freeze({
     effects.hidePaddle(t.side);
     effects.shard({ x: t.x, y: t.y, vx: 0, vy: t.outward * 20, width: t.width, height: t.height, color: t.color, spin: 0.9, life: 1.2, gravity: t.outward * 90 });
     aside(effects, t, 'Zzz', THEME.violet, 1.1);
+  },
+  evict(effects, t) {
+    // EVICTALITY: cracks of light run through the landlord's paddle, then it comes down like a
+    // condemned building, brick by brick, in a cloud of dust.
+    const gold = `rgb(${THEME.amber})`;
+
+    effects.hidePaddle(t.side);
+    effects.shard({ x: t.x, y: t.y, vx: 0, vy: 0, width: t.width, height: t.height, color: t.color, life: 0.4 });
+
+    [-0.3, 0.05, 0.32].forEach((at, index) => {
+      effects.schedule(index * 0.1, () => {
+        const x = t.x + at * t.width;
+        effects.bolt({ x1: x - 8, y1: t.y - t.height * 1.5, x2: x + 10, y2: t.y + t.height * 1.5, color: gold, segments: 4, jag: 8, life: 0.3, width: 3 });
+      });
+    });
+
+    effects.schedule(0.4, () => {
+      effects.flash(gold, 0.3);
+      effects.shake(1.1);
+      effects.ring({ x: t.x, y: t.y, color: gold, radius: 8, growth: 700, life: 0.45, width: 5 });
+      effects.burst({ x: t.x, y: t.y, color: DUST, count: 60, speed: 150, life: 0.8, size: 3, drag: 1.6 });
+
+      for (let brick = 0; brick < 10; brick += 1) {
+        effects.shard({
+          x: t.x - t.width / 2 + (t.width * (brick + 0.5)) / 10,
+          y: t.y,
+          vx: (brick - 4.5) * 30,
+          vy: -60 - (brick % 3) * 30,
+          width: t.width / 7,
+          height: t.height,
+          color: brick % 2 ? BRICK : t.color,
+          spin: brick % 2 ? 6 : -6,
+          life: 0.8,
+          gravity: 1100,
+        });
+      }
+    });
   },
 });

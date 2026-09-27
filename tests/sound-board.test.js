@@ -5,6 +5,7 @@ import { AudioOutput } from '../src/adapters/audio-output.js';
 import { MusicPlayer } from '../src/adapters/music-player.js';
 import { SoundBoard } from '../src/adapters/sound-board.js';
 import { finisherFor } from '../src/adapters/finisher.js';
+import { RIVALS } from '../src/catalog.js';
 import { GAME_CONFIG, RUSH_CONFIG } from '../src/config.js';
 import { createInitialState } from '../src/domain/game.js';
 
@@ -264,4 +265,48 @@ test('a super\'s finisher sounds the super again, and the comic ones sob or snor
   assert.notDeepEqual(tiny, plain);
   assert.notDeepEqual(snooze, plain);
   assert.notDeepEqual(tiny, snooze);
+});
+
+test('the landlord laughs at every point it takes with the fun extras on, longer at the one that wins', () => {
+  const landlord = RIVALS.at(-1).config;
+  const point = { type: 'point', scorer: 'opponent', x: 250, y: 800 };
+  const sounds = (events, { jokes = true, config = landlord, phase = 'running' } = {}) => {
+    const { board, contexts } = setup({ jokes });
+    board.handle(events, { ...createInitialState(config, 1), phase }, config);
+    return contexts[0].oscillators.length;
+  };
+  const plain = sounds([point], { jokes: false });
+
+  assert.equal(sounds([point]), plain + 3, 'ha, ha, ha');
+  assert.equal(sounds([point], { phase: 'game-over' }), plain + 5);
+  assert.equal(sounds([point], { config: RIVALS[8].config }), plain, 'no other rival laughs');
+  assert.equal(sounds([{ ...point, scorer: 'player', y: 0 }]), sounds([{ ...point, scorer: 'player', y: 0 }], { jokes: false }));
+});
+
+test('the final boss rings a gong on the first serve and sounds a sting as it changes phase', () => {
+  const landlord = RIVALS.at(-1).config;
+  const count = (events, config, serveNumber = 0) => {
+    const { board, contexts } = setup();
+    board.handle(events, { ...createInitialState(config, 1), serveNumber }, config);
+    return contexts[0].oscillators.length;
+  };
+  const serve = { type: 'serve', x: 250, y: 400 };
+
+  assert.equal(count([serve], landlord), count([serve], GAME_CONFIG) + 2);
+  assert.equal(count([serve], landlord, 2), count([serve], GAME_CONFIG, 2), 'only on the first serve');
+  assert.equal(count([{ type: 'boss-phase', phase: 1 }], landlord), 4, 'a sweep and three notes');
+  assert.equal(count([{ type: 'boss-phase', phase: 1 }], GAME_CONFIG), 0);
+});
+
+test('an EVICTALITY rumbles after the crunch', () => {
+  const landlord = RIVALS.at(-1).config;
+  const won = [{ type: 'game-over', winner: 'player' }];
+  const over = { ...createInitialState(landlord, 1), phase: 'game-over', score: { player: 7, opponent: 3 } };
+  const sounds = (jokes) => {
+    const { board, contexts } = setup({ jokes });
+    board.handle(won, over, landlord);
+    return contexts[0].oscillators.length;
+  };
+
+  assert.equal(sounds(true), sounds(false) + 3, 'the crunch, and the building coming down');
 });
