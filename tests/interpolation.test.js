@@ -37,3 +37,13 @@ test('the current state is returned as-is when there is nothing to blend', () =>
   assert.strictEqual(interpolateState(current, current, 0.5), current);
   assert.strictEqual(interpolateState(previous, current, 1), current);
 });
+
+test('Multiball balls blend with themselves a step earlier, and one that just split off has no past', () => {
+  const extra = (id, x, y) => ({ id, x, y, vx: 0, vy: 0, spin: 0, ttl: 3 });
+  const before = { ...previous, extraBalls: [extra(1, 100, 100)] };
+  const after = { ...current, extraBalls: [extra(1, 120, 140), extra(2, 300, 300)] };
+  const frame = interpolateState(before, after, 0.5);
+
+  assert.deepEqual(frame.extraBalls.map(({ id, x, y }) => [id, x, y]), [[1, 110, 120], [2, 300, 300]]);
+  assert.strictEqual(interpolateState(previous, current, 0.5).extraBalls, current.extraBalls, 'none: nothing allocated');
+});

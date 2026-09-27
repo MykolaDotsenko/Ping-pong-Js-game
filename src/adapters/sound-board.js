@@ -145,7 +145,8 @@ export class SoundBoard {
         this.tone({ frequency: pitch, duration: 0.09, type: 'square', volume: 0.3 });
         this.tone({ frequency: pitch * 2, duration: 0.05, type: 'sine', volume: 0.16 });
 
-        if (event.rally % 5 === 0) {
+        // A Multiball ball's returns do not count toward the rally, so they earn no chime.
+        if (event.rally % 5 === 0 && !event.extra) {
           this.arpeggio([NOTE.C6, NOTE.E6, NOTE.G6], 0.05, 'sine', 0.22, 0.04);
         }
         break;

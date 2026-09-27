@@ -168,6 +168,11 @@ test('every event type has a sound, and milestone rallies add a chime', () => {
   const beforeMilestone = contexts[0].oscillators.length;
   board.handle([hit(5, 'opponent')]);
   assert.equal(contexts[0].oscillators.length - beforeMilestone, 5);
+
+  // A Multiball ball's return sounds like a hit, but is no fifth hit of the rally.
+  const beforeExtra = contexts[0].oscillators.length;
+  board.handle([{ ...hit(5, 'opponent'), extra: true }]);
+  assert.equal(contexts[0].oscillators.length - beforeExtra, 2);
 });
 
 test('sound effects and music share one audio context', () => {

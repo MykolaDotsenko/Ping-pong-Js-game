@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { BallTrail } from '../src/adapters/canvas/ball-trail.js';
 import { GlowSprites, paintCourt, paintGrid } from '../src/adapters/canvas/court.js';
 import { drawLabels, drawRally, drawServeCountdown } from '../src/adapters/canvas/hud.js';
-import { ballColor, drawBall, drawGhostFog, drawPaddle, drawPickups, drawTrail, hiddenBand, isHidden } from '../src/adapters/canvas/scene.js';
+import { ballColor, drawBall, drawExtraBalls, drawGhostFog, drawPaddle, drawPickups, drawTrail, hiddenBand, isHidden } from '../src/adapters/canvas/scene.js';
 import { FEVER_RALLY, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, THEME } from '../src/adapters/canvas/theme.js';
 import { GAME_CONFIG } from '../src/config.js';
 import { createInitialState, GAME_PHASE, startGame } from '../src/domain/game.js';
@@ -138,6 +138,28 @@ test('a ball in the fog is not drawn, except while it waits to be served', () =>
   const serving = createRecordingContext();
   drawBall(serving, { ...inFog, serveCountdown: 0.4 }, GAME_CONFIG, 0, glows());
   assert.ok(serving.calls.length > 0);
+});
+
+test('Multiball balls have a pale core, never the ball\'s white, a streak behind them, and fade at the end', () => {
+  const extraBalls = [
+    { id: 1, x: 100, y: 300, vx: 200, vy: -400, spin: 0, ttl: 4 },
+    { id: 2, x: 400, y: 600, vx: 0, vy: 400, spin: 0, ttl: 0.25 },
+  ];
+  const ctx = createRecordingContext();
+  const asked = [];
+  drawExtraBalls(ctx, playing({ extraBalls }), GAME_CONFIG, { get: (rgb) => asked.push(rgb) && new FakeCanvas() });
+
+  const cores = callsNamed(ctx, 'arc').filter((call) => call.brush.fillStyle === THEME.extraBallCore);
+  assert.deepEqual(cores.map((call) => call.args.slice(0, 3)), [[100, 300, ballConfig.radius], [400, 600, ballConfig.radius]]);
+  assert.notEqual(THEME.extraBallCore, THEME.ballCore);
+  assert.equal(cores[1].brush.globalAlpha, 0.25, 'fading out over its last second');
+  assert.deepEqual(asked, [THEME.side.player.rgb, THEME.side.opponent.rgb], 'the glow of whoever hit it last');
+  const streak = callsNamed(ctx, 'lineTo')[0];
+  assert.ok(streak.args[0] < 100 && streak.args[1] > 300, 'the streak trails behind it');
+
+  const fogged = createRecordingContext();
+  drawExtraBalls(fogged, playing({ extraBalls, ...ghosted('player') }), GAME_CONFIG, glows());
+  assert.equal(callsNamed(fogged, 'arc').length, 1, 'the one in the fog is not drawn');
 });
 
 test('paddles are drawn at their width, which power-ups change, and glow in the effect\'s color', () => {

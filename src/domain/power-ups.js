@@ -1,12 +1,16 @@
+import { clamp } from './physics.js';
 import { nextBetween, nextRandom } from './random.js';
 
-/** @import { GameConfig, GameEvent, GameState, Modifiers, Pickup, PowerUpKind, Side } from './types.js' */
+/** @import { Ball, ExtraBall, GameConfig, GameEvent, GameState, Modifiers, Pickup, PowerUpKind, Side } from './types.js' */
 
 /** @type {readonly PowerUpKind[]} */
-export const POWER_UP_KINDS = Object.freeze(['wide', 'shrink', 'turbo', 'ghost']);
+export const POWER_UP_KINDS = Object.freeze(['wide', 'shrink', 'turbo', 'ghost', 'multi']);
 
 /** @type {Readonly<Modifiers>} */
 export const NO_MODIFIERS = Object.freeze({ wide: 0, tiny: 0, ghost: 0 });
+
+/** Shared by every state without Multiball balls, so the usual match allocates none. */
+export const NO_EXTRA_BALLS = Object.freeze(/** @type {ExtraBall[]} */ ([]));
 
 /**
  * @param {Side} side
@@ -62,7 +66,38 @@ export function initialPowerUpState(seed, config) {
     nextPickupIn: schedule.value,
     modifiers: { player: NO_MODIFIERS, opponent: NO_MODIFIERS },
     turbo: 0,
+    extraBalls: NO_EXTRA_BALLS,
     seed: schedule.seed,
+  };
+}
+
+/**
+ * Multiball: a copy of the ball that parts from it at the split angle, at the same speed and
+ * toward the same end of the court. It turns against the ball's lean, so the two head for
+ * different parts of the other end. The copy has no spin, and fades after the power-up's
+ * duration.
+ *
+ * @param {Ball} ball
+ * @param {number} id
+ * @param {GameConfig} config
+ * @returns {ExtraBall}
+ */
+export function splitBall(ball, id, config) {
+  const speed = Math.hypot(ball.vx, ball.vy);
+  const maxAngle = config.ball.maxBounceAngleRadians;
+  // Angle from straight up or down the court; positive leans toward +x.
+  const angle = speed > 0 ? Math.asin(clamp(ball.vx / speed, -1, 1)) : 0;
+  const turned = clamp(angle > 0 ? angle - config.powerUps.splitAngle : angle + config.powerUps.splitAngle, -maxAngle, maxAngle);
+  const vertical = ball.vy < 0 ? -1 : 1;
+
+  return {
+    x: ball.x,
+    y: ball.y,
+    vx: Math.sin(turned) * speed,
+    vy: Math.cos(turned) * speed * vertical,
+    spin: 0,
+    id,
+    ttl: config.powerUps.duration,
   };
 }
 
@@ -159,7 +194,7 @@ function applyPickup(state, pickup, config, events) {
   const other = otherSide(side);
   const { duration } = config.powerUps;
   const modifiers = { ...state.modifiers };
-  let { ball, turbo } = state;
+  let { ball, turbo, extraBalls } = state;
 
   switch (pickup.kind) {
     case 'wide':
@@ -178,13 +213,17 @@ function applyPickup(state, pickup, config, events) {
       turbo = duration;
       break;
     }
+    case 'multi':
+      // Past the limit, the oldest split-off ball makes way.
+      extraBalls = [...extraBalls, splitBall(ball, pickup.id, config)].slice(-config.powerUps.maxExtraBalls);
+      break;
     default:
       break;
   }
 
   events.push({ type: 'pickup', kind: pickup.kind, side, x: pickup.x, y: pickup.y });
 
-  return { ...state, ball, turbo, modifiers, pickups: state.pickups.filter((other) => other.id !== pickup.id) };
+  return { ...state, ball, turbo, modifiers, extraBalls, pickups: state.pickups.filter((other) => other.id !== pickup.id) };
 }
 
 /**

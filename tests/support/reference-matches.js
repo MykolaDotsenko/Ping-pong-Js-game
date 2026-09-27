@@ -113,6 +113,9 @@ export function playReference(scenario) {
       state.player.x.toFixed(6), state.opponent.x.toFixed(6),
       state.score.player, state.score.opponent, state.rally, state.lives, state.pickups.length,
       state.events.map((event) => event.type).join('+'),
+      // Balls a Multiball split off. Nothing is added while there are none, so a match without
+      // them digests exactly as it did before Multiball existed.
+      ...state.extraBalls.map((extra) => `${extra.x.toFixed(6)}/${extra.y.toFixed(6)}`),
     ].join(',') + '\n');
   }
 

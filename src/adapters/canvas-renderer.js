@@ -3,7 +3,7 @@ import { BallTrail } from './canvas/ball-trail.js';
 import { GlowSprites, paintCourt, paintGrid } from './canvas/court.js';
 import { playEvents } from './canvas/event-effects.js';
 import { drawLabels, drawRally, drawServeCountdown } from './canvas/hud.js';
-import { drawBall, drawGhostFog, drawPaddle, drawPickups, drawTrail } from './canvas/scene.js';
+import { drawBall, drawExtraBalls, drawGhostFog, drawPaddle, drawPickups, drawTrail } from './canvas/scene.js';
 import { THEME } from './canvas/theme.js';
 import { Effects } from './effects.js';
 
@@ -245,6 +245,7 @@ export class CanvasRenderer {
     drawPickups(ctx, state, config, now, glows);
     drawTrail(ctx, this.trail.points, state, config);
     effects.draw(ctx);
+    drawExtraBalls(ctx, state, config, glows);
     drawBall(ctx, state, config, now, glows);
 
     // A paddle a finisher has destroyed is its flying pieces now, drawn with the effects.

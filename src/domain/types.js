@@ -3,7 +3,7 @@
  *
  * @typedef {'ready' | 'running' | 'paused' | 'game-over'} GamePhase
  * @typedef {'player' | 'opponent'} Side
- * @typedef {'wide' | 'shrink' | 'turbo' | 'ghost'} PowerUpKind
+ * @typedef {'wide' | 'shrink' | 'turbo' | 'ghost' | 'multi'} PowerUpKind
  *
  * @typedef {object} Ball
  * @property {number} x
@@ -11,6 +11,10 @@
  * @property {number} vx
  * @property {number} vy
  * @property {number} spin Curve rate in radians per second; positive spin bends the ball toward +x.
+ *
+ * @typedef {Ball & { id: number, ttl: number }} ExtraBall A ball Multiball split off the ball.
+ *   It bounces, is returned and scores like the ball, but its returns do not count toward the
+ *   rally; it fades after `ttl` seconds, and the next point clears it.
  *
  * @typedef {object} Paddle
  * @property {number} x
@@ -34,7 +38,7 @@
  *   | { type: 'resumed' }
  *   | { type: 'countdown', value: number }
  *   | { type: 'serve', x: number, y: number }
- *   | { type: 'paddle-hit', side: Side, x: number, y: number, speed: number, spin: number, offset: number, rally: number }
+ *   | { type: 'paddle-hit', side: Side, x: number, y: number, speed: number, spin: number, offset: number, rally: number, extra?: boolean }
  *   | { type: 'paddle-graze', side: Side, x: number, y: number, speed: number }
  *   | { type: 'wall-bounce', x: number, y: number, speed: number }
  *   | { type: 'pickup-spawn', kind: PowerUpKind, x: number, y: number }
@@ -49,6 +53,7 @@
  * @property {Paddle} player
  * @property {Paddle} opponent
  * @property {Ball} ball
+ * @property {readonly ExtraBall[]} extraBalls Balls a Multiball split off, until they fade or a point is scored.
  * @property {Record<Side, number>} score
  * @property {Record<Side, number>} hits Paddle hits over the whole match; the Rush score.
  * @property {number} lives Misses left in Rush; unused in a match.
@@ -82,6 +87,8 @@
  * @property {number} wideScale
  * @property {number} shrinkScale
  * @property {number} turboSpeed
+ * @property {number} splitAngle Radians between the ball and the ball Multiball splits off it.
+ * @property {number} maxExtraBalls Most balls in play besides the ball itself.
  *
  * @typedef {object} GameConfig
  * @property {number} width

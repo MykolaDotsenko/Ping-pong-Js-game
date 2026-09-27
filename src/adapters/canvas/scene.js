@@ -7,9 +7,12 @@ import { FEVER_RALLY, FONT, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, T
  * Ghost fog. Each function draws one kind of thing onto a context already scaled to board
  * coordinates.
  *
- * @import { GameConfig, GameState, Side } from '../../domain/types.js'
+ * @import { Ball, GameConfig, GameState, Side } from '../../domain/types.js'
  * @import { GlowSprites } from './court.js'
  */
+
+// How far back, in seconds of flight, a Multiball ball's streak reaches.
+const STREAK_SECONDS = 0.045;
 
 /**
  * A ghosted side cannot see the ball in its own half: the ball, its trail and the pickups
@@ -62,9 +65,20 @@ export function ballColor(state, config) {
     return THEME.amber;
   }
 
-  const hitter = ball.vy < 0 ? THEME.side.player.rgb : THEME.side.opponent.rgb;
-  const heated = mixRgb(hitter, THEME.amber, speedIntensity(Math.hypot(ball.vx, ball.vy), config) ** 1.4);
+  const heated = hitterColor(ball, config);
   return state.rally >= FEVER_RALLY ? mixRgb(heated, THEME.rose, 0.55) : heated;
+}
+
+/**
+ * The color of whoever hit a ball last, heated toward amber as it speeds up.
+ *
+ * @param {Ball} ball
+ * @param {GameConfig} config
+ * @returns {string} "r, g, b"
+ */
+function hitterColor(ball, config) {
+  const hitter = ball.vy < 0 ? THEME.side.player.rgb : THEME.side.opponent.rgb;
+  return mixRgb(hitter, THEME.amber, speedIntensity(Math.hypot(ball.vx, ball.vy), config) ** 1.4);
 }
 
 /**
@@ -204,6 +218,46 @@ export function drawBall(ctx, state, config, now, glows) {
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, radius + 5, turn, turn + 1.6);
     ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/**
+ * The balls a Multiball split off: the hitter's glow like the ball, but a pale core, a short
+ * streak instead of a trail, and a fade over their last second. A Ghost fog hides them too.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {GameState} state
+ * @param {GameConfig} config
+ * @param {GlowSprites} glows
+ */
+export function drawExtraBalls(ctx, state, config, glows) {
+  const radius = config.ball.radius;
+  const glowSize = radius * 9;
+
+  for (const extra of state.extraBalls) {
+    if (isHidden(state, config, extra.y)) {
+      continue;
+    }
+
+    const color = hitterColor(extra, config);
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, extra.ttl);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(glows.get(color), extra.x - glowSize / 2, extra.y - glowSize / 2, glowSize, glowSize);
+    ctx.strokeStyle = `rgba(${color}, 0.55)`;
+    ctx.lineWidth = radius * 1.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(extra.x, extra.y);
+    ctx.lineTo(extra.x - extra.vx * STREAK_SECONDS, extra.y - extra.vy * STREAK_SECONDS);
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = THEME.extraBallCore;
+    ctx.beginPath();
+    ctx.arc(extra.x, extra.y, radius, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 }

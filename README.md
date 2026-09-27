@@ -23,7 +23,7 @@ The original 2024 version used one global script for rendering, input, physics, 
 - **Three ways to play.** **Solo** against the computer, first to 7. **Rush**, a survival run with three lives against a computer that returns everything but a curve, where the ball only gets faster and your score is the number of hits. **2P**, two people on one phone, each steering their own end of the court.
 - **Portrait neon court** that fills a phone held upright and reads as a vertical arcade cabinet on desktop.
 - **Curve shots:** flick the paddle as it meets the ball and the ball bends in that direction. The computer cannot predict a curve.
-- **Power-ups** appear mid-rally and go to whoever hit the ball last: **Wide** enlarges your paddle, **Shrink** shrinks the other side's, **Turbo** turns your shot into one blistering ball until it is returned, and **Ghost** hides the ball in the other side's half. They can be switched off.
+- **Power-ups** appear mid-rally and go to whoever hit the ball last: **Wide** enlarges your paddle, **Shrink** shrinks the other side's, **Turbo** turns your shot into one blistering ball until it is returned, **Ghost** hides the ball in the other side's half, and **Multiball** splits a second ball off yours. A split-off ball bounces and scores like the ball, but its returns do not count toward the rally, and it fades after a few seconds. The computer keeps its eye on whichever ball reaches it first. They can be switched off.
 - **A computer that plays like a person:** it reacts only once the ball comes within its reach, aims its returns away from you, and misjudges fast balls more.
 - **Three difficulties** — Easy, Normal, Hard — tuned by simulating matches against human-like bots.
 - **Drama:** a 3-2-1 countdown before the first serve, a **Match point** banner, slow motion as a match-point ball closes on a paddle, a split-second freeze on hard hits, and callouts for a **CURVE!**, a **SMASH!** or an **EDGE!** catch.
@@ -51,6 +51,7 @@ The original 2024 version used one global script for rendering, input, physics, 
 - a Canvas renderer built for phones: pre-rendered glow sprites and background layers, additive blending, and a capped pixel ratio
 - layer boundaries enforced by ESLint, with tests proving the rules still reject violations
 - unit tests behind an honest coverage gate: every module is loaded, so an untested file counts at 0%, and each file must clear its own floor, not just the average
+- **reference matches:** seven recorded bot matches replayed step by step and compared by digest, so new features provably leave classic play untouched
 - accessible overlays: a native modal tutorial with managed focus, labelled pause and result dialogs, and decorative glyphs hidden from screen readers
 - Playwright tests on desktop and mobile Chromium that assert on the rendered canvas
 - an installable web app (manifest and icons) with safe-area-aware, reduced-motion-aware styling

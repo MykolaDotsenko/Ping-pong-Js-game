@@ -1,7 +1,7 @@
 import { clampPaddleCenter, foldIntoRange, movePaddle, moveTowards } from './physics.js';
 import { paddleWidth } from './power-ups.js';
 
-/** @import { GameConfig, GameState } from './types.js' */
+/** @import { Ball, GameConfig, GameState } from './types.js' */
 
 /**
  * A repeatable value in [-1, 1] that changes with every hit and serve: the computer's
@@ -16,6 +16,29 @@ function wobble(state) {
 }
 
 /**
+ * The ball the computer keeps its eye on. With Multiball balls in play, that is the one that
+ * will reach its paddle first, of those still in front of it; otherwise it is the ball.
+ *
+ * @param {GameState} state
+ * @param {GameConfig} config
+ * @returns {Ball}
+ */
+export function watchedBall(state, config) {
+  if (state.extraBalls.length === 0) {
+    return state.ball;
+  }
+
+  const face = config.paddle.inset + config.paddle.height + config.ball.radius;
+  /** @param {Ball} ball seconds until it reaches the paddle, or Infinity if it never will */
+  const arrival = (ball) => (ball.vy < 0 && ball.y >= face ? (ball.y - face) / -ball.vy : Infinity);
+
+  return state.extraBalls.reduce(
+    (soonest, ball) => (arrival(ball) < arrival(soonest) ? ball : soonest),
+    /** @type {Ball} */ (state.ball),
+  );
+}
+
+/**
  * Where the computer wants its paddle. Like a person, it only reacts once the ball comes
  * within its reach, and it cannot see a ghosted ball at all. It then predicts where the ball
  * will cross its paddle, folding the path at the side walls, trusts that prediction as much
@@ -27,7 +50,8 @@ function wobble(state) {
  * @param {GameConfig} config
  */
 export function calculateOpponentTarget(state, config) {
-  const { ball, opponent, player } = state;
+  const { opponent, player } = state;
+  const ball = watchedBall(state, config);
   const center = config.width / 2;
   const reactionLine = config.paddle.inset + config.opponent.reach * config.height;
 

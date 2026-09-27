@@ -141,28 +141,28 @@
     }
   },
   "solo-power-ups": {
-    "digest": "c74a4b45f937e609451e1fa292a6be05f448d219ceb106df91ac340e4602f0b4",
+    "digest": "13559bbf772eefeef34cb590edccd8b7a4a14694d51205e3a3c5f92fa922e7d9",
     "summary": {
       "steps": 7200,
       "score": {
-        "player": 5,
+        "player": 1,
         "opponent": 5
       },
       "hits": {
-        "player": 13,
-        "opponent": 12
+        "player": 14,
+        "opponent": 17
       },
-      "longestRally": 8,
+      "longestRally": 12,
       "phase": "running",
       "events": {
         "countdown": 3,
         "paddle-graze": 1,
-        "paddle-hit": 25,
-        "pickup": 4,
+        "paddle-hit": 32,
+        "pickup": 2,
         "pickup-spawn": 4,
-        "point": 10,
-        "serve": 11,
-        "wall-bounce": 19
+        "point": 6,
+        "serve": 7,
+        "wall-bounce": 25
       }
     }
   }

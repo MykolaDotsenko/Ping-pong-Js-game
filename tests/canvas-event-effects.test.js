@@ -81,11 +81,20 @@ test('the callout floats on the court side of the paddle that hit', () => {
   assert.ok(opponent.y > 66);
 });
 
-test('every fifth hit of a rally pulses the whole court', () => {
+test('every fifth hit of a rally pulses the whole court, but a Multiball ball\'s return does not', () => {
   const ordinary = play([hit({ rally: 4 })]);
   const milestone = play([hit({ rally: 5 })]);
+  const extra = play([hit({ rally: 5, extra: true })]);
 
   assert.equal(milestone.rings.length, ordinary.rings.length + 1);
+  assert.equal(extra.rings.length, ordinary.rings.length, 'it keeps its sparks, but is no fifth hit');
+});
+
+test('a Multiball power-up announces itself in its own color', () => {
+  const effects = play([{ type: 'pickup', kind: 'multi', side: 'player', x: 200, y: 400 }]);
+
+  assert.equal(effects.labels[0].text, 'MULTIBALL');
+  assert.equal(effects.labels[0].color, `rgb(${THEME.lime})`);
 });
 
 test('the winner gets fireworks in their colors, spread over time and placed by the random source', () => {

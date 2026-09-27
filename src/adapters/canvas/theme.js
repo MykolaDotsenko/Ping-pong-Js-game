@@ -6,7 +6,8 @@
  */
 
 // Pure white (#ffffff) is reserved for the ball core, and each paddle has a unique core
-// stripe color, so tests and tools can locate them in the pixels.
+// stripe color, so tests and tools can locate them in the pixels. Balls a Multiball split off
+// have a pale blue core, so they never pass for the ball.
 export const THEME = Object.freeze({
   background: '#05060f',
   topTint: 'rgba(190, 24, 93, 0.16)',
@@ -16,6 +17,7 @@ export const THEME = Object.freeze({
   gridPulse: 'rgba(165, 180, 252, 0.5)',
   line: 'rgba(196, 181, 253, 0.6)',
   ballCore: '#ffffff',
+  extraBallCore: '#dbeafe',
   spark: '#fefce8',
   text: '196, 181, 253',
   violet: '167, 139, 250',
@@ -35,6 +37,7 @@ export const PICKUP_STYLE = Object.freeze({
   shrink: Object.freeze({ rgb: '251, 113, 133', glyph: '⤡', label: 'SHRINK' }),
   turbo: Object.freeze({ rgb: '251, 191, 36', glyph: '⚡', label: 'TURBO' }),
   ghost: Object.freeze({ rgb: '167, 139, 250', glyph: '◌', label: 'GHOST' }),
+  multi: Object.freeze({ rgb: '163, 230, 53', glyph: '••', label: 'MULTIBALL' }),
 });
 
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';

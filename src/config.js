@@ -52,6 +52,9 @@ export const GAME_CONFIG = Object.freeze({
     wideScale: 1.6,
     shrinkScale: 0.6,
     turboSpeed: 1250,
+    // Multiball: the split-off ball parts from the ball at about 34 degrees.
+    splitAngle: 0.6,
+    maxExtraBalls: 2,
   }),
 });
 

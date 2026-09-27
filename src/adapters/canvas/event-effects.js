@@ -166,7 +166,8 @@ function celebrateHit(effects, event, config) {
     effects.label({ text: callout.text, x: event.x, y: labelY, color: `rgb(${callout.rgb})` });
   }
 
-  if (event.rally % 5 === 0) {
+  // Every fifth hit of the rally rings out; a Multiball ball's returns do not count toward it.
+  if (event.rally % 5 === 0 && !event.extra) {
     effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.amber}, 0.9)`, radius: 30, growth: 620, life: 0.7, width: 5 });
     effects.flash(`rgb(${THEME.amber})`, 0.1);
   }
