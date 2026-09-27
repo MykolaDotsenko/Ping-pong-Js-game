@@ -156,16 +156,18 @@ function drawMeter(ctx, meter, side, config, now, { turned, person }) {
   roundedRect(ctx, box.x, box.y, box.width, box.height, box.height / 2);
   ctx.fill();
 
-  if (filled > 0.5) {
-    if (full) {
-      ctx.shadowColor = `rgba(${rgb}, 0.9)`;
-      ctx.shadowBlur = 6 + 8 * glow;
-    }
+  if (full) {
+    // A soft halo, cheaper than a canvas shadow, breathes around a full meter.
+    const halo = 3 + 2 * glow;
+    ctx.fillStyle = `rgba(${rgb}, ${0.18 + 0.14 * glow})`;
+    roundedRect(ctx, box.x - halo, box.y - halo, box.width + 2 * halo, box.height + 2 * halo, box.height / 2 + halo);
+    ctx.fill();
+  }
 
+  if (filled > 0.5) {
     ctx.fillStyle = `rgba(${rgb}, ${full ? 0.8 + 0.2 * glow : 0.7})`;
     roundedRect(ctx, fillX, box.y, filled, box.height, box.height / 2);
     ctx.fill();
-    ctx.shadowBlur = 0;
   }
 
   // The name sits on the court side of the bar.
