@@ -109,17 +109,20 @@ function createRoot({ modalDialogs = true } = {}) {
     ['matchPoint', { 'data-match-point': '' }],
     ['menu', { 'data-overlay': 'menu' }],
     ['tutorial', { 'data-overlay': 'tutorial' }],
+    ['settings', { 'data-overlay': 'settings' }],
     ['pause', { 'data-overlay': 'pause' }],
     ['over', { 'data-overlay': 'over' }],
     ['hudPause', { 'data-hud-pause': '', 'data-command': 'toggle-pause' }],
     ['fullscreen', { 'data-fullscreen': '' }],
     ['hudSound', { 'data-setting': 'sound' }],
-    ['menuSound', { 'data-setting': 'sound' }],
+    ['settingsSound', { 'data-setting': 'sound' }],
     ['music', { 'data-setting': 'music' }],
-    ['menuTrack', { 'data-track': '' }],
+    ['settingsTrack', { 'data-track': '' }],
+    ['settingsTrackLabel', { 'data-track-label': '' }],
     ['pauseTrack', { 'data-track': '' }],
-    ['powerUps', { 'data-setting': 'powerUps', 'data-power-ups-choice': '' }],
-    ['supers', { 'data-setting': 'supers', 'data-supers-choice': '' }],
+    ['pauseTrackLabel', { 'data-track-label': '' }],
+    ['powerUps', { 'data-setting': 'powerUps' }],
+    ['supers', { 'data-setting': 'supers' }],
     ['vibration', { 'data-setting': 'vibration' }],
     ['jokes', { 'data-setting': 'jokes' }],
     ['solo', { 'data-mode': 'solo' }],
@@ -146,11 +149,11 @@ function createRoot({ modalDialogs = true } = {}) {
     ['menuButton', { 'data-command': 'reset' }],
     ['bogus', { 'data-command': 'self-destruct' }],
     ['menuMeta', { 'data-menu-meta': '' }],
-    ['rushLives', { 'data-rush-lives': '' }],
     ['stats', { 'data-stats': '' }],
-    ['modeTip', { 'data-mode-tip': '' }],
     ['showTutorial', { 'data-show-tutorial': '' }],
     ['dismissTutorial', { 'data-dismiss-tutorial': '' }],
+    ['showSettings', { 'data-show-settings': '' }],
+    ['dismissSettings', { 'data-dismiss-settings': '' }],
     ['share', { 'data-share': '' }],
     ['shareNote', { 'data-share-note': '' }],
     ['overTitle', { 'data-over-title': '' }],
@@ -163,7 +166,7 @@ function createRoot({ modalDialogs = true } = {}) {
     ['overStars', { 'data-over-stars': '' }],
   ].map(([name, attributes]) => [
     name,
-    name === 'tutorial' && modalDialogs ? new FakeDialog(attributes) : new FakeElement(attributes),
+    (name === 'tutorial' || name === 'settings') && modalDialogs ? new FakeDialog(attributes) : new FakeElement(attributes),
   ]);
   const byName = Object.fromEntries(elements);
   const all = elements.map(([, element]) => element);
@@ -266,7 +269,6 @@ function setup({ canVibrate = true, preferences = createPreferences(), device = 
     preferences,
     canVibrate,
     device,
-    rushLives: 3,
     tracks: TRACKS,
     previewTrack: (track) => previews.push(track),
     timers,
@@ -368,25 +370,20 @@ test('mode buttons choose the next match, show the right options, and refresh th
 
   assert.deepEqual(pressed(), ['solo']);
   assert.equal(dom.difficultyGroup.hidden, false);
-  assert.equal(dom.powerUps.hidden, false);
-  assert.equal(dom.supers.hidden, false);
 
   click(dom.rush);
 
   assert.equal(preferences.get().mode, 'rush');
   assert.deepEqual(pressed(), ['rush']);
   assert.equal(dom.difficultyGroup.hidden, true);
-  assert.equal(dom.powerUps.hidden, true);
-  assert.equal(dom.supers.hidden, true, 'a Rush run never has supers');
   assert.equal(dom.root.dataset.mode, 'rush');
-  assert.match(dom.modeTip.textContent, /faster/);
   assert.deepEqual(commands.map((entry) => entry.command), [GAME_COMMAND.RESET]);
 
   click(dom.duo);
   assert.equal(dom.difficultyGroup.hidden, true);
+  // The power-up and supers switches live in the settings, whose notes say where they apply.
   assert.equal(dom.powerUps.hidden, false);
   assert.equal(dom.supers.hidden, false);
-  assert.match(dom.modeTip.textContent, /Player 2/);
 });
 
 test('difficulty buttons choose the next match and show the choice', () => {
@@ -408,7 +405,7 @@ test('setting toggles flip the preference and every matching switch', () => {
 
   assert.equal(preferences.get().sound, false);
   assert.equal(dom.hudSound.getAttribute('aria-pressed'), 'false');
-  assert.equal(dom.menuSound.getAttribute('aria-pressed'), 'false');
+  assert.equal(dom.settingsSound.getAttribute('aria-pressed'), 'false');
 
   click(dom.music);
   click(dom.powerUps);
@@ -446,14 +443,15 @@ test('the scoreboard names the rival: a nickname in its own style, else CPU or P
 test('the track button shows the saved track and every tap moves on, turns music on and plays a sample', () => {
   const { dom, preferences, previews } = setup({ preferences: createPreferences({ track: 'arena', music: false }) });
 
-  assert.equal(dom.menuTrack.textContent, 'Arena');
+  assert.equal(dom.settingsTrackLabel.textContent, 'Arena');
   assert.equal(dom.pauseTrack.getAttribute('aria-label'), 'Music track: Arena');
 
-  click(dom.menuTrack);
+  click(dom.settingsTrack);
   assert.equal(preferences.get().track, 'iron');
   assert.equal(preferences.get().music, true, 'a picked track is meant to be heard');
   assert.equal(dom.music.getAttribute('aria-pressed'), 'true');
-  assert.equal(dom.pauseTrack.textContent, 'Iron', 'both pickers follow');
+  assert.equal(dom.pauseTrackLabel.textContent, 'Iron', 'both pickers follow');
+  assert.equal(dom.settingsTrack.getAttribute('aria-label'), 'Music track: Iron');
 
   click(dom.pauseTrack);
   assert.equal(preferences.get().track, 'neon', 'wraps around to the first track');
@@ -463,7 +461,7 @@ test('the track button shows the saved track and every tap moves on, turns music
 test('an unknown saved track shows as the first one', () => {
   const { dom } = setup({ preferences: createPreferences({ track: 'polka' }) });
 
-  assert.equal(dom.menuTrack.textContent, 'Neon');
+  assert.equal(dom.settingsTrackLabel.textContent, 'Neon');
 });
 
 test('the vibration switch is hidden where the device cannot vibrate', () => {
@@ -525,6 +523,51 @@ test('without modal dialog support the tutorial still opens and closes', () => {
   click(dom.dismissTutorial);
   assert.equal(tutorialOpen(dom), false);
   assert.equal(preferences.get().tutorialSeen, true);
+});
+
+test('the settings open as a modal dialog from the menu, and Done closes them', () => {
+  const { dom, preferences } = setup();
+  const settingsOpen = () => dom.settings.hasAttribute('open');
+
+  assert.equal(settingsOpen(), false);
+
+  click(dom.showSettings);
+  assert.equal(settingsOpen(), true);
+  assert.equal(dom.settings.modal, true, 'the menu behind them is inert');
+
+  click(dom.powerUps);
+  assert.equal(preferences.get().powerUps, false, 'a switch applies as it is pressed');
+
+  click(dom.showSettings);
+  assert.equal(settingsOpen(), true, 'opening them twice changes nothing');
+
+  click(dom.dismissSettings);
+  assert.equal(settingsOpen(), false);
+  assert.equal(preferences.get().powerUps, false, 'closing keeps the choice');
+
+  click(dom.dismissSettings);
+  assert.equal(settingsOpen(), false, 'closing them twice changes nothing');
+});
+
+test('without modal dialog support the settings still open and close', () => {
+  const { dom } = setup({ modalDialogs: false });
+
+  click(dom.showSettings);
+  assert.equal(dom.settings.hasAttribute('open'), true);
+
+  click(dom.dismissSettings);
+  assert.equal(dom.settings.hasAttribute('open'), false);
+});
+
+test('once a match has been played, the menu comes back with its sign already lit', () => {
+  const { view, dom } = setup();
+
+  view.render(presentation());
+  assert.equal(dom.root.dataset.played, undefined, 'the sign lights up on the first visit to the menu');
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ phase: GAME_PHASE.READY }));
+  assert.equal(dom.root.dataset.played, 'true');
 });
 
 test('a returning player goes straight to the menu', () => {
@@ -643,10 +686,6 @@ test('the menu states the rules and the record for the chosen mode, from the mat
   assert.equal(dom.menuMeta.textContent, 'First to 7 · Two players, one screen', 'a Solo record is not a two-player one');
 });
 
-test('the Rush button names its lives from the configuration', () => {
-  assert.equal(setup().dom.rushLives.textContent, '3 lives');
-});
-
 test('the menu shows Solo win statistics, with the streak flame hidden from screen readers', () => {
   const { view, dom } = setup();
 
@@ -719,8 +758,7 @@ test('sharing sends a summary of the last result and reports what happened', asy
   click(dom.share);
   await nextTick();
 
-  assert.match(device.shared[0], /won 7:3 on Normal/);
-  assert.match(device.shared[0], /Longest rally: 9/);
+  assert.equal(device.shared[0], 'I won 7:3 on Normal in Paddle Noir. Longest rally: 9.');
   assert.equal(dom.shareNote.textContent, '');
 
   device.share = async () => 'copied';
@@ -960,17 +998,15 @@ const inCareer = (overrides = {}, career = {}) => presentation({
   ...overrides,
 });
 
-test('Career shows the rival picker instead of the difficulty, and no power-up switch', () => {
+test('Career shows the rival picker instead of the difficulty', () => {
   const { dom } = setup({ preferences: createPreferences({ mode: 'career' }) });
 
   assert.equal(dom.rivalGroup.hidden, false);
   assert.equal(dom.difficultyGroup.hidden, true);
-  assert.equal(dom.powerUps.hidden, true, 'every rival brings its own power-ups, or none');
-  assert.equal(dom.supers.hidden, false, 'but supers are the player\'s choice');
 
   click(dom.solo);
   assert.equal(dom.rivalGroup.hidden, true);
-  assert.equal(dom.powerUps.hidden, false);
+  assert.equal(dom.difficultyGroup.hidden, false);
 });
 
 test('the rival card shows its place on the ladder, its name, a boss tag and its stars', () => {
@@ -987,12 +1023,11 @@ test('the rival card shows its place on the ladder, its name, a boss tag and its
   assert.equal(dom.menuMeta.textContent, 'Mops the floor with players.');
   assert.equal(dom.stats.hidden, false);
   assert.equal(dom.stats.textContent, '5 of 9 beaten · 11/27 stars');
-  assert.match(dom.modeTip.textContent, /bosses/);
 
   view.render(inCareer({}, { eased: true, rival: { ...RIVAL_VIEW, boss: false } }));
   assert.equal(dom.rivalBoss.hidden, true);
   assert.equal(dom.rivalTired.hidden, false);
-  assert.equal(dom.modeTip.textContent, 'After beating you twice, The Janitor is tired and plays slower.');
+  assert.equal(dom.menuMeta.textContent, 'After beating you twice, The Janitor is tired and plays slower.', 'the story makes way for why');
 });
 
 test('the rival steps move along the open part of the ladder and redraw the menu', () => {
@@ -1086,11 +1121,11 @@ test('a career result is shared with the rival\'s name and the stars', async () 
   view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'player', score: { player: 7, opponent: 2 } }, { earned: 2 }));
   click(dom.share);
   await nextTick();
-  assert.equal(device.shared[0], 'I beat The Janitor 7:2 in the career of Ping Pong Architecture Lab: 2 of 3 stars.');
+  assert.equal(device.shared[0], 'I beat The Janitor 7:2 in Paddle Noir career mode: 2 of 3 stars.');
 
   view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
   view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent', score: { player: 4, opponent: 7 } }));
   click(dom.share);
   await nextTick();
-  assert.equal(device.shared[1], 'The Janitor beat me 7:4 in the career of Ping Pong Architecture Lab. Rematch!');
+  assert.equal(device.shared[1], 'The Janitor beat me 7:4 in Paddle Noir career mode. Rematch!');
 });

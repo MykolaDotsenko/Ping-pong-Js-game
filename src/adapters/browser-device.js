@@ -35,7 +35,7 @@ export class BrowserDevice {
 
     if (typeof this.navigator.share === 'function') {
       try {
-        await this.navigator.share({ title: 'Ping Pong Architecture Lab', text, url });
+        await this.navigator.share({ title: 'Paddle Noir', text, url });
         return 'shared';
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') {

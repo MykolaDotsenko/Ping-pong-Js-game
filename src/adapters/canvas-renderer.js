@@ -42,7 +42,7 @@ export class CanvasRenderer {
     const context = canvas.getContext('2d', { alpha: false });
 
     if (!context) {
-      throw new Error('Ping Pong needs Canvas 2D support.');
+      throw new Error('Paddle Noir needs Canvas 2D support.');
     }
 
     this.canvas = canvas;

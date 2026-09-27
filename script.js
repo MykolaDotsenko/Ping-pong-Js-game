@@ -1,5 +1,5 @@
 import { MATCH_CATALOG } from './src/catalog.js';
-import { GAME_CONFIG, RUSH_LIVES } from './src/config.js';
+import { GAME_CONFIG } from './src/config.js';
 import { AudioOutput } from './src/adapters/audio-output.js';
 import { BrowserDevice } from './src/adapters/browser-device.js';
 import { BrowserFrameScheduler } from './src/adapters/browser-frame-scheduler.js';
@@ -26,7 +26,7 @@ function requireElement(selector, type) {
   const element = document.querySelector(selector);
 
   if (!(element instanceof type)) {
-    throw new Error(`Ping Pong could not start because ${selector} is missing from the page.`);
+    throw new Error(`Paddle Noir could not start because ${selector} is missing from the page.`);
   }
 
   return element;
@@ -49,7 +49,7 @@ const controller = new GameController({
   renderer,
   input: new InputController({ surface: arena, board: canvas, window, document, config: GAME_CONFIG }),
   view: new DomGameView({
-    root: arena, board: canvas, preferences, canVibrate: haptics.supported, device, rushLives: RUSH_LIVES,
+    root: arena, board: canvas, preferences, canVibrate: haptics.supported, device,
     tracks: MUSIC_TRACKS, previewTrack: (track) => music.preview(track), timers: window,
   }),
   scheduler,

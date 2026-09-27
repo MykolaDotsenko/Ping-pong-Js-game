@@ -3,7 +3,7 @@
  * @import { Difficulty } from './application/ports.js'
  */
 
-/** Misses a Rush run allows; the menu names it on the Rush button. */
+/** Misses a Rush run allows; the menu names it once Rush is chosen. */
 export const RUSH_LIVES = 3;
 
 // A portrait 5:8 court: it fills a phone held upright and reads as a vertical arcade on desktop.

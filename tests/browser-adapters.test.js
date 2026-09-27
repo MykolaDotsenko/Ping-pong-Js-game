@@ -37,7 +37,7 @@ test('a result is shared through the system sheet, with the page address and no 
   const { device: phone, calls } = device({ share: ok, clipboard: ok });
 
   assert.equal(await phone.share('I won 7:3'), 'shared');
-  assert.deepEqual(calls.shared, [{ title: 'Ping Pong Architecture Lab', text: 'I won 7:3', url: 'https://example.test/pong/' }]);
+  assert.deepEqual(calls.shared, [{ title: 'Paddle Noir', text: 'I won 7:3', url: 'https://example.test/pong/' }]);
   assert.deepEqual(calls.copied, []);
 });
 

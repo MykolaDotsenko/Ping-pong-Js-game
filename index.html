@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="A neon arcade Ping Pong for phones and desktops, built without dependencies to demonstrate clean browser-game architecture, deterministic physics, and testable JavaScript.">
+    <meta name="description" content="Paddle Noir: neon arcade ping pong for phones and desktops. Curve the ball, fire super shots and climb a ladder of nine rivals.">
     <meta name="theme-color" content="#05060f">
     <meta name="color-scheme" content="dark">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Pong Lab">
-    <title>Ping Pong Architecture Lab</title>
+    <meta name="apple-mobile-web-app-title" content="Paddle Noir">
+    <title>Paddle Noir</title>
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
     <link rel="manifest" href="manifest.webmanifest">
@@ -20,9 +20,9 @@
     <a class="skip-link" href="#arena">Skip to game</a>
     <div class="aurora" aria-hidden="true"></div>
 
-    <main class="page">
+    <main>
       <section id="arena" class="arena" data-arena data-phase="ready" data-mode="solo" aria-labelledby="game-title">
-        <h1 id="game-title" class="visually-hidden">Ping Pong Architecture Lab</h1>
+        <h1 id="game-title" class="visually-hidden">Paddle Noir</h1>
 
         <div class="stage">
           <header class="hud">
@@ -62,7 +62,7 @@
               height="800"
               role="application"
               tabindex="0"
-              aria-label="Ping Pong game board. Move the lower paddle by dragging, with the left and right arrow keys, or with A and D."
+              aria-label="Game court. Move the lower paddle by dragging, with the left and right arrow keys, or with A and D."
               aria-describedby="controls-help"
             ></canvas>
 
@@ -73,19 +73,70 @@
               <div class="panel panel--menu">
                 <div class="panel__side">
                   <p class="logo" aria-hidden="true">
-                    <span class="logo__word">PONG</span>
-                    <span class="logo__tag">Architecture Lab</span>
+                    <svg class="logo__art" viewBox="-12 -12 244 121" focusable="false">
+                      <defs>
+                        <filter id="logo-glow" filterUnits="userSpaceOnUse" x="-40" y="-40" width="300" height="180">
+                          <feGaussianBlur stdDeviation="3" result="blur"/>
+                          <feMerge><feMergeNode in="blur"/><feMergeNode in="blur"/></feMerge>
+                        </filter>
+                        <filter id="logo-halo" filterUnits="userSpaceOnUse" x="-40" y="-40" width="300" height="180">
+                          <feGaussianBlur stdDeviation="9"/>
+                        </filter>
+                        <path id="logo-paddle" d="M0 48V0h13a13 13 0 0 1 0 26H0M40 48V13a13 13 0 0 1 26 0v35M40 29h26M80 0v48h8a18 18 0 0 0 18-18V18A18 18 0 0 0 88 0zM120 0v48h8a18 18 0 0 0 18-18V18A18 18 0 0 0 128 0zM160 0v48h22M220 0h-24v48h24M196 24h19"/>
+                        <path id="logo-noir" d="M56.5 94V64l20 30V64M102.5 64a10 10 0 0 1 10 10v10a10 10 0 0 1-20 0V74a10 10 0 0 1 10-10zM128.5 64v30M144.5 94V64h9a8 8 0 0 1 0 16h-9M152.5 80l11 14"/>
+                        <path id="logo-rules" d="M8 79h30M182 79h30"/>
+                      </defs>
+                      <g class="logo__sign logo__sign--paddle">
+                        <use href="#logo-paddle" class="logo__glass"/>
+                        <g class="logo__lit">
+                          <use href="#logo-paddle" class="logo__halo"/>
+                          <use href="#logo-paddle" class="logo__glow"/>
+                          <use href="#logo-paddle" class="logo__tube"/>
+                          <use href="#logo-paddle" class="logo__core"/>
+                        </g>
+                      </g>
+                      <g class="logo__sign logo__sign--noir">
+                        <use href="#logo-noir" class="logo__glass"/>
+                        <use href="#logo-rules" class="logo__glass"/>
+                        <g class="logo__lit">
+                          <g class="logo__rules">
+                            <use href="#logo-rules" class="logo__glow"/>
+                            <use href="#logo-rules" class="logo__tube"/>
+                            <use href="#logo-rules" class="logo__core"/>
+                          </g>
+                          <use href="#logo-noir" class="logo__halo"/>
+                          <use href="#logo-noir" class="logo__glow"/>
+                          <use href="#logo-noir" class="logo__tube"/>
+                          <use href="#logo-noir" class="logo__core"/>
+                        </g>
+                      </g>
+                    </svg>
                   </p>
                   <p class="panel__meta" data-menu-meta>First to 7 · Best rally <strong>0</strong></p>
                   <p class="panel__stats" data-stats hidden></p>
-                  <p class="panel__tip" data-mode-tip>Flick the paddle as you hit to curve the ball.</p>
                 </div>
                 <div class="panel__main">
-                  <div class="segmented segmented--modes" role="group" aria-label="Mode">
-                    <button type="button" data-mode="solo" aria-pressed="true"><strong>Solo</strong><small>vs CPU</small></button>
-                    <button type="button" data-mode="rush" aria-pressed="false"><strong>Rush</strong><small data-rush-lives>3 lives</small></button>
-                    <button type="button" data-mode="duo" aria-pressed="false"><strong>2P</strong><small>1 screen</small></button>
-                    <button type="button" data-mode="career" aria-pressed="false"><strong>Career</strong><small>9 rivals</small></button>
+                  <div class="modes" role="group" aria-label="Mode">
+                    <button type="button" class="mode" data-mode="solo" aria-pressed="true">
+                      <svg class="mode__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="17" width="15" height="3.6" rx="1.8"/><circle class="mode__ball" cx="12" cy="9" r="2.8"/></svg>
+                      <strong class="mode__name">Solo</strong>
+                      <small class="mode__note">Quick match</small>
+                    </button>
+                    <button type="button" class="mode" data-mode="rush" aria-pressed="false">
+                      <svg class="mode__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2.5L5.5 13.5h6l-1 8 8-11h-6z"/></svg>
+                      <strong class="mode__name">Rush</strong>
+                      <small class="mode__note">Survival</small>
+                    </button>
+                    <button type="button" class="mode" data-mode="duo" aria-pressed="false">
+                      <svg class="mode__icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="3.4" width="15" height="3.6" rx="1.8"/><rect x="4.5" y="17" width="15" height="3.6" rx="1.8"/><circle class="mode__ball" cx="12" cy="12" r="2.6"/></svg>
+                      <strong class="mode__name">2P</strong>
+                      <small class="mode__note">Local duel</small>
+                    </button>
+                    <button type="button" class="mode" data-mode="career" aria-pressed="false">
+                      <svg class="mode__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 3.5h9v5.5a4.5 4.5 0 0 1-9 0zM7.5 5.5H5a2.8 2.8 0 0 0 3 4.3M16.5 5.5H19a2.8 2.8 0 0 1-3 4.3M12 13.5v3.5M8 20.5h8M9.5 20.5l.6-3.5h3.8l.6 3.5"/></svg>
+                      <strong class="mode__name">Career</strong>
+                      <small class="mode__note">Beat 9 rivals</small>
+                    </button>
                   </div>
                   <div class="segmented" role="group" aria-label="Difficulty" data-solo-only>
                     <button type="button" data-difficulty="easy" aria-pressed="false">Easy</button>
@@ -104,15 +155,15 @@
                     <button type="button" class="rival__step" data-rival-step="1" aria-label="Next rival">›</button>
                   </div>
                   <button type="button" class="cta" data-command="start">Play</button>
-                  <div class="toggles">
-                    <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-power-ups-choice>Power-ups</button>
-                    <button type="button" class="toggle" data-setting="supers" aria-pressed="true" data-supers-choice title="Super shots: fill the meter, then flick to fire">Supers</button>
-                    <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
-                    <button type="button" class="track" data-track aria-label="Music track: Neon">Neon</button>
-                  </div>
-                  <div class="panel__row">
-                    <button type="button" class="ghost ghost--small" data-show-tutorial>How to play</button>
-                    <a class="panel__link" href="#about">How it's built</a>
+                  <div class="panel__row panel__row--menu">
+                    <button type="button" class="ghost ghost--small" data-show-tutorial>
+                      <svg class="ghost__icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.9.7c0 1.7-2.5 2.1-2.5 3.8M12 17.2v.1"/></svg>
+                      How to play
+                    </button>
+                    <button type="button" class="ghost ghost--small" data-show-settings>
+                      <svg class="ghost__icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.08 4.85L10.26 2.15L13.74 2.15L13.92 4.85A7.4 7.4 0 0 1 15.7 5.59L17.74 3.81L20.19 6.26L18.41 8.3A7.4 7.4 0 0 1 19.15 10.08L21.85 10.26L21.85 13.74L19.15 13.92A7.4 7.4 0 0 1 18.41 15.7L20.19 17.74L17.74 20.19L15.7 18.41A7.4 7.4 0 0 1 13.92 19.15L13.74 21.85L10.26 21.85L10.08 19.15A7.4 7.4 0 0 1 8.3 18.41L6.26 20.19L3.81 17.74L5.59 15.7A7.4 7.4 0 0 1 4.85 13.92L2.15 13.74L2.15 10.26L4.85 10.08A7.4 7.4 0 0 1 5.59 8.3L3.81 6.26L6.26 3.81L8.3 5.59A7.4 7.4 0 0 1 10.08 4.85Z"/><circle cx="12" cy="12" r="3"/></svg>
+                      Settings
+                    </button>
                   </div>
                 </div>
               </div>
@@ -132,6 +183,53 @@
               </div>
             </dialog>
 
+            <dialog class="dialog" data-overlay="settings" aria-labelledby="settings-title">
+              <div class="panel panel--settings">
+                <h2 class="panel__title" id="settings-title">Settings</h2>
+                <div class="settings">
+                  <button type="button" class="setting" data-setting="sound" aria-pressed="true" autofocus>
+                    <span class="setting__text"><span class="setting__name">Sound</span></span>
+                    <span class="switch" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="setting" data-setting="music" aria-pressed="true">
+                    <span class="setting__text"><span class="setting__name">Music</span></span>
+                    <span class="switch" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="setting setting--track" data-track aria-label="Music track: Neon">
+                    <span class="setting__text"><span class="setting__name">Music track</span></span>
+                    <span class="setting__value" data-track-label>Neon</span>
+                  </button>
+                  <button type="button" class="setting" data-setting="vibration" aria-pressed="true">
+                    <span class="setting__text"><span class="setting__name">Vibration</span></span>
+                    <span class="switch" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="setting" data-setting="powerUps" aria-pressed="true" aria-describedby="power-ups-note">
+                    <span class="setting__text">
+                      <span class="setting__name">Power-ups</span>
+                      <span class="setting__note" id="power-ups-note" aria-hidden="true">In Solo and 2P matches</span>
+                    </span>
+                    <span class="switch" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="setting" data-setting="supers" aria-pressed="true" aria-describedby="supers-note">
+                    <span class="setting__text">
+                      <span class="setting__name">Supers</span>
+                      <span class="setting__note" id="supers-note" aria-hidden="true">Every mode but Rush</span>
+                    </span>
+                    <span class="switch" aria-hidden="true"></span>
+                  </button>
+                  <button type="button" class="setting" data-setting="jokes" aria-pressed="true" aria-describedby="jokes-note">
+                    <span class="setting__text">
+                      <span class="setting__name">Fun</span>
+                      <span class="setting__note" id="jokes-note" aria-hidden="true">Nicknames, finishers, jokes</span>
+                    </span>
+                    <span class="switch" aria-hidden="true"></span>
+                  </button>
+                  <p class="settings__about">Paddle Noir · <a href="https://github.com/MykolaDotsenko/Ping-pong-Js-game">Source on GitHub</a></p>
+                </div>
+                <button type="button" class="cta" data-dismiss-settings>Done</button>
+              </div>
+            </dialog>
+
             <div class="overlay" data-overlay="pause" role="dialog" aria-labelledby="pause-title" hidden>
               <div class="panel">
                 <h2 class="panel__title" id="pause-title">Paused</h2>
@@ -145,7 +243,7 @@
                   <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
                   <button type="button" class="toggle" data-setting="vibration" aria-pressed="true">Vibration</button>
                   <button type="button" class="toggle" data-setting="jokes" aria-pressed="true" title="Nicknames, finishers and other fun extras">Fun</button>
-                  <button type="button" class="track" data-track aria-label="Music track: Neon">Neon</button>
+                  <button type="button" class="track" data-track aria-label="Music track: Neon"><span data-track-label>Neon</span></button>
                 </div>
               </div>
             </div>
@@ -183,20 +281,6 @@
           <span class="help__duo">Player 2: <kbd>J</kbd> <kbd>L</kbd> or the top half of the screen</span>
         </p>
         <p class="visually-hidden" data-game-status aria-live="polite">First to 7. Start when ready.</p>
-      </section>
-
-      <section id="about" class="about" aria-labelledby="about-title">
-        <p class="eyebrow">Vanilla JavaScript · Architecture showcase</p>
-        <h2 id="about-title">Small product, explicit boundaries</h2>
-        <p class="about__lead">
-          A neon arcade Pong with no framework, no game engine and no runtime dependency, so every engineering decision stays visible.
-        </p>
-        <ul class="layers">
-          <li><strong>Domain</strong> Scoring, collisions, spin, power-ups, super shots and the computer opponent. Deterministic and browser-free.</li>
-          <li><strong>Application</strong> The match state machine, a fixed-timestep loop with slow motion and hit-stop, and events that drive sound, music, vibration and effects.</li>
-          <li><strong>Adapters</strong> Canvas rendering, Web Audio, multi-touch and keyboard input, and the interface around the board.</li>
-        </ul>
-        <a class="about__link" href="https://github.com/MykolaDotsenko/Ping-pong-Js-game">Source and architecture notes on GitHub</a>
       </section>
     </main>
 
