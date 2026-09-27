@@ -373,6 +373,8 @@ test.describe('with full motion', () => {
     await expect(page.locator('[data-over-score]')).toHaveText('0 : 7');
     await expect(status(page)).toHaveText('Match complete — computer won.');
     await expect(page.locator('[data-hud-pause]')).toBeDisabled();
+    // Without the fun extras there is no "Continue?" countdown.
+    await expect(page.locator('[data-continue]')).toBeHidden();
 
     // The victory fireworks need frames for a few seconds, then the screen goes quiet.
     await page.clock.runFor(6000);
@@ -532,6 +534,17 @@ test('Rush shows the lives as hearts and ends when they run out', async ({ page,
   await page.clock.runFor(8500);
   await expect(page.getByRole('heading', { name: 'Run over' })).toBeVisible();
   await expect(page.locator('[data-over-score]')).toHaveText('0 hits');
+
+  // Like an arcade cabinet, the result screen offers a few seconds to continue, then gives up.
+  const countdown = page.locator('[data-continue]');
+  await expect(countdown).toBeVisible();
+  await expect(countdown).toHaveText(/^Continue\? \d$/);
+  const left = Number((await countdown.textContent()).at(-1));
+  await page.clock.runFor(1000);
+  await expect(countdown).toHaveText(left > 0 ? `Continue? ${left - 1}` : 'Game over');
+  await page.clock.runFor(10_000);
+  await expect(countdown).toHaveText('Game over');
+  await expect(page.getByRole('button', { name: 'Play again' })).toBeEnabled();
 });
 
 test('two players get their own halves of the board and no thumb rail', async ({ page, hasTouch }) => {

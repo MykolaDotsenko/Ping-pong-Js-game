@@ -25,6 +25,8 @@ const MODE_TIPS = Object.freeze({
   duo: 'Player 1 steers from the bottom half, Player 2 from the top.',
 });
 const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps', 'jokes']);
+/** Where the arcade's "Continue?" countdown starts, a second a step, after a loss. */
+const CONTINUE_FROM = 9;
 
 /**
  * @typedef {typeof TOGGLE_SETTINGS[number]} ToggleSetting
@@ -66,9 +68,13 @@ export class DomGameView {
     this.tracks = tracks;
     this.previewTrack = previewTrack;
     this.timers = timers;
-    /** While the finisher plays, the result screen waits; a tap or key brings it at once. */
-    /** @type {ReturnType<typeof setTimeout> | null} */
+    /**
+     * While the finisher plays, the result screen waits; a tap or key brings it at once.
+     * @type {ReturnType<typeof setTimeout> | null}
+     */
     this.resultDelay = null;
+    /** @type {ReturnType<typeof setTimeout> | null} the next step of the "Continue?" countdown */
+    this.continueTimer = null;
     this.status = this.find('[data-game-status]');
     this.scores = { player: this.find('[data-score="player"]'), opponent: this.find('[data-score="opponent"]') };
     this.overlays = {
@@ -80,10 +86,13 @@ export class DomGameView {
     this.pauseButton = this.find('[data-hud-pause]');
     this.lives = this.find('[data-lives]');
     this.matchPoint = this.find('[data-match-point]');
+    this.continueLine = this.find('[data-continue]');
     /** @type {Presentation | null} */
     this.rendered = null;
-    /** The presentation being rendered right now, for the phase change it may bring. */
-    /** @type {Presentation | null} */
+    /**
+     * The presentation being rendered right now, for the phase change it may bring.
+     * @type {Presentation | null}
+     */
     this.pending = null;
     /** @type {Presentation | null} */
     this.lastResult = null;
@@ -226,6 +235,7 @@ export class DomGameView {
     }
     this.listeners = [];
     this.cancelResultDelay();
+    this.stopContinue();
   }
 
   /**
@@ -500,6 +510,8 @@ export class DomGameView {
     this.overlays.pause.hidden = phase !== GAME_PHASE.PAUSED;
     this.overlays.over.hidden = phase !== GAME_PHASE.GAME_OVER || finishing;
     this.cancelResultDelay();
+    // A new result starts its own countdown; any other screen ends the last one.
+    this.stopContinue();
 
     if (finishing) {
       this.resultDelay = this.timers.setTimeout(() => this.revealResult(), FINISHER_SECONDS * 1000);
@@ -611,6 +623,42 @@ export class DomGameView {
     this.find('[data-over-difficulty]').textContent = opponent.nickname ? `${setting} · vs ${opponent.name}` : setting;
     this.find('[data-over-best]').hidden = !newBest;
     this.find('[data-over-best-rush]').hidden = !newBestRush;
+    this.startContinue(presentation);
+  }
+
+  /**
+   * After a loss to the computer, a parody of the arcade's "Continue?" screen counts down
+   * under the result, then gives up with "Game over". It is one of the fun extras and pure
+   * decoration: Play again works all along, and screen readers skip it.
+   *
+   * @param {Presentation} presentation
+   */
+  startContinue({ mode, winner }) {
+    const lost = mode === 'rush' || (mode === 'solo' && winner === 'opponent');
+
+    this.stopContinue();
+    this.continueLine.hidden = !lost || this.preferences.get().jokes !== true;
+
+    if (!this.continueLine.hidden) {
+      this.tickContinue(CONTINUE_FROM);
+    }
+  }
+
+  /** @param {number} count seconds left; below zero the countdown has given up */
+  tickContinue(count) {
+    const over = count < 0;
+
+    this.continueLine.textContent = over ? 'Game over' : `Continue? ${count}`;
+    this.continueLine.dataset.state = over ? 'over' : 'counting';
+    restartAnimation(this.continueLine, 'is-ticking');
+    this.continueTimer = over ? null : this.timers.setTimeout(() => this.tickContinue(count - 1), 1000);
+  }
+
+  stopContinue() {
+    if (this.continueTimer !== null) {
+      this.timers.clearTimeout(this.continueTimer);
+      this.continueTimer = null;
+    }
   }
 }
 

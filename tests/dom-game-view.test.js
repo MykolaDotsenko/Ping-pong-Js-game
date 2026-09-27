@@ -148,6 +148,7 @@ function createRoot({ modalDialogs = true } = {}) {
     ['overDifficulty', { 'data-over-difficulty': '' }],
     ['overBest', { 'data-over-best': '' }],
     ['overBestRush', { 'data-over-best-rush': '' }],
+    ['continueLine', { 'data-continue': '', 'aria-hidden': 'true' }],
   ].map(([name, attributes]) => [
     name,
     name === 'tutorial' && modalDialogs ? new FakeDialog(attributes) : new FakeElement(attributes),
@@ -820,7 +821,9 @@ test('the result comes at once when no finisher plays: a defeat, a Rush run, or 
     view.render(presentation({ phase: GAME_PHASE.RUNNING, mode: result.mode }));
     view.render(result);
     assert.equal(dom.over.hidden, false);
-    assert.equal(timers.pending.size, 0);
+    // Nothing waits; a loss with the fun extras on only starts the "Continue?" countdown.
+    const countdown = result.winner === 'opponent' && preferences.get().jokes;
+    assert.deepEqual([...timers.pending.values()].map(({ ms }) => ms), countdown ? [1000] : []);
   }
 
   // Between two people the second player's win is finished too.
@@ -830,6 +833,69 @@ test('the result comes at once when no finisher plays: a defeat, a Rush run, or 
   view.render(presentation({ ...duo, phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
   assert.equal(dom.over.hidden, true);
   assert.equal(timers.pending.size, 1);
+});
+
+test('after a loss to the computer, "Continue?" counts down a second a step, then gives up', () => {
+  const { view, dom, timers } = setup();
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
+
+  assert.equal(dom.over.hidden, false, 'the result screen comes at once');
+  assert.equal(dom.continueLine.hidden, false);
+  assert.equal(dom.continueLine.textContent, 'Continue? 9');
+  assert.equal(dom.continueLine.getAttribute('aria-hidden'), 'true', 'decoration, which screen readers skip');
+  assert.deepEqual([...timers.pending.values()].map(({ ms }) => ms), [1000]);
+
+  for (let count = 8; count >= 0; count -= 1) {
+    timers.fire();
+    assert.equal(dom.continueLine.textContent, `Continue? ${count}`);
+    assert.equal(dom.continueLine.dataset.state, 'counting');
+  }
+
+  timers.fire();
+  assert.equal(dom.continueLine.textContent, 'Game over');
+  assert.equal(dom.continueLine.dataset.state, 'over');
+  assert.equal(timers.pending.size, 0, 'and stops there');
+  assert.ok(dom.continueLine.classes.has('is-ticking'), 'each step pops');
+});
+
+test('a Rush run counts down too; a win, a two-player match or the fun extras off do not', () => {
+  const duo = { mode: 'duo', opponent: { label: 'P2', name: 'Player 2', nickname: false } };
+  const cases = [
+    [createPreferences({ mode: 'rush' }), { mode: 'rush', winner: 'opponent' }, true],
+    [createPreferences(), { winner: 'player' }, false],
+    [createPreferences({ mode: 'duo' }), { ...duo, winner: 'opponent' }, false],
+    [createPreferences({ jokes: false }), { winner: 'opponent' }, false],
+  ];
+
+  for (const [preferences, result, counts] of cases) {
+    const { view, dom } = setup({ preferences });
+    view.render(presentation({ ...result, phase: GAME_PHASE.RUNNING, winner: null }));
+    view.render(presentation({ ...result, phase: GAME_PHASE.GAME_OVER }));
+    assert.equal(dom.continueLine.hidden, !counts, JSON.stringify(result));
+  }
+});
+
+test('leaving the result screen stops the countdown, and the next loss starts it again from 9', () => {
+  const { view, dom, timers } = setup();
+  const lose = () => {
+    view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+    view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
+  };
+
+  lose();
+  timers.fire();
+  timers.fire();
+  assert.equal(dom.continueLine.textContent, 'Continue? 7');
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  assert.equal(timers.pending.size, 0);
+
+  lose();
+  assert.equal(dom.continueLine.textContent, 'Continue? 9');
+  view.disconnect();
+  assert.equal(timers.pending.size, 0);
 });
 
 test('leaving for the menu during the finisher drops the wait, so the result never pops up over the menu', () => {
