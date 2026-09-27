@@ -50,6 +50,7 @@ export const TRACK_IDS = Object.freeze(['neon', 'arena', 'anthem', 'contender', 
  * @property {Mode} mode
  * @property {Difficulty} difficulty applied when the next Solo match starts
  * @property {boolean} powerUps whether power-ups appear in Solo and two-player matches
+ * @property {boolean} supers whether the super meters fill in Solo, two-player and career matches
  * @property {boolean} sound
  * @property {boolean} music
  * @property {TrackId} track the backing track the next match plays

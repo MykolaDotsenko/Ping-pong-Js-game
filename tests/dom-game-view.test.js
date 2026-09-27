@@ -119,6 +119,7 @@ function createRoot({ modalDialogs = true } = {}) {
     ['menuTrack', { 'data-track': '' }],
     ['pauseTrack', { 'data-track': '' }],
     ['powerUps', { 'data-setting': 'powerUps', 'data-power-ups-choice': '' }],
+    ['supers', { 'data-setting': 'supers', 'data-supers-choice': '' }],
     ['vibration', { 'data-setting': 'vibration' }],
     ['jokes', { 'data-setting': 'jokes' }],
     ['solo', { 'data-mode': 'solo' }],
@@ -194,6 +195,7 @@ function createPreferences(initial = {}) {
     mode: 'solo',
     difficulty: 'normal',
     powerUps: true,
+    supers: true,
     sound: true,
     music: true,
     track: 'neon',
@@ -367,6 +369,7 @@ test('mode buttons choose the next match, show the right options, and refresh th
   assert.deepEqual(pressed(), ['solo']);
   assert.equal(dom.difficultyGroup.hidden, false);
   assert.equal(dom.powerUps.hidden, false);
+  assert.equal(dom.supers.hidden, false);
 
   click(dom.rush);
 
@@ -374,6 +377,7 @@ test('mode buttons choose the next match, show the right options, and refresh th
   assert.deepEqual(pressed(), ['rush']);
   assert.equal(dom.difficultyGroup.hidden, true);
   assert.equal(dom.powerUps.hidden, true);
+  assert.equal(dom.supers.hidden, true, 'a Rush run never has supers');
   assert.equal(dom.root.dataset.mode, 'rush');
   assert.match(dom.modeTip.textContent, /faster/);
   assert.deepEqual(commands.map((entry) => entry.command), [GAME_COMMAND.RESET]);
@@ -381,6 +385,7 @@ test('mode buttons choose the next match, show the right options, and refresh th
   click(dom.duo);
   assert.equal(dom.difficultyGroup.hidden, true);
   assert.equal(dom.powerUps.hidden, false);
+  assert.equal(dom.supers.hidden, false);
   assert.match(dom.modeTip.textContent, /Player 2/);
 });
 
@@ -407,10 +412,13 @@ test('setting toggles flip the preference and every matching switch', () => {
 
   click(dom.music);
   click(dom.powerUps);
+  click(dom.supers);
   click(dom.vibration);
   click(dom.jokes);
   assert.equal(preferences.get().music, false);
   assert.equal(preferences.get().powerUps, false);
+  assert.equal(preferences.get().supers, false);
+  assert.equal(dom.supers.getAttribute('aria-pressed'), 'false');
   assert.equal(preferences.get().vibration, false);
   assert.equal(preferences.get().jokes, false);
   assert.equal(dom.jokes.getAttribute('aria-pressed'), 'false');
@@ -958,6 +966,7 @@ test('Career shows the rival picker instead of the difficulty, and no power-up s
   assert.equal(dom.rivalGroup.hidden, false);
   assert.equal(dom.difficultyGroup.hidden, true);
   assert.equal(dom.powerUps.hidden, true, 'every rival brings its own power-ups, or none');
+  assert.equal(dom.supers.hidden, false, 'but supers are the player\'s choice');
 
   click(dom.solo);
   assert.equal(dom.rivalGroup.hidden, true);

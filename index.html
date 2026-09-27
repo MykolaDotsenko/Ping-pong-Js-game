@@ -106,6 +106,7 @@
                   <button type="button" class="cta" data-command="start">Play</button>
                   <div class="toggles">
                     <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-power-ups-choice>Power-ups</button>
+                    <button type="button" class="toggle" data-setting="supers" aria-pressed="true" data-supers-choice title="Super shots: fill the meter, then flick to fire">Supers</button>
                     <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
                     <button type="button" class="track" data-track aria-label="Music track: Neon">Neon</button>
                   </div>
@@ -122,7 +123,8 @@
                 <h2 class="panel__title" id="tutorial-title">How to play</h2>
                 <ol class="tutorial">
                   <li><span class="tutorial__icon" aria-hidden="true">👆</span><span><strong>Drag</strong> anywhere below the middle, or on the rail under the court, to move your paddle.</span></li>
-                  <li><span class="tutorial__icon" aria-hidden="true">↝</span><span><strong>Flick</strong> sideways as the ball lands to put a curve on it. The computer cannot read a curve.</span></li>
+                  <li><span class="tutorial__icon" aria-hidden="true">↝</span><span><strong>Flick</strong> sideways as the ball lands to curve it. The computer cannot read a curve.</span></li>
+                  <li><span class="tutorial__icon" aria-hidden="true">✹</span><span><strong>Supers</strong>: returns fill your meter. When it glows, flick as you hit to fire it.</span></li>
                   <li><span class="tutorial__icon" aria-hidden="true">◐</span><span><strong>Hit off-center</strong> to angle your return. Every hit speeds the ball up.</span></li>
                   <li><span class="tutorial__icon" aria-hidden="true">✦</span><span><strong>Grab power-ups</strong> with the ball: Wide, Shrink, Turbo, Ghost and Multiball. Whoever hit last gets it.</span></li>
                 </ol>
@@ -190,7 +192,7 @@
           A neon arcade Pong with no framework, no game engine and no runtime dependency, so every engineering decision stays visible.
         </p>
         <ul class="layers">
-          <li><strong>Domain</strong> Scoring, collisions, spin, power-ups and the computer opponent. Deterministic and browser-free.</li>
+          <li><strong>Domain</strong> Scoring, collisions, spin, power-ups, super shots and the computer opponent. Deterministic and browser-free.</li>
           <li><strong>Application</strong> The match state machine, a fixed-timestep loop with slow motion and hit-stop, and events that drive sound, music, vibration and effects.</li>
           <li><strong>Adapters</strong> Canvas rendering, Web Audio, multi-touch and keyboard input, and the interface around the board.</li>
         </ul>

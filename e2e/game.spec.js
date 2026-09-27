@@ -468,6 +468,7 @@ test.describe('first visit', () => {
     await page.goto('/');
 
     await expect(tutorial(page)).toBeVisible();
+    await expect(tutorial(page)).toContainText('flick as you hit to fire it');
     await expect(page.getByRole('button', { name: 'Got it' })).toBeFocused();
 
     // Space belongs to the dialog: it presses the focused button, and no match starts behind it.
@@ -575,6 +576,61 @@ test('the mode and the power-up switch survive a reload', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: /2P/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: 'Power-ups' })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('the Supers switch survives a reload, and a Rush run has none', async ({ page }) => {
+  await page.goto('/');
+
+  const supers = page.getByRole('button', { name: 'Supers' });
+  await expect(supers).toHaveAttribute('aria-pressed', 'true');
+  await supers.click();
+  await page.reload();
+  await expect(supers).toHaveAttribute('aria-pressed', 'false');
+
+  await page.getByRole('button', { name: /Rush/ }).click();
+  await expect(supers).toBeHidden();
+  await page.getByRole('button', { name: /Career/ }).click();
+  await expect(supers).toBeVisible();
+});
+
+/**
+ * How much of the player's color shows in the bottom-left corner of the board, below the
+ * paddle and inside the court's glowing border, where the super meter sits.
+ */
+function readMeterCorner(page) {
+  const { width, height } = GAME_CONFIG;
+
+  return board(page).evaluate((canvas, { boardWidth, boardHeight }) => {
+    const scale = canvas.width / boardWidth;
+    const { data } = canvas.getContext('2d').getImageData(
+      Math.round(20 * scale),
+      Math.round((boardHeight - 34) * scale),
+      Math.round(90 * scale),
+      Math.round(22 * scale),
+    );
+    let lit = 0;
+
+    for (let i = 0; i < data.length; i += 4) {
+      // The player's cyan, dimmed or not: far more green and blue than red.
+      if (data[i + 1] > 60 && data[i + 2] > 60 && data[i] < data[i + 2] * 0.6) {
+        lit += 1;
+      }
+    }
+
+    return lit;
+  }, { boardWidth: width, boardHeight: height });
+}
+
+test('with supers on the player\'s meter sits in the corner of the court; with them off it is gone', async ({ page }) => {
+  await page.goto('/');
+  await playButton(page).click();
+  await expect.poll(() => readMeterCorner(page)).toBeGreaterThan(50);
+
+  await page.keyboard.press('Escape');
+  await page.locator('[data-overlay="pause"]').getByRole('button', { name: 'Menu' }).click();
+  await page.getByRole('button', { name: 'Supers' }).click();
+  await playButton(page).click();
+  await expect.poll(() => readMeterCorner(page)).toBeLessThan(10);
 });
 
 test('the computer signs in under an arcade-club nickname, until the Fun switch is turned off', async ({ page }) => {

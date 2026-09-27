@@ -1,7 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { FINISHER_KINDS, FINISHER_SECONDS, finisherApplies, finisherFor } from '../src/adapters/finisher.js';
+import {
+  COMIC_TITLES,
+  FINISHER_KINDS,
+  FINISHER_SECONDS,
+  finisherApplies,
+  finisherAt,
+  finisherFor,
+  REGULAR_FINISHERS,
+  SUPER_FINISHERS,
+} from '../src/adapters/finisher.js';
+import { GAME_CONFIG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
+import { createInitialState } from '../src/domain/game.js';
 
 const solo = { twoPlayers: false, rush: false, jokes: true };
 
@@ -18,17 +29,59 @@ test('no finisher without the fun extras, at the end of a Rush run, or before a 
   assert.equal(finisherApplies({ ...solo, winner: null }), false);
 });
 
-test('the kind follows from the match seed, every kind turns up, and the loser is named', () => {
+test('the kind follows from the match seed, every ordinary kind turns up, and the loser is named', () => {
   const first = finisherFor({ ...solo, winner: 'player', seed: 77 });
   assert.deepEqual(first, finisherFor({ ...solo, winner: 'player', seed: 77 }));
   assert.equal(first?.loser, 'opponent');
   assert.equal(finisherFor({ ...solo, twoPlayers: true, winner: 'opponent', seed: 77 })?.loser, 'player');
   assert.equal(finisherFor({ ...solo, winner: 'opponent', seed: 77 }), null);
 
-  const kinds = new Set();
-  for (let seed = 0; seed < 100; seed += 1) {
-    kinds.add(finisherFor({ ...solo, winner: 'player', seed })?.kind);
+  const kinds = new Map();
+  for (let seed = 0; seed < 2000; seed += 1) {
+    const { kind } = finisherFor({ ...solo, winner: 'player', seed });
+    kinds.set(kind, (kinds.get(kind) ?? 0) + 1);
   }
-  assert.deepEqual([...kinds].sort(), [...FINISHER_KINDS].sort());
+
+  assert.deepEqual([...kinds.keys()].sort(), [...REGULAR_FINISHERS, ...Object.keys(COMIC_TITLES)].sort());
+  const comic = (kinds.get('tiny') + kinds.get('snooze')) / 2000;
+  assert.ok(comic > 0.1 && comic < 0.2, `now and then comic: ${comic}`);
   assert.ok(FINISHER_SECONDS <= 1.2, 'never keeps the result screen waiting longer than agreed');
+});
+
+test('ordinary finishers are a PONGALITY, comic ones go by their own names', () => {
+  for (let seed = 0; seed < 200; seed += 1) {
+    const finisher = finisherFor({ ...solo, winner: 'player', seed });
+    assert.equal(finisher.title, COMIC_TITLES[finisher.kind] ?? 'PONGALITY');
+    assert.equal(finisher.super, null);
+  }
+});
+
+test('a match won with a super ends in that super\'s own finisher, whatever the seed', () => {
+  for (const [superKind, kind] of Object.entries(SUPER_FINISHERS)) {
+    for (const seed of [1, 2, 3]) {
+      assert.deepEqual(finisherFor({ ...solo, winner: 'player', seed, super: superKind }), {
+        kind,
+        loser: 'opponent',
+        title: 'PONGALITY',
+        super: superKind,
+        perfect: false,
+      });
+    }
+  }
+
+  assert.equal(finisherFor({ ...solo, winner: 'opponent', seed: 1, super: 'zigzag' }), null, 'still none on the player');
+  assert.equal(new Set(FINISHER_KINDS).size, FINISHER_KINDS.length);
+  assert.equal(FINISHER_KINDS.length, 13);
+});
+
+test('the finisher is read from the game-over event and the final score: a super, and a win to nil', () => {
+  const state = (score) => ({ ...createInitialState(GAME_CONFIG, 1), seed: 5, score });
+  const perfect = finisherAt({ type: 'game-over', winner: 'player', super: 'phantom' }, state({ player: 7, opponent: 0 }), GAME_CONFIG, true);
+
+  assert.equal(perfect.kind, 'derez');
+  assert.equal(perfect.perfect, true);
+  assert.equal(finisherAt({ type: 'game-over', winner: 'player' }, state({ player: 7, opponent: 1 }), GAME_CONFIG, true).perfect, false);
+  assert.equal(finisherAt({ type: 'game-over', winner: 'opponent' }, state({ player: 0, opponent: 7 }), TWO_PLAYER_CONFIG, true).perfect, true);
+  assert.equal(finisherAt({ type: 'game-over', winner: 'player' }, state({ player: 7, opponent: 0 }), GAME_CONFIG, false), null);
+  assert.equal(finisherAt({ type: 'game-over', winner: 'opponent' }, state({ player: 0, opponent: 3 }), RUSH_CONFIG, true), null);
 });

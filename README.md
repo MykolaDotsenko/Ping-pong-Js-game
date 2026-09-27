@@ -22,28 +22,29 @@ The original 2024 version used one global script for rendering, input, physics, 
 
 - **Four ways to play.** **Solo** against the computer, first to 7. **Rush**, a survival run with three lives against a computer that returns everything but a curve, where the ball only gets faster and your score is the number of hits. **2P**, two people on one phone, each steering their own end of the court. **Career**, the ladder below.
 - **Career: The Last Arcade.** Nine regulars of the last arcade in town, each with a style and a line of story: Rookie Roma, Aunt Halyna and her wide paddle, Twisty Taras whose returns all curve, Hoarder Hryts and his power-ups, corner-sniping Sniper Sanya, Grandmaster Zina, and three bosses who fight dirty. **The Janitor** drips on your end of the court, **DJ Wobble** strikes a column of it with a beam, and **LAG**, the router in the back room, makes the balls move in fits and starts. Every attack is announced a moment before it lands, and a hit only shrinks your paddle for a few seconds. A win earns up to three stars and opens the next rival; a rival that beats you twice in a row plays tired. All the names are made up.
-- **Fun extras,** behind one Fun switch: the computer signs in under a 90s arcade-club nickname; a won match ends with a **PONGALITY**, the loser's paddle shattered, launched, sliced or boiled away while the result screen waits a moment (a tap or a key brings it at once); and a lost one counts down **CONTINUE? 9… 0** like an arcade cabinet.
+- **Super shots.** Your returns fill a meter in your corner of the court, faster off the paddle's edge, with curve, or when you return one of the other side's supers, and a lost point helps you back. A full meter holds one of four supers, never the one you fired last, and the next flick as you hit fires it: a **FIREBALL**, faster than any ordinary ball, wide of the other paddle; a **ZIGZAG**, which swerves at each third of the court; a **PHANTOM**, which vanishes halfway across; or **THUNDER**, which flies straight at the other paddle and breaks late. The computer fires its own, and between two people both do. Return one and it is **SAVED!**, and the rally goes on at its own pace; one point from winning with a super in hand, you are told to **FINISH IT!**. Each side fires two or three a match, and against the computer on Normal a super wins about half its points. Switch them off for the classic game; a Rush run never has them.
+- **Fun extras,** behind one Fun switch: the computer signs in under a 90s arcade-club nickname; a won match ends with a **PONGALITY**, the loser's paddle shattered, launched, sliced, boiled away, flattened by a meteor, drawn into a black hole or frozen solid and shattered, while the result screen waits a moment (a tap or a key brings it at once). A match won with a super ends in that super's own **SUPER PONGALITY**: the paddle incinerated, shredded, broken up into pixels or electrocuted. Now and then a comic **TINYALITY** or **SNOOZALITY** plays instead, and a win to nil is **PERFECT!**. A lost match counts down **CONTINUE? 9… 0** like an arcade cabinet.
 - **Portrait neon court** that fills a phone held upright and reads as a vertical arcade cabinet on desktop.
 - **Curve shots:** flick the paddle as it meets the ball and the ball bends in that direction. The computer cannot predict a curve.
 - **Power-ups** appear mid-rally and go to whoever hit the ball last: **Wide** enlarges your paddle, **Shrink** shrinks the other side's, **Turbo** turns your shot into one blistering ball until it is returned, **Ghost** hides the ball in the other side's half, and **Multiball** splits a second ball off yours. A split-off ball bounces and scores like the ball, but its returns do not count toward the rally, and it fades after a few seconds. The computer keeps its eye on whichever ball reaches it first. They can be switched off.
 - **A computer that plays like a person:** it reacts only once the ball comes within its reach, aims its returns away from you, and misjudges fast balls more.
 - **Three difficulties** — Easy, Normal, Hard — tuned by simulating matches against human-like bots.
-- **Drama:** a 3-2-1 countdown before the first serve, a **Match point** banner, slow motion as a match-point ball closes on a paddle, a split-second freeze on hard hits, and callouts for a **CURVE!**, a **SMASH!** or an **EDGE!** catch.
+- **Drama:** a 3-2-1 countdown before the first serve, a **Match point** banner, slow motion as a match-point ball closes on a paddle, a split-second freeze on hard hits, and callouts for a **CURVE!**, a **SMASH!**, an **EDGE!** catch, a super by name and a **SAVED!** one.
 - **Rallies that build:** every hit speeds the ball up, the rally counter pulses, long rallies heat the ball into a "fever" glow, and the music adds a layer at 3 hits and another at 6.
 - **Juice:** sparks, shockwaves, screen shake, flashes, a speed-heated ball trail and victory fireworks, with synthesized sound effects, a synthesized backing track and vibration.
 - **Five backing tracks**, all original and synthesized in the browser: **Neon** (synthwave), **Arena** (arcade fighter techno), **Anthem** (a big synth-brass anthem), **Contender** (training-montage rock) and **Iron** (heavy industrial). The ♪ button in the menu or the pause screen switches track and plays a few seconds of it.
 - **Thumb rail:** on touch screens, a strip below the court steers the paddle, so your thumb never covers the play.
 - **Solid paddles:** the ball meets a paddle's face, corners and sides as solid shapes. Clip a front corner and it comes back from the edge; catch it on the side and it glances off, but it never passes through. Once you have missed, a paddle moved into the ball stops against it instead of dragging it along.
 - **Made for the phone:** a first-visit tutorial, full-screen mode, the screen stays awake during a match, and a Share button for a result. Every control is at least 44 by 44 pixels, the size a fingertip needs, even on a 320px-wide screen. Held sideways, the heads-up display becomes a column beside a full-height court, and the menus open as sheets across the screen.
-- Mode, difficulty, power-ups, sound, music and its track, vibration, your best rally, your best Rush run, your Solo win record and your career stars are remembered between visits, and stay in step across open tabs. Leaving a Solo match after its first point counts as a loss, so a streak is earned, not protected.
+- Mode, difficulty, power-ups, supers, sound, music and its track, vibration, your best rally, your best Rush run, your Solo win record and your career stars are remembered between visits, and stay in step across open tabs. Leaving a Solo match after its first point counts as a loss, so a streak is earned, not protected.
 
 ## What it demonstrates
 
 - browser-agnostic **domain + application core**, kept deterministic (no clock, no randomness)
 - explicit state machine: `ready → running ↔ paused → game-over`
-- **domain events** (`paddle-hit`, `point`, `match-point`, `pickup`, `game-over`, …) emitted by the simulation and turned into sound, music, vibration and visual effects by independent adapters
+- **domain events** (`paddle-hit`, `point`, `match-point`, `pickup`, `super-ready`, `game-over`, …) emitted by the simulation and turned into sound, music, vibration and visual effects by independent adapters
 - **rules as data:** a match and a Rush run share one simulation; the rules object decides how a point counts
-- a **deterministic random source** kept in the game state, so power-ups and boss attacks vary between matches while the same seed replays a match exactly
+- a **deterministic random source** kept in the game state, so power-ups, supers and boss attacks vary between matches while the same seed replays a match exactly
 - **content as data:** the career ladder is a list of rivals in `catalog.js`, each a tuning of the same game; bosses add attacks the domain runs like any other rule
 - a fixed-step loop with a **time scale and hit-stop hold**, so slow motion and freeze frames never touch the simulation's step size
 - fixed-timestep simulation with render interpolation, independent from display refresh rate
@@ -54,7 +55,7 @@ The original 2024 version used one global script for rendering, input, physics, 
 - a Canvas renderer built for phones: pre-rendered glow sprites and background layers, additive blending, and a capped pixel ratio
 - layer boundaries enforced by ESLint, with tests proving the rules still reject violations
 - unit tests behind an honest coverage gate: every module is loaded, so an untested file counts at 0%, and each file must clear its own floor, not just the average
-- **reference matches:** seven recorded bot matches replayed step by step and compared by digest, so new features provably leave classic play untouched
+- **reference matches:** eight recorded bot matches replayed step by step and compared by digest, so new features provably leave classic play untouched
 - accessible overlays: a native modal tutorial with managed focus, labelled pause and result dialogs, and decorative glyphs hidden from screen readers
 - Playwright tests on desktop and mobile Chromium that assert on the rendered canvas
 - an installable web app (manifest and icons) with safe-area-aware, reduced-motion-aware styling
@@ -105,6 +106,7 @@ script.js (composition root: the only place that touches browser globals)
                     +-- physics ----- swept paddle contact, bounce angles, spin
                     +-- opponent ---- reach, prediction, aim, misjudgement
                     +-- power-ups --- pickups, effects, Multiball, a seeded random source
+                    +-- supers ------ the super meters and the four super shots
                     +-- hazards ----- a career boss's drips, beams and lag
 ```
 
@@ -165,6 +167,7 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for the design rationale and trade-offs
 │   │   ├── physics.js
 │   │   ├── power-ups.js
 │   │   ├── random.js
+│   │   ├── supers.js
 │   │   └── types.js
 │   ├── catalog.js              the matches a player can choose, the career ladder included
 │   └── config.js
@@ -209,6 +212,7 @@ npm run docs:icons     # regenerate the app icons from icons/icon.svg
 - **Mouse:** move over the court; in 2P, press and drag
 - **Keyboard:** `←` / `→` or `A` / `D` to move (by physical key, so any layout works, including Ukrainian and AZERTY), `Space` to start or pause, `Esc` to pause. Player 2 uses `J` / `L` or the numpad `4` / `6`.
 - **Curve:** flick the paddle sideways as it meets the ball
+- **Super:** with a full meter, the same flick as you hit fires it
 
 Whichever device you used last steers the paddle, so the keyboard works even while the mouse rests on the board. Clicking a button hands focus back to the board, so `Space` keeps working. While the tutorial is open, `Space`, `Enter` and `Esc` belong to it: the game behind it takes no keys or touches. The match pauses by itself when the window loses focus or the tab is hidden, and the page cannot scroll away while you play. Browser shortcuts such as `Ctrl+A` are never intercepted.
 
@@ -232,8 +236,9 @@ The dependency-free unit suite covers:
 - the state machine, scoring, serves, the 3-2-1 countdown, match point, and the events every transition emits
 - the Rush rules (lives, hits, no win condition for the computer) and two-player steering of the top paddle
 - power-ups: spawning on schedule, each effect, wear-off through serve pauses, the computer's blindness to a ghosted ball, and Multiball's split-off balls, which bounce, score and fade but stay out of the rally
+- supers: the meter's charge for a return, an edge, a curve, a save and a lost point; a full meter's super, drawn and never the last one; firing by a flick or, for the computer, by chance; each super's flight; a saved super's return at the rally's pace; a phantom the computer can only guess at; and points and matches named after the super that won them
 - a career boss's attacks: drips aimed at the player, a beam announced before it strikes, lag, a hit that only shrinks the paddle for a while, and attacks that never overlap and stop at a point
-- the reference matches: seven recorded bot matches, Solo on every difficulty, keyboard steering, Rush, two players and power-ups, replayed step by step against their digests
+- the reference matches: eight recorded bot matches, Solo on every difficulty, keyboard steering, Rush, two players, power-ups and supers, replayed step by step against their digests
 - the deterministic random source, so a seed replays a match
 - paddle control, the speed cap, spin from a moving paddle, curves that keep their speed and never stall a rally, and a full deterministic rally
 - paddle contact: faces, clipped corners, sides, a paddle run into a missed ball or yanked toward a wall, a paddle that flashes across under the ball, fast balls at any speed, and a property test over 60 bot matches in which the ball never overlaps a paddle
@@ -254,7 +259,7 @@ Playwright runs the real application in desktop and mobile Chromium. It reads th
 - the first serve counts down from three before the ball moves
 - the first visit opens the tutorial once as a modal dialog; `Space` closes it without starting a match, `Esc` closes it too, and either is remembered
 - Rush shows lives as hearts and ends when they run out; two players get their own halves of the board
-- mode, difficulty, power-up and sound choices survive a reload
+- mode, difficulty, power-up, super and sound choices survive a reload; a Rush run has no Supers switch, and the super meter shows in the corner of the court only while supers are on
 - a lost match ends on the result screen, with full effects and no page errors, and Play again starts a new one
 - the computer's nickname follows the Fun switch; a won match ends with a Pongality before the result screen, which a tap or a key brings at once without starting the next match
 - the career opens as far as the rivals beaten, names the rival as a match starts, the first boss's drip shrinks a paddle that stands still, and a lost match counts down to game over

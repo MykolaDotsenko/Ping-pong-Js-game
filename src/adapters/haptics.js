@@ -10,7 +10,14 @@
 function patternFor(event) {
   switch (event.type) {
     case 'paddle-hit':
-      return event.side === 'player' ? 12 : null;
+      if (event.side !== 'player') {
+        return null;
+      }
+
+      // Firing a super thumps; answering one knocks harder than a plain return.
+      return event.super ? [25, 30, 45] : event.saved ? 30 : 12;
+    case 'super-ready':
+      return event.side === 'player' ? [12, 40, 24] : null;
     case 'paddle-graze':
       return event.side === 'player' ? 6 : null;
     case 'point':

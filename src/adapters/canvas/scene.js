@@ -1,7 +1,8 @@
 import { GAME_PHASE } from '../../domain/game.js';
 import { BEAM_HALF_WIDTH, DRIP_RADIUS } from '../../domain/hazards.js';
 import { paddleWidth } from '../../domain/power-ups.js';
-import { FEVER_RALLY, FONT, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, THEME } from './theme.js';
+import { phantomBand, phantomHidden } from '../../domain/supers.js';
+import { FEVER_RALLY, FONT, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, SUPER_STYLE, THEME } from './theme.js';
 
 /**
  * The moving parts of the court: the ball and its trail, the paddles, the power-ups and the
@@ -12,8 +13,11 @@ import { FEVER_RALLY, FONT, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, T
  * @import { GlowSprites } from './court.js'
  */
 
-// How far back, in seconds of flight, a Multiball ball's streak reaches.
+// How far back, in seconds of flight, a Multiball ball's streak reaches, and a fireball's flame.
 const STREAK_SECONDS = 0.045;
+const FLAME_SECONDS = 0.08;
+// Thunder crackles: its arcs take a new shape this often, in milliseconds.
+const CRACKLE_MS = 60;
 
 /**
  * A ghosted side cannot see the ball in its own half: the ball, its trail and the pickups
@@ -49,7 +53,8 @@ export function isHidden(state, config, y) {
 
 /**
  * The ball takes the color of whoever hit it last and heats toward amber as it speeds up;
- * a long rally tips it into a rose "fever" glow, and Turbo turns it amber outright.
+ * a long rally tips it into a rose "fever" glow, Turbo turns it amber outright, and a super
+ * wears its own color.
  *
  * @param {GameState} state
  * @param {GameConfig} config
@@ -60,6 +65,10 @@ export function ballColor(state, config) {
 
   if (state.serveCountdown > 0 || state.phase === GAME_PHASE.READY) {
     return THEME.violet;
+  }
+
+  if (state.superShot) {
+    return SUPER_STYLE[state.superShot.kind].rgb;
   }
 
   if (state.turbo > 0) {
@@ -159,13 +168,15 @@ export function drawTrail(ctx, points, state, config) {
 
   const color = ballColor(state, config);
   const radius = config.ball.radius;
+  // A phantom leaves no trail where it cannot be seen.
+  const phantom = phantomBand(state.superShot, config);
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.fillStyle = `rgb(${color})`;
 
   points.forEach((point, index) => {
-    if (isHidden(state, config, point.y)) {
+    if (isHidden(state, config, point.y) || (phantom && point.y > phantom.from && point.y < phantom.to)) {
       return;
     }
 
@@ -195,14 +206,30 @@ export function drawBall(ctx, state, config, now, glows) {
 
   const radius = config.ball.radius;
   const color = ballColor(state, config);
-  const fever = state.rally >= FEVER_RALLY || state.turbo > 0 ? 1.3 : 1;
+
+  // A phantom halfway across is only a faint shimmer, there for those who watch closely.
+  if (phantomHidden(state, config)) {
+    drawShimmer(ctx, ball, radius, color, now);
+    return;
+  }
+
+  const kind = state.superShot?.kind;
+  const fever = state.rally >= FEVER_RALLY || state.turbo > 0 || kind ? 1.3 : 1;
   const glowSize = radius * 10 * fever;
+
+  if (kind === 'fireball') {
+    drawFlame(ctx, ball, radius, color);
+  }
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   ctx.globalAlpha = 0.9;
   ctx.drawImage(glows.get(color), ball.x - glowSize / 2, ball.y - glowSize / 2, glowSize, glowSize);
   ctx.restore();
+
+  if (kind === 'thunder') {
+    drawCrackle(ctx, ball, radius, now);
+  }
 
   ctx.fillStyle = THEME.ballCore;
   ctx.beginPath();
@@ -221,6 +248,97 @@ export function drawBall(ctx, state, config, now, glows) {
     ctx.stroke();
     ctx.restore();
   }
+}
+
+/**
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Ball} ball
+ * @param {number} radius
+ * @param {string} color "r, g, b"
+ * @param {number} now milliseconds
+ */
+function drawShimmer(ctx, ball, radius, color, now) {
+  ctx.save();
+  ctx.strokeStyle = `rgba(${color}, ${0.2 + 0.1 * Math.sin(now / 240)})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, radius + 3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * A fireball's flame: a tapering tongue of fire streaming out behind it.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Ball} ball
+ * @param {number} radius
+ * @param {string} color "r, g, b"
+ */
+function drawFlame(ctx, ball, radius, color) {
+  const tailX = ball.x - ball.vx * FLAME_SECONDS;
+  const tailY = ball.y - ball.vy * FLAME_SECONDS;
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.lineCap = 'round';
+
+  for (const [width, alpha, rgb] of /** @type {const} */ ([[2.2, 0.35, color], [1.2, 0.55, THEME.amber]])) {
+    ctx.strokeStyle = `rgba(${rgb}, ${alpha})`;
+    ctx.lineWidth = radius * width;
+    ctx.beginPath();
+    ctx.moveTo(ball.x, ball.y);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Thunder's crackle: short jagged arcs around the ball that change shape many times a second.
+ * They stay small and pale, so the court never flickers.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {Ball} ball
+ * @param {number} radius
+ * @param {number} now milliseconds
+ */
+function drawCrackle(ctx, ball, radius, now) {
+  const frame = Math.floor(now / CRACKLE_MS);
+  // A repeatable scatter from the frame number, so the shape holds for a few frames.
+  const jitter = (/** @type {number} */ n) => {
+    const value = Math.sin(frame * 91.7 + n * 47.3) * 43758.5453;
+    return value - Math.floor(value);
+  };
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = 'rgba(191, 219, 254, 0.8)';
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+
+  for (let arc = 0; arc < 3; arc += 1) {
+    const angle = jitter(arc) * Math.PI * 2;
+    ctx.beginPath();
+
+    for (let joint = 0; joint < 4; joint += 1) {
+      const reach = radius * (1.1 + joint * 0.45);
+      const bend = angle + (jitter(arc * 4 + joint + 7) - 0.5) * 0.9;
+      const x = ball.x + Math.cos(bend) * reach;
+      const y = ball.y + Math.sin(bend) * reach;
+
+      if (joint === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+
+    ctx.stroke();
+  }
+
+  ctx.restore();
 }
 
 /**

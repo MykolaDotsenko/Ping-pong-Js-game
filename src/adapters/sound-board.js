@@ -1,9 +1,10 @@
-import { finisherApplies } from './finisher.js';
+import { finisherAt } from './finisher.js';
 
 /**
- * @import { GameConfig, GameEvent, GameState } from '../domain/types.js'
+ * @import { GameConfig, GameEvent, GameState, SuperKind } from '../domain/types.js'
  * @import { FeedbackPort, PreferencesPort } from '../application/ports.js'
  * @import { AudioOutput } from './audio-output.js'
+ * @import { Finisher } from './finisher.js'
  */
 
 // Equal-tempered note frequencies in Hz.
@@ -66,29 +67,75 @@ export class SoundBoard {
     for (const event of events) {
       this.play(event);
 
-      if (event.type === 'game-over' && config && this.finishes(event.winner, config)) {
-        this.crunch();
+      const finisher = event.type === 'game-over' && state && config
+        ? finisherAt(event, state, config, this.preferences.get().jokes === true)
+        : null;
+
+      if (finisher) {
+        this.finish(finisher);
       }
     }
   }
 
   /**
-   * @param {GameState['lastPoint']} winner
-   * @param {GameConfig} config
+   * The finisher's sound over the victory fanfare: a crunch as the paddle goes, a super's own
+   * sound again for the finisher it names, and for the comic ones a sob or a snore instead.
+   *
+   * @param {Finisher} finisher
    */
-  finishes(winner, config) {
-    return finisherApplies({
-      winner,
-      twoPlayers: config.opponent.controller === 'human',
-      rush: config.rules.kind === 'rush',
-      jokes: this.preferences.get().jokes === true,
-    });
+  finish(finisher) {
+    if (finisher.kind === 'tiny') {
+      // A sad little trombone.
+      this.arpeggio([NOTE.G4, 370, 349.23], 0.16, 'sawtooth', 0.2);
+      this.tone({ frequency: NOTE.E4, endFrequency: 300, duration: 0.5, type: 'sawtooth', volume: 0.2, delay: 0.48 });
+      return;
+    }
+
+    if (finisher.kind === 'snooze') {
+      // A snore, in and out.
+      this.tone({ frequency: 70, endFrequency: 95, duration: 0.45, type: 'sawtooth', volume: 0.16 });
+      this.tone({ frequency: 95, endFrequency: 60, duration: 0.5, type: 'sawtooth', volume: 0.12, delay: 0.5 });
+      return;
+    }
+
+    this.crunch();
+
+    if (finisher.super) {
+      this.superShot(finisher.super);
+    }
   }
 
-  /** The finisher landing: a low crack and a falling whine over the victory fanfare. */
+  /** The finisher landing: a low crack and a falling whine. */
   crunch() {
     this.tone({ frequency: 110, endFrequency: 28, duration: 0.4, type: 'sawtooth', volume: 0.5 });
     this.tone({ frequency: 1600, endFrequency: 180, duration: 0.22, type: 'square', volume: 0.22, delay: 0.03 });
+  }
+
+  /**
+   * Each super has a sound of its own: a fireball's roar, a zigzag's zaps, a phantom's eerie
+   * fade and thunder's crack and rumble.
+   *
+   * @param {SuperKind} kind
+   */
+  superShot(kind) {
+    switch (kind) {
+      case 'fireball':
+        this.tone({ frequency: 820, endFrequency: 110, duration: 0.36, type: 'sawtooth', volume: 0.22 });
+        this.tone({ frequency: 80, endFrequency: 50, duration: 0.32, type: 'square', volume: 0.2 });
+        break;
+      case 'zigzag':
+        this.arpeggio([1200, 600, 1200, 600], 0.04, 'square', 0.13);
+        break;
+      case 'phantom':
+        this.tone({ frequency: 900, endFrequency: 300, duration: 0.5, type: 'sine', volume: 0.24 });
+        this.tone({ frequency: 453, endFrequency: 150, duration: 0.5, type: 'sine', volume: 0.12 });
+        break;
+      case 'thunder':
+      default:
+        this.tone({ frequency: 1600, endFrequency: 60, duration: 0.28, type: 'sawtooth', volume: 0.24 });
+        this.tone({ frequency: 55, endFrequency: 40, duration: 0.42, type: 'square', volume: 0.22, delay: 0.04 });
+        break;
+    }
   }
 
   /** @returns {boolean} whether sound can play */
@@ -168,8 +215,27 @@ export class SoundBoard {
         if (event.rally % 5 === 0 && !event.extra) {
           this.arpeggio([NOTE.C6, NOTE.E6, NOTE.G6], 0.05, 'sine', 0.22, 0.04);
         }
+
+        if (event.super) {
+          this.superShot(event.super);
+        } else if (event.saved) {
+          // A super answered: a clang that shuts it down.
+          this.tone({ frequency: 180, endFrequency: 320, duration: 0.12, type: 'square', volume: 0.2 });
+          this.tone({ frequency: NOTE.E6, duration: 0.1, type: 'triangle', volume: 0.2, delay: 0.03 });
+        }
         break;
       }
+      case 'super-ready':
+        // A meter fills: a rising sparkle for the player, a darker warning for the other side.
+        if (event.side === 'player') {
+          this.arpeggio([NOTE.C6, NOTE.E6, NOTE.G6, NOTE.C6 * 2], 0.05, 'triangle', 0.3, 0.04);
+        } else {
+          this.arpeggio([NOTE.G4, NOTE.C5, NOTE.E5], 0.06, 'sawtooth', 0.14, 0.04);
+        }
+        break;
+      case 'super-swerve':
+        this.tone({ frequency: 1800, endFrequency: 900, duration: 0.06, type: 'square', volume: 0.12 });
+        break;
       case 'paddle-graze':
         // A dull knock off the paddle's edge, lower and shorter than a proper hit.
         this.tone({ frequency: 180, endFrequency: 120, duration: 0.07, type: 'triangle', volume: 0.26 });

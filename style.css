@@ -1200,6 +1200,18 @@ kbd {
   color: var(--player);
 }
 
+/* On a short screen the tips sit closer, so all five fit a small phone without scrolling. */
+@media (max-height: 600px) {
+  .tutorial {
+    gap: 2cqw;
+  }
+
+  .tutorial li {
+    padding: 1.8cqw 2.6cqw;
+    line-height: 1.3;
+  }
+}
+
 /* ---------- Two players ---------- */
 
 /* Both people steer on the board itself; the thumb rail would only get in the second player's way. */
@@ -1312,6 +1324,15 @@ kbd {
     display: grid;
     justify-items: center;
     gap: calc(3 * var(--u));
+  }
+
+  /* The switches take two rows here; tighter spacing keeps the whole menu on a 320px-tall screen. */
+  .panel__main {
+    gap: calc(1.6 * var(--u));
+  }
+
+  .segmented {
+    padding: calc(0.5 * var(--u));
   }
 
   .panel--menu .logo {
