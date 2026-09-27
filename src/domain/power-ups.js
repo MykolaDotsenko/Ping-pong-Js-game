@@ -7,7 +7,7 @@ import { nextBetween, nextRandom } from './random.js';
 export const POWER_UP_KINDS = Object.freeze(['wide', 'shrink', 'turbo', 'ghost', 'multi']);
 
 /** @type {Readonly<Modifiers>} */
-export const NO_MODIFIERS = Object.freeze({ wide: 0, tiny: 0, ghost: 0 });
+export const NO_MODIFIERS = Object.freeze({ wide: 0, tiny: 0, ghost: 0, lag: 0 });
 
 /** Shared by every state without Multiball balls, so the usual match allocates none. */
 export const NO_EXTRA_BALLS = Object.freeze(/** @type {ExtraBall[]} */ ([]));
@@ -40,7 +40,10 @@ export function lastHitter(state) {
 export function paddleWidth(state, side, config) {
   const { wide, tiny } = state.modifiers[side];
   const scale = (wide > 0 ? config.powerUps.wideScale : 1) * (tiny > 0 ? config.powerUps.shrinkScale : 1);
-  return config.paddle.width * scale;
+  const width = config.paddle.width * scale;
+
+  // Some career rivals play with a paddle of their own size.
+  return side === 'opponent' && config.opponent.widthScale !== 1 ? width * config.opponent.widthScale : width;
 }
 
 /**
@@ -107,7 +110,7 @@ export function splitBall(ball, id, config) {
  * @returns {Modifiers}
  */
 function tickModifiers(modifiers, deltaSeconds) {
-  if (modifiers.wide === 0 && modifiers.tiny === 0 && modifiers.ghost === 0) {
+  if (modifiers.wide === 0 && modifiers.tiny === 0 && modifiers.ghost === 0 && modifiers.lag === 0) {
     return modifiers;
   }
 
@@ -115,6 +118,7 @@ function tickModifiers(modifiers, deltaSeconds) {
     wide: Math.max(0, modifiers.wide - deltaSeconds),
     tiny: Math.max(0, modifiers.tiny - deltaSeconds),
     ghost: Math.max(0, modifiers.ghost - deltaSeconds),
+    lag: Math.max(0, modifiers.lag - deltaSeconds),
   };
 }
 

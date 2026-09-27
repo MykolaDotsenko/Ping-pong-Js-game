@@ -179,7 +179,7 @@ test('connecting draws the ready screen, sets up one player, and leaves the loop
     bestRush: 0,
     newBestRush: false,
     matchPoint: null,
-    modifiers: { player: { wide: 0, tiny: 0, ghost: 0 }, opponent: { wide: 0, tiny: 0, ghost: 0 } },
+    modifiers: { player: { wide: 0, tiny: 0, ghost: 0, lag: 0 }, opponent: { wide: 0, tiny: 0, ghost: 0, lag: 0 } },
     stats: DEFAULT_STATS,
     winner: null,
   });

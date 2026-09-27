@@ -41,6 +41,8 @@ export const GAME_CONFIG = Object.freeze({
     predictionWeight: 0.75,
     error: 45,
     aim: 0.3,
+    curve: 0,
+    widthScale: 1,
   }),
   powerUps: Object.freeze({
     enabled: true,
@@ -56,6 +58,7 @@ export const GAME_CONFIG = Object.freeze({
     splitAngle: 0.6,
     maxExtraBalls: 2,
   }),
+  boss: null,
 });
 
 /**
@@ -64,6 +67,7 @@ export const GAME_CONFIG = Object.freeze({
  * @property {Partial<GameConfig['ball']>} [ball]
  * @property {Partial<GameConfig['opponent']>} [opponent]
  * @property {Partial<GameConfig['powerUps']>} [powerUps]
+ * @property {GameConfig['boss']} [boss]
  */
 
 /**
@@ -71,13 +75,14 @@ export const GAME_CONFIG = Object.freeze({
  * @param {Tuning} tuning
  * @returns {GameConfig}
  */
-function tuned(base, tuning) {
+export function tuned(base, tuning) {
   return Object.freeze({
     ...base,
     rules: tuning.rules ?? base.rules,
     ball: Object.freeze({ ...base.ball, ...tuning.ball }),
     opponent: Object.freeze({ ...base.opponent, ...tuning.opponent }),
     powerUps: Object.freeze({ ...base.powerUps, ...tuning.powerUps }),
+    boss: tuning.boss === undefined ? base.boss : tuning.boss && Object.freeze({ ...tuning.boss }),
   });
 }
 

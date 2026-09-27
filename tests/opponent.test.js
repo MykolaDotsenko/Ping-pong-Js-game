@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { DIFFICULTY_CONFIGS, GAME_CONFIG } from '../src/config.js';
-import { createInitialState } from '../src/domain/game.js';
+import { DIFFICULTY_CONFIGS, GAME_CONFIG, TWO_PLAYER_CONFIG, tuned } from '../src/config.js';
+import { advanceGame, createInitialState, startGame } from '../src/domain/game.js';
 import {
   calculateOpponentTarget,
   moveOpponent,
@@ -113,4 +113,26 @@ test('harder opponents are faster, react sooner, predict better and misjudge les
 
   assert.ok(easy.opponent.error > normal.opponent.error && normal.opponent.error > hard.opponent.error);
   assert.ok(easy.ball.maxSpeed < normal.ball.maxSpeed && normal.ball.maxSpeed < hard.ball.maxSpeed);
+});
+
+test('a rival with a curve bends every return away from the player, and no one else\'s', () => {
+  const curving = tuned(GAME_CONFIG, { opponent: { curve: 0.5 }, powerUps: { enabled: false } });
+  const face = paddle.inset + paddle.height + GAME_CONFIG.ball.radius;
+  const idle = { horizontalAxis: 0, pointerX: null, opponentAxis: 0, opponentPointerX: null };
+  const returned = (config, playerX) => advanceGame({
+    ...startGame(createInitialState(config, 3), config),
+    serveCountdown: 0,
+    player: { x: playerX, vx: 0 },
+    ball: ball({ y: face + 2, vy: -400 }),
+  }, GAME_CONFIG.fixedStepSeconds, idle, config).ball;
+
+  assert.ok(returned(curving, 80).spin > 0.3, 'the player on the left: it curves right');
+  assert.ok(returned(curving, 420).spin < -0.3, 'the player on the right: it curves left');
+  assert.ok(Math.abs(returned(GAME_CONFIG, 80).spin) < 0.1, 'other opponents do not');
+
+  const duo = tuned(TWO_PLAYER_CONFIG, { opponent: { curve: 0.5 }, powerUps: { enabled: false } });
+  assert.equal(returned(duo, 80).spin, 0, 'a second player curves only by flicking');
+
+  const wild = tuned(curving, { opponent: { curve: 5 } });
+  assert.equal(returned(wild, 80).spin, GAME_CONFIG.ball.maxSpin, 'never past the spin cap');
 });

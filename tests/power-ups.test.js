@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { GAME_CONFIG } from '../src/config.js';
+import { GAME_CONFIG, tuned } from '../src/config.js';
 import { advanceGame, createInitialState, startGame } from '../src/domain/game.js';
 import { calculateOpponentTarget, watchedBall } from '../src/domain/opponent.js';
 import { NO_EXTRA_BALLS, NO_MODIFIERS, paddleWidth, POWER_UP_KINDS, splitBall } from '../src/domain/power-ups.js';
@@ -327,4 +327,14 @@ test('the computer keeps its eye on whichever ball will reach it first', () => {
   // With the ball alone in play, it is the ball, wherever it flies.
   const single = rallying({ ball: ball({ vy: 300 }) });
   assert.strictEqual(watchedBall(single, GAME_CONFIG), single.ball);
+});
+
+test('a rival can play with a paddle of its own size, which power-ups scale too', () => {
+  const wide = tuned(GAME_CONFIG, { opponent: { widthScale: 1.5 } });
+  const state = rallying();
+  const shrunk = { ...state, modifiers: { player: NO_MODIFIERS, opponent: { ...NO_MODIFIERS, tiny: 3 } } };
+
+  assert.equal(paddleWidth(state, 'opponent', wide), paddle.width * 1.5);
+  assert.equal(paddleWidth(state, 'player', wide), paddle.width);
+  assert.equal(paddleWidth(shrunk, 'opponent', wide), paddle.width * powerUps.shrinkScale * 1.5);
 });

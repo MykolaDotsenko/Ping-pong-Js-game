@@ -29,8 +29,19 @@
  *
  * @typedef {object} Modifiers Seconds left on the power-up effects a side is under.
  * @property {number} wide This side's paddle is enlarged.
- * @property {number} tiny This side's paddle is shrunk, by the other side's Shrink.
+ * @property {number} tiny This side's paddle is shrunk, by the other side's Shrink or a boss's attack.
  * @property {number} ghost This side cannot see the ball in its own half, by the other side's Ghost.
+ * @property {number} lag This side sees the balls move in fits and starts, by the Lag boss's attack.
+ *
+ * @typedef {'drip' | 'beam' | 'lag'} HazardKind
+ *
+ * @typedef {object} Hazard A boss's attack on the player, announced before it strikes.
+ * @property {HazardKind} kind a drip falls toward the player's paddle; a beam strikes a column
+ *   of the player's half; lag makes the player see the balls in fits and starts
+ * @property {number} x center
+ * @property {number} y a drip's center; a beam and lag have no height
+ * @property {number} warn seconds of warning left before it strikes
+ * @property {number} ttl seconds a beam stays dangerous once it strikes
  *
  * @typedef {{ type: 'match-start' }
  *   | { type: 'menu' }
@@ -46,6 +57,8 @@
  *   | { type: 'point', scorer: Side, x: number, y: number }
  *   | { type: 'match-point', side: Side }
  *   | { type: 'life-lost', lives: number }
+ *   | { type: 'hazard-warn', kind: HazardKind, x: number }
+ *   | { type: 'hazard-hit', kind: HazardKind, x: number, y: number }
  *   | { type: 'game-over', winner: Side }} GameEvent
  *
  * @typedef {object} GameState
@@ -66,6 +79,8 @@
  * @property {number} nextPickupIn Seconds until the next power-up may appear.
  * @property {Record<Side, Modifiers>} modifiers
  * @property {number} turbo Seconds left of the Turbo shot in flight; the next return ends it early.
+ * @property {readonly Hazard[]} hazards A boss's attacks under way.
+ * @property {number} attackIn Seconds of play until a boss attacks again; unused without a boss.
  * @property {number} seed State of the deterministic random source.
  * @property {readonly GameEvent[]} events What happened in the transition that produced this state.
  *
@@ -89,6 +104,13 @@
  * @property {number} turboSpeed
  * @property {number} splitAngle Radians between the ball and the ball Multiball splits off it.
  * @property {number} maxExtraBalls Most balls in play besides the ball itself.
+ *
+ * @typedef {object} BossConfig How a career boss attacks the player.
+ * @property {HazardKind} attack
+ * @property {[number, number]} every Seconds of play between attacks, chosen at random in this range.
+ * @property {number} warning Seconds a beam or lag is announced before it strikes.
+ * @property {number} shrinkSeconds How long a drip or a beam that hits shrinks the player's paddle.
+ * @property {number} lagSeconds How long lag lasts.
  *
  * @typedef {object} GameConfig
  * @property {number} width
@@ -123,9 +145,13 @@
  *   predictionWeight: number,
  *   error: number,
  *   aim: number,
+ *   curve: number,
+ *   widthScale: number,
  * }} opponent `reach` is the share of the court, measured from its own paddle, within which it
- *   reacts; `error` scales how far it misjudges fast balls, in board units.
+ *   reacts; `error` scales how far it misjudges fast balls, in board units; `curve` is spin the
+ *   computer adds to its returns, bending them away from the player; `widthScale` sizes its paddle.
  * @property {PowerUpConfig} powerUps
+ * @property {BossConfig | null} boss A career boss's attacks, or null for an opponent that only plays.
  */
 
 export {};

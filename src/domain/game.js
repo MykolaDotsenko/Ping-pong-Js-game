@@ -1,5 +1,6 @@
 import {
   bounceFromPaddle,
+  clamp,
   clampPaddleCenter,
   contactOffset,
   curveBall,
@@ -8,6 +9,7 @@ import {
   movePaddle,
   reflectFromSideWalls,
 } from './physics.js';
+import { initialHazardState, NO_HAZARDS, tickHazards } from './hazards.js';
 import { moveOpponent } from './opponent.js';
 import { collectPowerUps, initialPowerUpState, NO_EXTRA_BALLS, paddleWidth, tickEffects, tickPowerUps } from './power-ups.js';
 
@@ -58,6 +60,8 @@ function createServeBall(config, verticalDirection = 1, horizontalDirection = 1)
  * @returns {GameState}
  */
 export function createInitialState(config, seed = 1) {
+  const powerUps = initialPowerUpState(seed, config);
+
   return {
     phase: GAME_PHASE.READY,
     player: { x: config.width / 2, vx: 0 },
@@ -71,7 +75,8 @@ export function createInitialState(config, seed = 1) {
     serveCountdown: config.startDelaySeconds,
     rally: 0,
     longestRally: 0,
-    ...initialPowerUpState(seed, config),
+    ...powerUps,
+    ...initialHazardState(powerUps.seed, config),
     events: NO_EVENTS,
   };
 }
@@ -241,6 +246,7 @@ function endMatch(state, winner, events) {
     rally: 0,
     pickups: [],
     turbo: 0,
+    hazards: NO_HAZARDS,
   }, events);
 }
 
@@ -293,6 +299,8 @@ function awardPoint(state, scorer, x, config, events) {
     rally: 0,
     pickups: [],
     turbo: 0,
+    // A point ends a boss's attack under way; the next one comes on schedule.
+    hazards: NO_HAZARDS,
   }, events);
 }
 
@@ -344,12 +352,17 @@ function returnFromPaddle(state, ball, side, contact, paddleX, config) {
   const width = paddleWidth(state, side, config);
   const struck = paddleX + contact.x;
   const bounced = bounceFromPaddle({ ...ball, x: struck }, paddleX, side === 'player' ? -1 : 1, config, state[side].vx, width);
+  // A rival with a curve bends every return away from the player's side of the court.
+  const curve = side === 'opponent' && config.opponent.controller === 'cpu' ? config.opponent.curve : 0;
+  const spin = curve > 0
+    ? clamp(bounced.spin + (state.player.x < config.width / 2 ? curve : -curve), -config.ball.maxSpin, config.ball.maxSpin)
+    : bounced.spin;
 
   return {
     state,
     // The return leaves from the face: level with it, a paddle sliding sideways cannot catch
     // the ball again, even after a corner hit. Where it was struck lies on its path, so on the court.
-    ball: { ...bounced, x: struck, y: inFrontOfPaddleY(side, config) },
+    ball: { ...bounced, x: struck, y: inFrontOfPaddleY(side, config), spin },
     hit: { side, offset: contactOffset(struck, paddleX, width) },
   };
 }
@@ -605,6 +618,7 @@ export function advanceGame(state, deltaSeconds, input, config) {
   }
 
   nextState = tickPowerUps(nextState, deltaSeconds, config, events);
+  nextState = tickHazards(nextState, deltaSeconds, config, events);
 
   const previousBall = nextState.ball;
   nextState = { ...nextState, ball: moveBall(curveBall(previousBall, deltaSeconds, config), deltaSeconds) };
