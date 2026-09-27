@@ -165,5 +165,34 @@
         "wall-bounce": 25
       }
     }
+  },
+  "solo-supers": {
+    "digest": "ca30b739e72dbd373b5d9de8e797276fe06a11028d1fec2289521aa6e0edd2d9",
+    "summary": {
+      "steps": 10800,
+      "score": {
+        "player": 3,
+        "opponent": 5
+      },
+      "hits": {
+        "player": 25,
+        "opponent": 26
+      },
+      "longestRally": 16,
+      "phase": "running",
+      "events": {
+        "countdown": 3,
+        "paddle-hit": 51,
+        "point": 8,
+        "serve": 9,
+        "super-ready": 9,
+        "super-swerve": 6,
+        "super:fireball": 2,
+        "super:phantom": 2,
+        "super:thunder": 2,
+        "super:zigzag": 3,
+        "wall-bounce": 40
+      }
+    }
   }
 }

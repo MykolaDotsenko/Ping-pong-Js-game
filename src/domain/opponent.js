@@ -1,7 +1,12 @@
 import { clampPaddleCenter, foldIntoRange, movePaddle, moveTowards } from './physics.js';
 import { paddleWidth } from './power-ups.js';
+import { phantomHidden } from './supers.js';
 
 /** @import { Ball, GameConfig, GameState } from './types.js' */
+
+// While a phantom is out of sight the computer guesses where it went, and may be this many
+// board units out on top of its usual misjudgement, whatever its difficulty.
+const PHANTOM_GUESS = 320;
 
 /**
  * A repeatable value in [-1, 1] that changes with every hit and serve: the computer's
@@ -42,9 +47,10 @@ export function watchedBall(state, config) {
  * Where the computer wants its paddle. Like a person, it only reacts once the ball comes
  * within its reach, and it cannot see a ghosted ball at all. It then predicts where the ball
  * will cross its paddle, folding the path at the side walls, trusts that prediction as much
- * as its difficulty allows, misjudges it more the faster the ball flies, and shifts to meet
- * the ball off-center so the return angles away from the player. Spin is not predicted, so
- * a curved shot is the player's way past it.
+ * as its difficulty allows, misjudges it more the faster the ball flies, and far more while a
+ * phantom is out of sight, and shifts to meet the ball off-center so the return angles away
+ * from the player. Spin and swerves are not predicted, so a curved shot, or a super, is the
+ * player's way past it.
  *
  * @param {GameState} state
  * @param {GameConfig} config
@@ -65,7 +71,8 @@ export function calculateOpponentTarget(state, config) {
   const crossingX = foldIntoRange(ball.x + ball.vx * timeToPaddle, radius, config.width - radius);
   const predictedX = ball.x + (crossingX - ball.x) * config.opponent.predictionWeight;
   const speedup = Math.hypot(ball.vx, ball.vy) / config.ball.initialSpeed;
-  const misjudgement = config.opponent.error * Math.max(0, speedup ** 1.5 - 1) * wobble(state);
+  const guess = ball === state.ball && phantomHidden(state, config) ? PHANTOM_GUESS : 0;
+  const misjudgement = (config.opponent.error * Math.max(0, speedup ** 1.5 - 1) + guess) * wobble(state);
   const width = paddleWidth(state, 'opponent', config);
   const awayFromPlayer = player.x < center ? 1 : -1;
   const target = predictedX + misjudgement - awayFromPlayer * config.opponent.aim * (width / 2);

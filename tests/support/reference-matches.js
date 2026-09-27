@@ -13,6 +13,9 @@ import { nextBetween, nextRandom } from '../../src/domain/random.js';
 
 /** @param {GameConfig} config */
 const withoutPowerUps = (config) => ({ ...config, powerUps: { ...config.powerUps, enabled: false } });
+/** @param {GameConfig} config */
+// Supers charged faster than in play, so one match fires every kind of them.
+const withSupers = (config) => ({ ...config, supers: { ...config.supers, enabled: true, perHit: 0.25 } });
 
 /**
  * A human-like bot: it follows the ball with an aiming error that changes every rally, and
@@ -76,6 +79,8 @@ export const SCENARIOS = Object.freeze([
   // Power-ups draw kinds from the seeded random source, so adding a kind changes this one; it
   // is re-recorded on purpose when that happens, and only then.
   { name: 'solo-power-ups', config: () => GAME_CONFIG, seed: 5150, seconds: 60, device: 'pointer' },
+  // Supers, which classic play leaves off: the meters fill, and both sides fire.
+  { name: 'solo-supers', config: () => withSupers(withoutPowerUps(GAME_CONFIG)), seed: 6027, seconds: 90, device: 'pointer' },
 ]);
 
 /**
@@ -106,6 +111,10 @@ export function playReference(scenario) {
 
     for (const event of state.events) {
       counts[event.type] = (counts[event.type] ?? 0) + 1;
+
+      if (event.type === 'paddle-hit' && event.super) {
+        counts[`super:${event.super}`] = (counts[`super:${event.super}`] ?? 0) + 1;
+      }
     }
 
     hash.update([
@@ -113,9 +122,10 @@ export function playReference(scenario) {
       state.player.x.toFixed(6), state.opponent.x.toFixed(6),
       state.score.player, state.score.opponent, state.rally, state.lives, state.pickups.length,
       state.events.map((event) => event.type).join('+'),
-      // Balls a Multiball split off. Nothing is added while there are none, so a match without
-      // them digests exactly as it did before Multiball existed.
+      // Balls a Multiball split off, and the super meters while supers are on. Nothing is added
+      // while there are none, so a classic match digests exactly as it did before either existed.
       ...state.extraBalls.map((extra) => `${extra.x.toFixed(6)}/${extra.y.toFixed(6)}`),
+      ...(config.supers.enabled ? [state.meters.player.charge.toFixed(6), state.meters.opponent.charge.toFixed(6)] : []),
     ].join(',') + '\n');
   }
 

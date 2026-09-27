@@ -43,23 +43,40 @@
  * @property {number} warn seconds of warning left before it strikes
  * @property {number} ttl seconds a beam stays dangerous once it strikes
  *
+ * @typedef {'fireball' | 'zigzag' | 'phantom' | 'thunder'} SuperKind
+ *
+ * @typedef {object} SuperMeter A side's super meter, which returns and lost points fill.
+ * @property {number} charge from 0 to 1; a full meter holds a super, which a flick at a return fires
+ * @property {SuperKind | null} kind the super a full meter holds, drawn as it fills; after it is
+ *   fired, the last one, which the next draw avoids
+ *
+ * @typedef {object} SuperShot A super in flight, until it is returned or a point is scored.
+ * @property {SuperKind} kind
+ * @property {Side} side who fired it
+ * @property {number} speed the speed an ordinary return would have had; the return that answers
+ *   the super goes on from it, so the rally keeps its pace
+ *
  * @typedef {{ type: 'match-start' }
  *   | { type: 'menu' }
  *   | { type: 'paused' }
  *   | { type: 'resumed' }
  *   | { type: 'countdown', value: number }
  *   | { type: 'serve', x: number, y: number }
- *   | { type: 'paddle-hit', side: Side, x: number, y: number, speed: number, spin: number, offset: number, rally: number, extra?: boolean }
+ *   | { type: 'paddle-hit', side: Side, x: number, y: number, speed: number, spin: number, offset: number, rally: number, extra?: boolean, super?: SuperKind, saved?: SuperKind }
  *   | { type: 'paddle-graze', side: Side, x: number, y: number, speed: number }
  *   | { type: 'wall-bounce', x: number, y: number, speed: number }
  *   | { type: 'pickup-spawn', kind: PowerUpKind, x: number, y: number }
  *   | { type: 'pickup', kind: PowerUpKind, side: Side, x: number, y: number }
- *   | { type: 'point', scorer: Side, x: number, y: number }
+ *   | { type: 'point', scorer: Side, x: number, y: number, super?: SuperKind }
  *   | { type: 'match-point', side: Side }
  *   | { type: 'life-lost', lives: number }
  *   | { type: 'hazard-warn', kind: HazardKind, x: number }
  *   | { type: 'hazard-hit', kind: HazardKind, x: number, y: number }
- *   | { type: 'game-over', winner: Side }} GameEvent
+ *   | { type: 'super-ready', side: Side, kind: SuperKind }
+ *   | { type: 'super-swerve', x: number, y: number }
+ *   | { type: 'game-over', winner: Side, super?: SuperKind }} GameEvent
+ *   A paddle-hit's `super` is the super that return fired and `saved` the one it answered; a
+ *   point's and a game-over's `super` is the super that scored it.
  *
  * @typedef {object} GameState
  * @property {GamePhase} phase
@@ -81,6 +98,8 @@
  * @property {number} turbo Seconds left of the Turbo shot in flight; the next return ends it early.
  * @property {readonly Hazard[]} hazards A boss's attacks under way.
  * @property {number} attackIn Seconds of play until a boss attacks again; unused without a boss.
+ * @property {Record<Side, SuperMeter>} meters The super meters; they stay empty with supers off.
+ * @property {SuperShot | null} superShot The super in flight, if any.
  * @property {number} seed State of the deterministic random source.
  * @property {readonly GameEvent[]} events What happened in the transition that produced this state.
  *
@@ -111,6 +130,15 @@
  * @property {number} warning Seconds a beam or lag is announced before it strikes.
  * @property {number} shrinkSeconds How long a drip or a beam that hits shrinks the player's paddle.
  * @property {number} lagSeconds How long lag lasts.
+ *
+ * @typedef {object} SuperConfig How the super meters fill and fire.
+ * @property {boolean} enabled
+ * @property {number} perHit Charge a return of the ball adds to the meter of the side that made it.
+ * @property {number} perSkill Extra charge for a return off the paddle's edge, and again for one with curve.
+ * @property {number} perSave Extra charge for returning a super.
+ * @property {number} perConceded Charge a lost point adds.
+ * @property {number} flickSpeed Paddle speed at a return that fires the super a full meter holds.
+ * @property {number} cpuChance Chance that the computer, its meter full, fires its super at a return.
  *
  * @typedef {object} GameConfig
  * @property {number} width
@@ -151,6 +179,7 @@
  *   reacts; `error` scales how far it misjudges fast balls, in board units; `curve` is spin the
  *   computer adds to its returns, bending them away from the player; `widthScale` sizes its paddle.
  * @property {PowerUpConfig} powerUps
+ * @property {SuperConfig} supers
  * @property {BossConfig | null} boss A career boss's attacks, or null for an opponent that only plays.
  */
 

@@ -58,6 +58,17 @@ export const GAME_CONFIG = Object.freeze({
     splitAngle: 0.6,
     maxExtraBalls: 2,
   }),
+  // Off here, so a classic match plays exactly as it always has; the player's Supers setting
+  // turns them on for the match being built.
+  supers: Object.freeze({
+    enabled: false,
+    perHit: 0.05,
+    perSkill: 0.02,
+    perSave: 0.08,
+    perConceded: 0.08,
+    flickSpeed: 360,
+    cpuChance: 0.5,
+  }),
   boss: null,
 });
 
@@ -67,6 +78,7 @@ export const GAME_CONFIG = Object.freeze({
  * @property {Partial<GameConfig['ball']>} [ball]
  * @property {Partial<GameConfig['opponent']>} [opponent]
  * @property {Partial<GameConfig['powerUps']>} [powerUps]
+ * @property {Partial<GameConfig['supers']>} [supers]
  * @property {GameConfig['boss']} [boss]
  */
 
@@ -82,6 +94,7 @@ export function tuned(base, tuning) {
     ball: Object.freeze({ ...base.ball, ...tuning.ball }),
     opponent: Object.freeze({ ...base.opponent, ...tuning.opponent }),
     powerUps: Object.freeze({ ...base.powerUps, ...tuning.powerUps }),
+    supers: Object.freeze({ ...base.supers, ...tuning.supers }),
     boss: tuning.boss === undefined ? base.boss : tuning.boss && Object.freeze({ ...tuning.boss }),
   });
 }
@@ -94,11 +107,13 @@ export const DIFFICULTY_CONFIGS = Object.freeze({
   easy: tuned(GAME_CONFIG, {
     ball: { initialSpeed: 400, maxSpeed: 900, speedIncrease: 1.04 },
     opponent: { maxSpeed: 250, reach: 0.45, predictionWeight: 0.35, error: 110, aim: 0 },
+    supers: { cpuChance: 0.3 },
   }),
   normal: GAME_CONFIG,
   hard: tuned(GAME_CONFIG, {
     ball: { initialSpeed: 480, maxSpeed: 1200, speedIncrease: 1.06 },
     opponent: { maxSpeed: 520, reach: 0.82, predictionWeight: 0.92, error: 26, aim: 0.5 },
+    supers: { cpuChance: 0.75 },
   }),
 });
 

@@ -11,10 +11,11 @@ import {
 } from './physics.js';
 import { initialHazardState, NO_HAZARDS, tickHazards } from './hazards.js';
 import { moveOpponent } from './opponent.js';
-import { collectPowerUps, initialPowerUpState, NO_EXTRA_BALLS, paddleWidth, tickEffects, tickPowerUps } from './power-ups.js';
+import { collectPowerUps, initialPowerUpState, NO_EXTRA_BALLS, otherSide, paddleWidth, tickEffects, tickPowerUps } from './power-ups.js';
+import { chargeMeter, initialSuperState, returnCharge, scoringSuper, steerSuper, strikeBack } from './supers.js';
 
 /**
- * @import { Ball, ExtraBall, GameConfig, GameEvent, GameState, InputSnapshot, Side } from './types.js'
+ * @import { Ball, ExtraBall, GameConfig, GameEvent, GameState, InputSnapshot, Side, SuperKind } from './types.js'
  * @import { PaddleContact } from './physics.js'
  *
  * @typedef {object} Collision what a ball met during one step
@@ -77,6 +78,7 @@ export function createInitialState(config, seed = 1) {
     longestRally: 0,
     ...powerUps,
     ...initialHazardState(powerUps.seed, config),
+    ...initialSuperState(),
     events: NO_EVENTS,
   };
 }
@@ -228,13 +230,22 @@ function withEvents(state, events) {
 }
 
 /**
+ * @param {SuperKind | null} superKind
+ * @returns {{ super?: SuperKind }} the tag an event carries for a super, or nothing
+ */
+function superTag(superKind) {
+  return superKind ? { super: superKind } : {};
+}
+
+/**
  * @param {GameState} state
  * @param {Side} winner
  * @param {GameEvent[]} events
+ * @param {SuperKind | null} superKind the super that won the last point
  * @returns {GameState}
  */
-function endMatch(state, winner, events) {
-  events.push({ type: 'game-over', winner });
+function endMatch(state, winner, events, superKind) {
+  events.push({ type: 'game-over', winner, ...superTag(superKind) });
 
   return withEvents({
     ...state,
@@ -247,6 +258,7 @@ function endMatch(state, winner, events) {
     pickups: [],
     turbo: 0,
     hazards: NO_HAZARDS,
+    superShot: null,
   }, events);
 }
 
@@ -256,14 +268,15 @@ function endMatch(state, winner, events) {
  * @param {number} x where the scoring ball crossed the goal line; the walls keep it on the court
  * @param {GameConfig} config
  * @param {GameEvent[]} events
+ * @param {SuperKind | null} [superKind] the super that scored the point
  * @returns {GameState}
  */
-function awardPoint(state, scorer, x, config, events) {
+function awardPoint(state, scorer, x, config, events, superKind = null) {
   const score = { ...state.score, [scorer]: state.score[scorer] + 1 };
   const { rules } = config;
   let { lives } = state;
 
-  events.push({ type: 'point', scorer, x, y: scorer === 'player' ? 0 : config.height });
+  events.push({ type: 'point', scorer, x, y: scorer === 'player' ? 0 : config.height, ...superTag(superKind) });
 
   if (rules.kind === 'rush') {
     // Only the player's misses count: each one costs a life, and the last one ends the run.
@@ -272,12 +285,12 @@ function awardPoint(state, scorer, x, config, events) {
       events.push({ type: 'life-lost', lives });
 
       if (lives === 0) {
-        return endMatch({ ...state, score, lives }, 'opponent', events);
+        return endMatch({ ...state, score, lives }, 'opponent', events, superKind);
       }
     }
   } else {
     if (score[scorer] >= rules.winningScore) {
-      return endMatch({ ...state, score }, scorer, events);
+      return endMatch({ ...state, score }, scorer, events, superKind);
     }
 
     if (score[scorer] === rules.winningScore - 1) {
@@ -286,8 +299,7 @@ function awardPoint(state, scorer, x, config, events) {
   }
 
   const nextServe = nextServeBall(state, scorer, config);
-
-  return withEvents({
+  const next = {
     ...state,
     score,
     lives,
@@ -301,7 +313,11 @@ function awardPoint(state, scorer, x, config, events) {
     turbo: 0,
     // A point ends a boss's attack under way; the next one comes on schedule.
     hazards: NO_HAZARDS,
-  }, events);
+    superShot: null,
+  };
+
+  // A lost point charges the loser's meter, which helps whoever is behind to come back.
+  return withEvents(config.supers.enabled ? chargeMeter(next, otherSide(scorer), config.supers.perConceded, events) : next, events);
 }
 
 /**
@@ -483,9 +499,7 @@ function resolveCollisions(state, before, previousBall, deltaSeconds, config, ev
   }
 
   const rally = state.rally + 1;
-  events.push(paddleHit(hit.side, ball, hit.offset, rally));
-
-  return {
+  const returned = {
     ...next,
     ball,
     rally,
@@ -494,6 +508,20 @@ function resolveCollisions(state, before, previousBall, deltaSeconds, config, ev
     // Turbo is one blistering shot: the return comes back at normal speed, so it ends here.
     turbo: 0,
   };
+
+  if (!config.supers.enabled) {
+    events.push(paddleHit(hit.side, ball, hit.offset, rally));
+    return returned;
+  }
+
+  const strike = strikeBack(returned, hit.side, config);
+  events.push({
+    ...paddleHit(hit.side, strike.state.ball, hit.offset, rally),
+    ...superTag(strike.fired),
+    ...(strike.saved ? { saved: strike.saved } : {}),
+  });
+
+  return chargeMeter(strike.state, hit.side, returnCharge(strike, hit.offset, config), events);
 }
 
 /**
@@ -621,17 +649,21 @@ export function advanceGame(state, deltaSeconds, input, config) {
   nextState = tickHazards(nextState, deltaSeconds, config, events);
 
   const previousBall = nextState.ball;
-  nextState = { ...nextState, ball: moveBall(curveBall(previousBall, deltaSeconds, config), deltaSeconds) };
+  const movedBall = moveBall(curveBall(previousBall, deltaSeconds, config), deltaSeconds);
+  nextState = {
+    ...nextState,
+    ball: nextState.superShot ? steerSuper(nextState.superShot, previousBall, movedBall, config, events) : movedBall,
+  };
   nextState = resolveCollisions(nextState, state, previousBall, deltaSeconds, config, events);
   nextState = advanceExtraBalls(nextState, state, deltaSeconds, config, events);
   nextState = collectPowerUps(nextState, config, events);
 
   if (nextState.ball.y - config.ball.radius > config.height) {
-    return awardPoint(nextState, 'opponent', nextState.ball.x, config, events);
+    return awardPoint(nextState, 'opponent', nextState.ball.x, config, events, scoringSuper(nextState, 'opponent'));
   }
 
   if (nextState.ball.y + config.ball.radius < 0) {
-    return awardPoint(nextState, 'player', nextState.ball.x, config, events);
+    return awardPoint(nextState, 'player', nextState.ball.x, config, events, scoringSuper(nextState, 'player'));
   }
 
   const goal = extraBallGoal(nextState, config);
