@@ -31,7 +31,7 @@
               <svg class="icon icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.6v12.8a1 1 0 0 0 1.52.85l10.2-6.4a1 1 0 0 0 0-1.7L9.52 4.75A1 1 0 0 0 8 5.6z"/></svg>
             </button>
 
-            <div class="scoreboard" aria-hidden="true">
+            <div class="scoreboard" data-scoreboard aria-hidden="true">
               <div class="scoreboard__side scoreboard__side--player">
                 <span class="scoreboard__label" data-label="player">You</span>
                 <span class="scoreboard__score" data-score="player">0</span>
@@ -67,6 +67,7 @@
             ></canvas>
 
             <p class="match-point" data-match-point hidden>Match point</p>
+            <p class="rival-banner" data-rival-banner aria-hidden="true" hidden></p>
 
             <div class="overlay overlay--menu" data-overlay="menu" role="region" aria-label="Game menu">
               <div class="panel panel--menu">
@@ -81,18 +82,30 @@
                 </div>
                 <div class="panel__main">
                   <div class="segmented segmented--modes" role="group" aria-label="Mode">
-                    <button type="button" data-mode="solo" aria-pressed="true"><strong>Solo</strong><small>vs computer</small></button>
+                    <button type="button" data-mode="solo" aria-pressed="true"><strong>Solo</strong><small>vs CPU</small></button>
                     <button type="button" data-mode="rush" aria-pressed="false"><strong>Rush</strong><small data-rush-lives>3 lives</small></button>
-                    <button type="button" data-mode="duo" aria-pressed="false"><strong>2P</strong><small>one screen</small></button>
+                    <button type="button" data-mode="duo" aria-pressed="false"><strong>2P</strong><small>1 screen</small></button>
+                    <button type="button" data-mode="career" aria-pressed="false"><strong>Career</strong><small>9 rivals</small></button>
                   </div>
                   <div class="segmented" role="group" aria-label="Difficulty" data-solo-only>
                     <button type="button" data-difficulty="easy" aria-pressed="false">Easy</button>
                     <button type="button" data-difficulty="normal" aria-pressed="true">Normal</button>
                     <button type="button" data-difficulty="hard" aria-pressed="false">Hard</button>
                   </div>
+                  <div class="rival" role="group" aria-label="Rival" data-career-only hidden>
+                    <button type="button" class="rival__step" data-rival-step="-1" aria-label="Previous rival">‹</button>
+                    <p class="rival__card">
+                      <span class="rival__place" data-rival-place>1/9</span>
+                      <strong class="rival__name" data-rival-name>Rookie Roma</strong>
+                      <span class="rival__boss" data-rival-boss hidden>Boss</span>
+                      <span class="rival__tired" data-rival-tired hidden>Tired</span>
+                      <span class="stars" data-rival-stars></span>
+                    </p>
+                    <button type="button" class="rival__step" data-rival-step="1" aria-label="Next rival">›</button>
+                  </div>
                   <button type="button" class="cta" data-command="start">Play</button>
                   <div class="toggles">
-                    <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-not-rush>Power-ups</button>
+                    <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-power-ups-choice>Power-ups</button>
                     <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
                     <button type="button" class="track" data-track aria-label="Music track: Neon">Neon</button>
                   </div>
@@ -111,7 +124,7 @@
                   <li><span class="tutorial__icon" aria-hidden="true">👆</span><span><strong>Drag</strong> anywhere below the middle, or on the rail under the court, to move your paddle.</span></li>
                   <li><span class="tutorial__icon" aria-hidden="true">↝</span><span><strong>Flick</strong> sideways as the ball lands to put a curve on it. The computer cannot read a curve.</span></li>
                   <li><span class="tutorial__icon" aria-hidden="true">◐</span><span><strong>Hit off-center</strong> to angle your return. Every hit speeds the ball up.</span></li>
-                  <li><span class="tutorial__icon" aria-hidden="true">✦</span><span><strong>Grab power-ups</strong> with the ball: Wide, Shrink, Turbo and Ghost. Whoever hit last gets it.</span></li>
+                  <li><span class="tutorial__icon" aria-hidden="true">✦</span><span><strong>Grab power-ups</strong> with the ball: Wide, Shrink, Turbo, Ghost and Multiball. Whoever hit last gets it.</span></li>
                 </ol>
                 <button type="button" class="cta" data-dismiss-tutorial autofocus>Got it</button>
               </div>
@@ -129,6 +142,7 @@
                   <button type="button" class="toggle" data-setting="sound" aria-pressed="true">Sound</button>
                   <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
                   <button type="button" class="toggle" data-setting="vibration" aria-pressed="true">Vibration</button>
+                  <button type="button" class="toggle" data-setting="jokes" aria-pressed="true" title="Nicknames, finishers and other fun extras">Fun</button>
                   <button type="button" class="track" data-track aria-label="Music track: Neon">Neon</button>
                 </div>
               </div>
@@ -140,8 +154,12 @@
                 <h2 class="panel__title panel__title--result" id="over-title" data-over-title>Victory</h2>
                 <p class="result-score" data-over-score>0 : 0</p>
                 <p class="panel__meta" data-over-meta>Longest rally <strong data-over-rally>0</strong></p>
-                <p class="badge" data-over-best hidden>New best rally!</p>
-                <p class="badge" data-over-best-rush hidden>New Rush record!</p>
+                <div class="result-notes">
+                  <p class="stars stars--result" data-over-stars hidden></p>
+                  <p class="badge" data-over-best hidden>New best rally!</p>
+                  <p class="badge" data-over-best-rush hidden>New Rush record!</p>
+                  <p class="continue" data-continue aria-hidden="true" hidden></p>
+                </div>
                 <button type="button" class="cta" data-command="start" data-focus="over">Play again</button>
                 <div class="panel__row">
                   <button type="button" class="ghost" data-share hidden>Share</button>

@@ -1,8 +1,17 @@
+import { paddleWidth } from '../../domain/power-ups.js';
+import { finisherFor } from '../finisher.js';
 import { PICKUP_STYLE, speedIntensity, THEME } from './theme.js';
 
 /**
- * @import { GameConfig, GameEvent, Side } from '../../domain/types.js'
+ * @import { GameConfig, GameEvent, GameState, Side } from '../../domain/types.js'
  * @import { Effects } from '../effects.js'
+ * @import { Finisher } from '../finisher.js'
+ *
+ * @typedef {object} EventContext
+ * @property {GameConfig} config the match being played
+ * @property {() => number} random places the victory fireworks
+ * @property {boolean} [jokes] the fun extras preference, which the finisher needs
+ * @property {GameState} [state] the state the events came with, for where the paddles are
  */
 
 // A hit this far from the paddle's center, or with this much curve or speed, earns a callout.
@@ -15,10 +24,9 @@ export const SMASH_SPEED_SHARE = 0.75;
  *
  * @param {Effects} effects
  * @param {readonly GameEvent[]} events
- * @param {{ config: GameConfig, random: () => number }} context the match being played, and
- *   the random source that places the victory fireworks
+ * @param {EventContext} context
  */
-export function playEvents(effects, events, { config, random }) {
+export function playEvents(effects, events, { config, random, jokes = false, state }) {
   const { width, height, ball } = config;
 
   for (const event of events) {
@@ -85,9 +93,30 @@ export function playEvents(effects, events, { config, random }) {
         effects.flash(`rgb(${THEME.rose})`, 0.3);
         effects.shake(1.1);
         break;
-      case 'game-over':
-        celebrate(effects, event.winner, config, random);
+      case 'hazard-warn':
+        announceHazard(effects, event, config);
         break;
+      case 'hazard-hit':
+        landHazard(effects, event, config);
+        break;
+      case 'game-over': {
+        const finisher = state ? finisherFor({
+          winner: event.winner,
+          twoPlayers: config.opponent.controller === 'human',
+          rush: config.rules.kind === 'rush',
+          jokes,
+          seed: state.seed,
+        }) : null;
+
+        if (finisher && state) {
+          finish(effects, finisher, state, config);
+          // The fireworks wait for the finisher to land.
+          effects.schedule(0.5, () => celebrate(effects, event.winner, config, random));
+        } else {
+          celebrate(effects, event.winner, config, random);
+        }
+        break;
+      }
       default:
         break;
     }
@@ -143,9 +172,57 @@ function celebrateHit(effects, event, config) {
     effects.label({ text: callout.text, x: event.x, y: labelY, color: `rgb(${callout.rgb})` });
   }
 
-  if (event.rally % 5 === 0) {
+  // Every fifth hit of the rally rings out; a Multiball ball's returns do not count toward it.
+  if (event.rally % 5 === 0 && !event.extra) {
     effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.amber}, 0.9)`, radius: 30, growth: 620, life: 0.7, width: 5 });
     effects.flash(`rgb(${THEME.amber})`, 0.1);
+  }
+}
+
+/**
+ * A boss's attack announced: drips break loose under the boss's paddle, a beam's column
+ * appears on the court, and PING 999 flashes up before lag.
+ *
+ * @param {Effects} effects
+ * @param {Extract<GameEvent, { type: 'hazard-warn' }>} event
+ * @param {GameConfig} config
+ */
+function announceHazard(effects, { kind, x }, config) {
+  const { width, height, paddle } = config;
+
+  if (kind === 'drip') {
+    effects.ring({ x, y: paddle.inset + paddle.height + 14, color: `rgba(${THEME.drip}, 0.9)`, radius: 4, growth: 160, life: 0.4, width: 2 });
+  } else if (kind === 'lag') {
+    effects.label({ text: 'PING 999', x: width / 2, y: height * 0.4, color: `rgb(${THEME.violet})`, life: 1.1, size: 34 });
+  } else {
+    effects.pulse(0.4);
+  }
+}
+
+/**
+ * A boss's attack landing on the player: a splash or a zap and a SHRUNK! callout at the
+ * paddle, or LAG! over the court.
+ *
+ * @param {Effects} effects
+ * @param {Extract<GameEvent, { type: 'hazard-hit' }>} event
+ * @param {GameConfig} config
+ */
+function landHazard(effects, { kind, x, y }, config) {
+  if (kind === 'lag') {
+    effects.label({ text: 'LAG!', x: config.width / 2, y: config.height * 0.4, color: `rgb(${THEME.violet})`, size: 40 });
+    effects.flash(`rgb(${THEME.violet})`, 0.12);
+    return;
+  }
+
+  const color = kind === 'drip' ? `rgb(${THEME.drip})` : `rgb(${THEME.side.opponent.rgb})`;
+
+  effects.burst({ x, y, color, count: 26, speed: 260, direction: -Math.PI / 2, spread: 2.2, life: 0.5, size: 2 });
+  effects.kick('player');
+  effects.shake(kind === 'beam' ? 0.45 : 0.25);
+  effects.label({ text: 'SHRUNK!', x, y: y - 36, color, size: 22 });
+
+  if (kind === 'beam') {
+    effects.flash(color, 0.14);
   }
 }
 
@@ -168,5 +245,51 @@ function celebrate(effects, winner, config, random) {
       effects.burst({ x, y, color: colors[i % colors.length], count: 64, speed: 250, life: 1.2, gravity: 260, drag: 1.1, size: 2.4 });
       effects.ring({ x, y, color: colors[i % colors.length], radius: 6, growth: 260, life: 0.5, width: 3 });
     });
+  }
+}
+
+/**
+ * The finisher: the loser's paddle goes to pieces, is launched off the court, is sliced in
+ * two or boils away, under a red callout. The paddle itself is not drawn meanwhile.
+ *
+ * @param {Effects} effects
+ * @param {Finisher} finisher
+ * @param {GameState} state
+ * @param {GameConfig} config
+ */
+function finish(effects, { kind, loser }, state, config) {
+  const { paddle, height, width: courtWidth } = config;
+  const top = loser === 'player' ? height - paddle.inset - paddle.height : paddle.inset;
+  const x = state[loser].x;
+  const y = top + paddle.height / 2;
+  const width = paddleWidth(state, loser, config);
+  const color = THEME.side[loser].body;
+  // Off the court: down for the player's paddle at the bottom, up for the one at the top.
+  const outward = loser === 'player' ? 1 : -1;
+
+  effects.hidePaddle(loser);
+  effects.flash(`rgb(${THEME.red})`, 0.4);
+  effects.shake(1.2);
+  effects.label({ text: 'PONGALITY', x: courtWidth / 2, y: height / 2, color: `rgb(${THEME.red})`, life: 1.2, size: 44 });
+
+  switch (kind) {
+    case 'shatter':
+      effects.shatter({ x, y, width, height: paddle.height, color, count: 12, speed: 320 });
+      effects.burst({ x, y, color: THEME.spark, count: 30, speed: 380, life: 0.6, size: 2 });
+      break;
+    case 'launch':
+      effects.shard({ x, y, vx: (state[loser].x < courtWidth / 2 ? 1 : -1) * 90, vy: outward * 900, width, height: paddle.height, color, spin: 9, life: 1.2 });
+      effects.burst({ x, y, color, count: 24, speed: 260, direction: outward * Math.PI / 2, spread: 1.2, life: 0.5, size: 2.2 });
+      break;
+    case 'slice':
+      effects.shard({ x: x - width / 4, y, vx: -140, vy: outward * 120, width: width / 2, height: paddle.height, color, spin: -5, life: 1.2, gravity: outward * 700 });
+      effects.shard({ x: x + width / 4, y, vx: 140, vy: outward * 120, width: width / 2, height: paddle.height, color, spin: 5, life: 1.2, gravity: outward * 700 });
+      effects.ring({ x, y, color: THEME.spark, radius: 4, growth: 900, life: 0.4, width: 4 });
+      break;
+    case 'vaporize':
+    default:
+      effects.burst({ x, y, color, count: 90, speed: 140, direction: -Math.PI / 2, spread: 2.6, life: 1, size: 2.6, gravity: -160, drag: 1.2 });
+      effects.burst({ x, y, color: THEME.spark, count: 20, speed: 240, life: 0.6, size: 1.6 });
+      break;
   }
 }

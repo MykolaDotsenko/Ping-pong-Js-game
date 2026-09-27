@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { GAME_CONFIG } from '../src/config.js';
+import { GAME_CONFIG, tuned } from '../src/config.js';
 import { advanceGame, createInitialState, startGame } from '../src/domain/game.js';
-import { calculateOpponentTarget } from '../src/domain/opponent.js';
-import { NO_MODIFIERS, paddleWidth, POWER_UP_KINDS } from '../src/domain/power-ups.js';
+import { calculateOpponentTarget, watchedBall } from '../src/domain/opponent.js';
+import { NO_EXTRA_BALLS, NO_MODIFIERS, paddleWidth, POWER_UP_KINDS, splitBall } from '../src/domain/power-ups.js';
 
 const { width, height, paddle, ball: ballConfig } = GAME_CONFIG;
 const { powerUps } = GAME_CONFIG;
@@ -195,4 +195,146 @@ test('the match-winning point clears the court of power-ups too', () => {
 
   assert.equal(next.phase, 'game-over');
   assert.deepEqual(next.pickups, []);
+});
+
+// Multiball: a second ball splits off, plays like the ball, and scores like it, but its
+// returns stay out of the rally and the hits, and it fades after a while.
+
+const extraBall = (overrides, id = 21, ttl = 5) => ({ ...ball(overrides), id, ttl });
+const quietly = (overrides) => rallying({ nextPickupIn: 999, ...overrides });
+
+test('Multiball splits a second ball off the ball, at the same speed and toward the same end', () => {
+  const collected = collect(withPickup('multi'));
+  const [extra] = collected.extraBalls;
+
+  assert.deepEqual(collected.events, [{ type: 'pickup', kind: 'multi', side: 'player', x: width / 2, y: PICKUP_Y }]);
+  assert.equal(collected.extraBalls.length, 1);
+  assert.deepEqual([extra.x, extra.y], [collected.ball.x, collected.ball.y]);
+  assert.ok(Math.abs(Math.hypot(extra.vx, extra.vy) - 300) < 1e-9);
+  // The ball flew straight up and keeps doing so; the new one leans off by the split angle.
+  assert.ok(Math.abs(Math.atan2(extra.vx, -extra.vy) - powerUps.splitAngle) < 1e-9);
+  assert.equal(collected.ball.vx, 0);
+  assert.equal(extra.spin, 0);
+  assert.equal(extra.ttl, powerUps.duration);
+});
+
+test('a slanted ball splits into two that lean different ways, and a ball at rest stays at rest', () => {
+  const angle = 0.4;
+  const right = splitBall(ball({ vx: Math.sin(angle) * 500, vy: Math.cos(angle) * 500 }), 7, GAME_CONFIG);
+  const left = splitBall(ball({ vx: -Math.sin(angle) * 500, vy: -Math.cos(angle) * 500 }), 8, GAME_CONFIG);
+
+  assert.ok(Math.abs(Math.atan2(right.vx, right.vy) - (angle - powerUps.splitAngle)) < 1e-9);
+  assert.ok(right.vy > 0);
+  assert.ok(Math.abs(Math.atan2(left.vx, -left.vy) - (powerUps.splitAngle - angle)) < 1e-9);
+  assert.ok(left.vy < 0);
+  assert.deepEqual([right.id, left.id], [7, 8]);
+
+  const still = splitBall(ball({}), 9, GAME_CONFIG);
+  assert.deepEqual([still.vx, still.vy], [0, 0]);
+});
+
+test('a split-off ball is returned like the ball, but its returns are not counted in the rally', () => {
+  const face = paddle.inset + paddle.height + ballConfig.radius;
+  const state = quietly({
+    rally: 4,
+    opponent: { x: width / 2, vx: 0 },
+    ball: ball({ x: 100, y: 500, vy: 200 }),
+    extraBalls: [extraBall({ x: width / 2, y: face + 2, vy: -400 }, 9)],
+  });
+  const next = collect(state);
+  const hits = next.events.filter((event) => event.type === 'paddle-hit');
+
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].side, 'opponent');
+  assert.equal(hits[0].extra, true);
+  assert.equal(hits[0].rally, 4);
+  assert.equal(next.rally, 4);
+  assert.equal(next.longestRally, state.longestRally);
+  assert.deepEqual(next.hits, state.hits);
+  assert.ok(next.extraBalls[0].vy > 0, 'on its way back');
+  assert.equal(next.extraBalls[0].id, 9);
+  assert.ok(Math.abs(next.extraBalls[0].ttl - (5 - step)) < 1e-9);
+});
+
+test('a split-off ball bounces off the side walls', () => {
+  const next = collect(quietly({ extraBalls: [extraBall({ x: ballConfig.radius + 1, y: 400, vx: -300, vy: -300 })] }));
+
+  assert.equal(next.events.filter((event) => event.type === 'wall-bounce').length, 1);
+  assert.ok(next.extraBalls[0].vx > 0);
+});
+
+test('a split-off ball that gets past a paddle scores, and the point clears every split-off ball', () => {
+  const state = quietly({
+    extraBalls: [
+      extraBall({ x: 60, y: height + ballConfig.radius - 1, vy: 400 }, 1),
+      extraBall({ x: 300, y: 300, vy: 300 }, 2),
+    ],
+  });
+  const next = collect(state);
+
+  assert.deepEqual(next.events.filter((event) => event.type === 'point'), [{ type: 'point', scorer: 'opponent', x: 60, y: height }]);
+  assert.deepEqual(next.score, { player: 0, opponent: 1 });
+  assert.strictEqual(next.extraBalls, NO_EXTRA_BALLS);
+  assert.deepEqual([next.ball.x, next.ball.y], [width / 2, height / 2], 'the next serve has one ball');
+});
+
+test('the match-winning point can come from a split-off ball, and ends the match with the court cleared', () => {
+  const state = quietly({
+    score: { player: GAME_CONFIG.rules.winningScore - 1, opponent: 0 },
+    ball: ball({ x: 250, y: 400, vy: 200 }),
+    extraBalls: [extraBall({ x: 420, y: -ballConfig.radius + 1, vy: -400 })],
+  });
+  const next = collect(state);
+
+  assert.equal(next.phase, 'game-over');
+  assert.deepEqual(next.events.at(-1), { type: 'game-over', winner: 'player' });
+  assert.strictEqual(next.extraBalls, NO_EXTRA_BALLS);
+});
+
+test('a split-off ball fades when its time runs out, and the ball plays on', () => {
+  const next = collect(quietly({ extraBalls: [extraBall({ x: 300, y: 400, vy: 100 }, 1, step / 2)] }));
+
+  assert.strictEqual(next.extraBalls, NO_EXTRA_BALLS);
+  assert.equal(next.events.length, 0);
+});
+
+test('at most two balls split off at a time: another Multiball replaces the oldest', () => {
+  const state = withPickup('multi', {
+    extraBalls: [extraBall({ x: 100, y: 500, vy: 100 }, 11), extraBall({ x: 400, y: 500, vy: 100 }, 12)],
+  });
+  const next = collect(state);
+
+  assert.equal(powerUps.maxExtraBalls, 2);
+  assert.deepEqual(next.extraBalls.map((extra) => extra.id), [12, 1]);
+});
+
+test('the computer keeps its eye on whichever ball will reach it first', () => {
+  const state = rallying({
+    opponent: { x: width / 2, vx: 0 },
+    ball: ball({ x: 100, y: 300, vy: -300 }),
+    extraBalls: [extraBall({ x: 400, y: 200, vy: -300 })],
+  });
+
+  assert.strictEqual(watchedBall(state, GAME_CONFIG), state.extraBalls[0]);
+  assert.ok(calculateOpponentTarget(state, GAME_CONFIG) > width / 2, 'it moves toward the nearer one');
+
+  // A ball already past its paddle, or flying away, is no longer its business.
+  const past = { ...state, extraBalls: [extraBall({ x: 400, y: 40, vy: -300 })] };
+  const away = { ...state, extraBalls: [extraBall({ x: 400, y: 200, vy: 300 })] };
+  assert.strictEqual(watchedBall(past, GAME_CONFIG), past.ball);
+  assert.strictEqual(watchedBall(away, GAME_CONFIG), away.ball);
+
+  // With the ball alone in play, it is the ball, wherever it flies.
+  const single = rallying({ ball: ball({ vy: 300 }) });
+  assert.strictEqual(watchedBall(single, GAME_CONFIG), single.ball);
+});
+
+test('a rival can play with a paddle of its own size, which power-ups scale too', () => {
+  const wide = tuned(GAME_CONFIG, { opponent: { widthScale: 1.5 } });
+  const state = rallying();
+  const shrunk = { ...state, modifiers: { player: NO_MODIFIERS, opponent: { ...NO_MODIFIERS, tiny: 3 } } };
+
+  assert.equal(paddleWidth(state, 'opponent', wide), paddle.width * 1.5);
+  assert.equal(paddleWidth(state, 'player', wide), paddle.width);
+  assert.equal(paddleWidth(shrunk, 'opponent', wide), paddle.width * powerUps.shrinkScale * 1.5);
 });

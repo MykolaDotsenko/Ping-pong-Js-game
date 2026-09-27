@@ -7,11 +7,11 @@ import { GAME_CONFIG } from '../src/config.js';
 import { createInitialState, GAME_PHASE, startGame } from '../src/domain/game.js';
 import { callsNamed, createFrameScheduler, createRendererWindow, FakeCanvas } from './support/fake-canvas.js';
 
-function setup({ clientWidth = 400, devicePixelRatio = 1, reducedMotion = false } = {}) {
+function setup({ clientWidth = 400, devicePixelRatio = 1, reducedMotion = false, jokes = false } = {}) {
   const canvas = new FakeCanvas({ clientWidth });
   const window = createRendererWindow({ devicePixelRatio, reducedMotion });
   const scheduler = createFrameScheduler();
-  const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CONFIG, random: () => 0.5 });
+  const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CONFIG, preferences: { get: () => ({ jokes }) }, random: () => 0.5 });
   return { canvas, window, scheduler, renderer, ctx: () => canvas.contexts[0] };
 }
 
@@ -191,4 +191,61 @@ test('drawing before any state has arrived does nothing', () => {
   renderer.draw();
 
   assert.equal(canvas.calls.length, 0);
+});
+
+test('while the finisher plays, the destroyed paddle is not drawn, and the next match brings it back', () => {
+  const { renderer, canvas } = setup({ jokes: true });
+  const over = { ...running(), phase: GAME_PHASE.GAME_OVER };
+  const opponentCoreDrawn = () => canvas.contexts[0].calls.some((call) => call.name === 'fill' && call.brush.fillStyle === THEME.side.opponent.core);
+
+  renderer.render(over, GAME_CONFIG);
+  renderer.handle([{ type: 'game-over', winner: 'player' }], over);
+  clearCalls(canvas);
+  renderer.draw();
+  assert.equal(opponentCoreDrawn(), false, 'the computer\'s paddle is in pieces');
+  assert.ok(canvas.contexts[0].calls.some((call) => call.name === 'fillRect' && call.brush.fillStyle === THEME.side.opponent.body) || renderer.effects.particles.length > 50);
+
+  renderer.handle([{ type: 'match-start' }], running());
+  renderer.render(running(), GAME_CONFIG);
+  clearCalls(canvas);
+  renderer.draw();
+  assert.equal(opponentCoreDrawn(), true);
+});
+
+test('under the Lag boss\'s attack the balls show where they were, a few times a second, with no trail', () => {
+  const { canvas, renderer, window } = setup();
+  const lagging = (x) => running({
+    ball: { x, y: 300, vx: 400, vy: -440, spin: 0 },
+    modifiers: { player: { wide: 0, tiny: 0, ghost: 0, lag: 2 }, opponent: { wide: 0, tiny: 0, ghost: 0, lag: 0 } },
+  });
+  const coreX = () => callsNamed(canvas.contexts[0], 'arc').filter((call) => call.brush.fillStyle === THEME.ballCore).at(-1).args[0];
+
+  renderer.render(lagging(100), GAME_CONFIG);
+  assert.equal(coreX(), 100);
+
+  window.advance(60);
+  renderer.render(lagging(124), GAME_CONFIG);
+  assert.equal(coreX(), 100, 'still the old picture');
+
+  window.advance(90);
+  renderer.render(lagging(160), GAME_CONFIG);
+  assert.equal(coreX(), 160, 'a new picture, jumping ahead');
+
+  clearCalls(canvas);
+  window.advance(16);
+  renderer.render(lagging(166), GAME_CONFIG);
+  assert.equal(callsNamed(canvas.contexts[0], 'arc').filter((call) => call.brush.fillStyle !== THEME.ballCore && call.brush.globalAlpha < 0.5).length, 0, 'no trail gives it away');
+
+  // Once it wears off, the ball is drawn where it is again.
+  window.advance(16);
+  renderer.render(running({ ball: { x: 170, y: 300, vx: 400, vy: -440, spin: 0 } }), GAME_CONFIG);
+  assert.equal(coreX(), 170);
+});
+
+test('a boss\'s attacks are drawn on the court', () => {
+  const { canvas, renderer } = setup();
+
+  renderer.render(running({ hazards: [{ kind: 'drip', x: 120, y: 300, warn: 0, ttl: 0 }] }), GAME_CONFIG);
+
+  assert.equal(callsNamed(canvas.contexts[0], 'ellipse')[0].args[0], 120, 'the drip\'s shadow');
 });

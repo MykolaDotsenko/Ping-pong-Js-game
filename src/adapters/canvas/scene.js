@@ -1,4 +1,5 @@
 import { GAME_PHASE } from '../../domain/game.js';
+import { BEAM_HALF_WIDTH, DRIP_RADIUS } from '../../domain/hazards.js';
 import { paddleWidth } from '../../domain/power-ups.js';
 import { FEVER_RALLY, FONT, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, THEME } from './theme.js';
 
@@ -7,9 +8,12 @@ import { FEVER_RALLY, FONT, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, T
  * Ghost fog. Each function draws one kind of thing onto a context already scaled to board
  * coordinates.
  *
- * @import { GameConfig, GameState, Side } from '../../domain/types.js'
+ * @import { Ball, GameConfig, GameState, Side } from '../../domain/types.js'
  * @import { GlowSprites } from './court.js'
  */
+
+// How far back, in seconds of flight, a Multiball ball's streak reaches.
+const STREAK_SECONDS = 0.045;
 
 /**
  * A ghosted side cannot see the ball in its own half: the ball, its trail and the pickups
@@ -62,9 +66,20 @@ export function ballColor(state, config) {
     return THEME.amber;
   }
 
-  const hitter = ball.vy < 0 ? THEME.side.player.rgb : THEME.side.opponent.rgb;
-  const heated = mixRgb(hitter, THEME.amber, speedIntensity(Math.hypot(ball.vx, ball.vy), config) ** 1.4);
+  const heated = hitterColor(ball, config);
   return state.rally >= FEVER_RALLY ? mixRgb(heated, THEME.rose, 0.55) : heated;
+}
+
+/**
+ * The color of whoever hit a ball last, heated toward amber as it speeds up.
+ *
+ * @param {Ball} ball
+ * @param {GameConfig} config
+ * @returns {string} "r, g, b"
+ */
+function hitterColor(ball, config) {
+  const hitter = ball.vy < 0 ? THEME.side.player.rgb : THEME.side.opponent.rgb;
+  return mixRgb(hitter, THEME.amber, speedIntensity(Math.hypot(ball.vx, ball.vy), config) ** 1.4);
 }
 
 /**
@@ -204,6 +219,109 @@ export function drawBall(ctx, state, config, now, glows) {
     ctx.beginPath();
     ctx.arc(ball.x, ball.y, radius + 5, turn, turn + 1.6);
     ctx.stroke();
+    ctx.restore();
+  }
+}
+
+/**
+ * The balls a Multiball split off: the hitter's glow like the ball, but a pale core, a short
+ * streak instead of a trail, and a fade over their last second. A Ghost fog hides them too.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {GameState} state
+ * @param {GameConfig} config
+ * @param {GlowSprites} glows
+ */
+export function drawExtraBalls(ctx, state, config, glows) {
+  const radius = config.ball.radius;
+  const glowSize = radius * 9;
+
+  for (const extra of state.extraBalls) {
+    if (isHidden(state, config, extra.y)) {
+      continue;
+    }
+
+    const color = hitterColor(extra, config);
+
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, extra.ttl);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(glows.get(color), extra.x - glowSize / 2, extra.y - glowSize / 2, glowSize, glowSize);
+    ctx.strokeStyle = `rgba(${color}, 0.55)`;
+    ctx.lineWidth = radius * 1.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(extra.x, extra.y);
+    ctx.lineTo(extra.x - extra.vx * STREAK_SECONDS, extra.y - extra.vy * STREAK_SECONDS);
+    ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = THEME.extraBallCore;
+    ctx.beginPath();
+    ctx.arc(extra.x, extra.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+/**
+ * A boss's attacks. A drip falls with its shadow on the paddle row, darker the nearer it is,
+ * so the player sees where it will land. A beam is announced as a faint column over the
+ * player's half that fills from the bottom, then burns bright. Lag has nothing on the court.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {GameState} state
+ * @param {GameConfig} config
+ */
+export function drawHazards(ctx, state, config) {
+  const { width, height, paddle } = config;
+  const warning = config.boss?.warning ?? 1;
+  const face = height - paddle.inset - paddle.height;
+  const half = height / 2;
+
+  for (const hazard of state.hazards) {
+    ctx.save();
+
+    if (hazard.kind === 'drip') {
+      const near = Math.min(1, Math.max(0, hazard.y / face));
+      const r = DRIP_RADIUS;
+
+      ctx.fillStyle = `rgba(${THEME.drip}, ${0.1 + 0.35 * near})`;
+      ctx.beginPath();
+      ctx.ellipse(hazard.x, face + paddle.height / 2, r * (0.8 + 0.8 * near), r * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // A drop: round below, pointed above.
+      ctx.fillStyle = `rgb(${THEME.drip})`;
+      ctx.beginPath();
+      ctx.moveTo(hazard.x, hazard.y - r * 2.2);
+      ctx.lineTo(hazard.x + r * 0.86, hazard.y - r * 0.5);
+      ctx.arc(hazard.x, hazard.y, r, -Math.PI / 6, Math.PI + Math.PI / 6);
+      ctx.closePath();
+      ctx.fill();
+    } else if (hazard.kind === 'beam') {
+      const left = Math.max(0, hazard.x - BEAM_HALF_WIDTH);
+      const beamWidth = Math.min(width, hazard.x + BEAM_HALF_WIDTH) - left;
+      const color = THEME.side.opponent.rgb;
+
+      if (hazard.warn > 0) {
+        const filled = (height - half) * (1 - hazard.warn / warning);
+
+        ctx.fillStyle = `rgba(${color}, 0.08)`;
+        ctx.fillRect(left, half, beamWidth, height - half);
+        ctx.fillStyle = `rgba(${color}, 0.2)`;
+        ctx.fillRect(left, height - filled, beamWidth, filled);
+        ctx.strokeStyle = `rgba(${color}, 0.6)`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 8]);
+        ctx.strokeRect(left, half, beamWidth, height - half);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = `rgba(${color}, 0.45)`;
+        ctx.fillRect(left, half, beamWidth, height - half);
+        ctx.fillStyle = 'rgba(255, 240, 250, 0.85)';
+        ctx.fillRect(hazard.x - 6, half, 12, height - half);
+      }
+    }
+
     ctx.restore();
   }
 }

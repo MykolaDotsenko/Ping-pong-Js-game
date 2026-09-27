@@ -25,9 +25,13 @@ function createContext() {
     lineTo: record('lineTo'),
     arc: record('arc'),
     stroke: record('stroke'),
+    translate: record('translate'),
+    rotate: record('rotate'),
+    fillRect: record('fillRect'),
     globalCompositeOperation: 'source-over',
     globalAlpha: 1,
     strokeStyle: '',
+    fillStyle: '',
     lineWidth: 1,
     lineCap: 'butt',
   };
@@ -209,4 +213,54 @@ test('shakes add up, but never beyond a firm jolt', () => {
   effects.shake(1);
 
   assert.equal(effects.shakeAmount, 1.2);
+});
+
+test('a shattered paddle flies out in tumbling pieces that fall, then are gone', () => {
+  const effects = new Effects({ random: seededRandom() });
+
+  effects.shatter({ x: 250, y: 744, width: 100, height: 16, color: '#22d3ee', count: 10, speed: 300 });
+  effects.hidePaddle('player');
+
+  assert.equal(effects.shards.length, 10);
+  assert.equal(effects.hiddenPaddle, 'player');
+  assert.ok(effects.active);
+  assert.ok(effects.shards.every((shard) => shard.vy < 0), 'every piece is kicked up first');
+  assert.ok(Math.abs(effects.shards.reduce((sum, shard) => sum + shard.width, 0) - 100) < 20, 'the pieces add up to about the paddle');
+
+  const velocities = effects.shards.map((shard) => shard.vy);
+  effects.update(0.1);
+  assert.ok(effects.shards.every((shard, index) => shard.vy > velocities[index]), 'gravity pulls the pieces down');
+  assert.ok(effects.shards.some((shard) => shard.angle !== 0), 'the pieces tumble');
+
+  for (let i = 0; i < 40; i += 1) {
+    effects.update(0.05);
+  }
+
+  assert.equal(effects.shards.length, 0);
+  assert.equal(effects.hiddenPaddle, 'player', 'the paddle stays gone until the next match clears the effects');
+  effects.clear();
+  assert.equal(effects.hiddenPaddle, null);
+});
+
+test('with reduced motion a paddle breaks into fewer pieces', () => {
+  const effects = new Effects({ random: seededRandom(), reducedMotion: true });
+
+  effects.shatter({ x: 250, y: 744, width: 100, height: 16, color: '#22d3ee', count: 10, speed: 300 });
+
+  assert.equal(effects.shards.length, 4);
+});
+
+test('pieces are drawn as rotated solid rectangles, before the additive light', () => {
+  const effects = new Effects({ random: seededRandom() });
+  const context = createContext();
+
+  effects.shard({ x: 10, y: 20, vx: 0, vy: 0, width: 30, height: 8, color: '#f472b6', spin: 2, life: 1 });
+  effects.update(0.5);
+  effects.draw(context);
+
+  const names = context.calls.map(([name]) => name);
+  assert.deepEqual(names.slice(0, 6), ['save', 'save', 'translate', 'rotate', 'fillRect', 'restore']);
+  assert.deepEqual(context.calls.find(([name]) => name === 'translate').slice(1), [10, 20]);
+  assert.ok(Math.abs(context.calls.find(([name]) => name === 'rotate')[1] - 1) < 1e-9);
+  assert.deepEqual(context.calls.find(([name]) => name === 'fillRect').slice(1), [-15, -4, 30, 8]);
 });

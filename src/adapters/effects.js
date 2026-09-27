@@ -36,6 +36,32 @@
  *
  * @typedef {'player' | 'opponent'} Side
  *
+ * @typedef {object} Shard A piece of a paddle flying off: a rotating filled rectangle.
+ * @property {number} x
+ * @property {number} y
+ * @property {number} vx
+ * @property {number} vy
+ * @property {number} angle radians
+ * @property {number} spin radians per second
+ * @property {number} width
+ * @property {number} height
+ * @property {number} life seconds left
+ * @property {number} maxLife
+ * @property {string} color
+ * @property {number} gravity
+ *
+ * @typedef {object} ShardOptions
+ * @property {number} x center of the piece
+ * @property {number} y
+ * @property {number} vx
+ * @property {number} vy
+ * @property {number} width
+ * @property {number} height
+ * @property {string} color
+ * @property {number} [spin]
+ * @property {number} [life]
+ * @property {number} [gravity]
+ *
  * @typedef {object} Label A short word that pops up, drifts and fades: "CURVE!", "SMASH!".
  * @property {string} text
  * @property {number} x
@@ -46,8 +72,8 @@
  * @property {number} size font size in board units
  *
  * @typedef {Pick<CanvasRenderingContext2D,
- *   'save' | 'restore' | 'beginPath' | 'moveTo' | 'lineTo' | 'arc' | 'stroke'
- * > & { globalCompositeOperation: string, globalAlpha: number, strokeStyle: unknown, lineWidth: number, lineCap: string }} EffectsContext
+ *   'save' | 'restore' | 'beginPath' | 'moveTo' | 'lineTo' | 'arc' | 'stroke' | 'translate' | 'rotate' | 'fillRect'
+ * > & { globalCompositeOperation: string, globalAlpha: number, strokeStyle: unknown, fillStyle: unknown, lineWidth: number, lineCap: string }} EffectsContext
  */
 
 // Exponential decay rates, per second.
@@ -76,6 +102,11 @@ export class Effects {
     this.rings = [];
     /** @type {Label[]} */
     this.labels = [];
+    /** @type {Shard[]} */
+    this.shards = [];
+    /** A paddle the renderer must not draw, because its pieces are flying about instead. */
+    /** @type {Side | null} */
+    this.hiddenPaddle = null;
     /** @type {Array<{ delay: number, action: () => void }>} */
     this.scheduled = [];
     this.flashColor = '#ffffff';
@@ -90,6 +121,7 @@ export class Effects {
   get active() {
     return this.particles.length > 0
       || this.rings.length > 0
+      || this.shards.length > 0
       || this.labels.length > 0
       || this.scheduled.length > 0
       || this.flashAlpha > SETTLED
@@ -136,6 +168,54 @@ export class Effects {
    */
   ring({ x, y, color, radius = 6, growth = 240, life = 0.45, width = 3 }) {
     this.rings.push({ x, y, radius, growth, life, maxLife: life, color, width });
+  }
+
+  /** @param {ShardOptions} options */
+  shard({ x, y, vx, vy, width, height, color, spin = 0, life = 1, gravity = 0 }) {
+    this.shards.push({ x, y, vx, vy, angle: 0, spin, width, height, life, maxLife: life, color, gravity });
+  }
+
+  /**
+   * Breaks a rectangle into pieces that fly out from its center and tumble away.
+   *
+   * @param {object} options
+   * @param {number} options.x center
+   * @param {number} options.y
+   * @param {number} options.width
+   * @param {number} options.height
+   * @param {string} options.color
+   * @param {number} options.count pieces along the width
+   * @param {number} options.speed
+   * @param {number} [options.life]
+   * @param {number} [options.gravity]
+   */
+  shatter({ x, y, width, height, color, count, speed, life = 1.1, gravity = 520 }) {
+    const pieces = this.reducedMotion ? Math.max(4, Math.ceil(count * 0.4)) : count;
+    const pieceWidth = width / pieces;
+
+    for (let i = 0; i < pieces; i += 1) {
+      const px = x - width / 2 + pieceWidth * (i + 0.5);
+      const away = (px - x) / (width / 2);
+      const kick = speed * (0.5 + this.random());
+
+      this.shard({
+        x: px,
+        y,
+        vx: away * kick + (this.random() - 0.5) * speed * 0.4,
+        vy: -kick * (0.6 + this.random() * 0.6),
+        width: pieceWidth * (0.7 + this.random() * 0.3),
+        height,
+        color,
+        spin: (this.random() - 0.5) * 16,
+        life: life * (0.7 + this.random() * 0.5),
+        gravity,
+      });
+    }
+  }
+
+  /** @param {Side | null} side */
+  hidePaddle(side) {
+    this.hiddenPaddle = side;
   }
 
   /**
@@ -197,6 +277,8 @@ export class Effects {
   clear() {
     this.particles = [];
     this.rings = [];
+    this.shards = [];
+    this.hiddenPaddle = null;
     this.labels = [];
     this.scheduled = [];
     this.flashAlpha = 0;
@@ -230,12 +312,21 @@ export class Effects {
       ring.life -= deltaSeconds;
     }
 
+    for (const shard of this.shards) {
+      shard.vy += shard.gravity * deltaSeconds;
+      shard.x += shard.vx * deltaSeconds;
+      shard.y += shard.vy * deltaSeconds;
+      shard.angle += shard.spin * deltaSeconds;
+      shard.life -= deltaSeconds;
+    }
+
     for (const label of this.labels) {
       label.life -= deltaSeconds;
     }
 
     this.particles = this.particles.filter((particle) => particle.life > 0);
     this.rings = this.rings.filter((ring) => ring.life > 0);
+    this.shards = this.shards.filter((shard) => shard.life > 0);
     this.labels = this.labels.filter((label) => label.life > 0);
     this.flashAlpha = settle(this.flashAlpha * Math.exp(-DECAY.flash * deltaSeconds));
     this.shakeAmount = settle(this.shakeAmount * Math.exp(-DECAY.shake * deltaSeconds));
@@ -265,11 +356,23 @@ export class Effects {
    * @param {EffectsContext} context
    */
   draw(context) {
-    if (this.particles.length === 0 && this.rings.length === 0) {
+    if (this.particles.length === 0 && this.rings.length === 0 && this.shards.length === 0) {
       return;
     }
 
     context.save();
+
+    // Paddle pieces are solid, drawn plainly so they read as the paddle they were.
+    for (const shard of this.shards) {
+      context.save();
+      context.globalAlpha = Math.min(1, shard.life / 0.3);
+      context.translate(shard.x, shard.y);
+      context.rotate(shard.angle);
+      context.fillStyle = shard.color;
+      context.fillRect(-shard.width / 2, -shard.height / 2, shard.width, shard.height);
+      context.restore();
+    }
+
     context.globalCompositeOperation = 'lighter';
     context.lineCap = 'round';
 

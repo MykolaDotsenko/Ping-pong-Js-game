@@ -1,5 +1,7 @@
+import { MAX_STARS } from '../application/career.js';
 import { DIFFICULTIES, GAME_COMMAND, MODES } from '../application/ports.js';
 import { GAME_PHASE } from '../domain/game.js';
+import { finisherApplies, FINISHER_SECONDS } from './finisher.js';
 
 /**
  * @import { GamePhase, Side } from '../domain/types.js'
@@ -22,8 +24,14 @@ const MODE_TIPS = Object.freeze({
   solo: 'Flick the paddle as you hit to curve the ball.',
   rush: 'The ball only gets faster. Curve it past the computer to keep your lives.',
   duo: 'Player 1 steers from the bottom half, Player 2 from the top.',
+  career: 'Beat each regular to open the next. Three of them are bosses who fight dirty.',
 });
-const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps']);
+const PLAYER_LABELS = Object.freeze({ solo: 'You', rush: 'Hits', duo: 'P1', career: 'You' });
+const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps', 'jokes']);
+/** Where the arcade's "Continue?" countdown starts, a second a step, after a loss. */
+const CONTINUE_FROM = 9;
+/** How long a career rival's name stays up at the start of a match, over the countdown. */
+const BANNER_SECONDS = 2.2;
 
 /**
  * @typedef {typeof TOGGLE_SETTINGS[number]} ToggleSetting
@@ -53,8 +61,9 @@ export class DomGameView {
    * @param {number} options.rushLives shown on the Rush button before that mode is chosen
    * @param {readonly { id: TrackId, label: string }[]} options.tracks the music tracks, in the order the track button cycles
    * @param {(track: TrackId) => void} options.previewTrack plays a short sample of the chosen track
+   * @param {{ setTimeout: typeof setTimeout, clearTimeout: typeof clearTimeout }} options.timers
    */
-  constructor({ root, board, preferences, canVibrate, device, rushLives, tracks, previewTrack }) {
+  constructor({ root, board, preferences, canVibrate, device, rushLives, tracks, previewTrack, timers }) {
     this.root = root;
     this.board = board;
     this.preferences = preferences;
@@ -63,6 +72,16 @@ export class DomGameView {
     this.rushLives = rushLives;
     this.tracks = tracks;
     this.previewTrack = previewTrack;
+    this.timers = timers;
+    /**
+     * While the finisher plays, the result screen waits; a tap or key brings it at once.
+     * @type {ReturnType<typeof setTimeout> | null}
+     */
+    this.resultDelay = null;
+    /** @type {ReturnType<typeof setTimeout> | null} the next step of the "Continue?" countdown */
+    this.continueTimer = null;
+    /** @type {ReturnType<typeof setTimeout> | null} when the career rival's banner goes */
+    this.bannerTimer = null;
     this.status = this.find('[data-game-status]');
     this.scores = { player: this.find('[data-score="player"]'), opponent: this.find('[data-score="opponent"]') };
     this.overlays = {
@@ -74,8 +93,15 @@ export class DomGameView {
     this.pauseButton = this.find('[data-hud-pause]');
     this.lives = this.find('[data-lives]');
     this.matchPoint = this.find('[data-match-point]');
+    this.continueLine = this.find('[data-continue]');
+    this.banner = this.find('[data-rival-banner]');
     /** @type {Presentation | null} */
     this.rendered = null;
+    /**
+     * The presentation being rendered right now, for the phase change it may bring.
+     * @type {Presentation | null}
+     */
+    this.pending = null;
     /** @type {Presentation | null} */
     this.lastResult = null;
     /** @type {Array<[HTMLElement, string, EventListener]>} */
@@ -148,6 +174,11 @@ export class DomGameView {
       }
     }
 
+    for (const button of this.findAll('[data-rival-step]')) {
+      const step = Number(button.dataset.rivalStep);
+      this.listen(button, () => this.stepRival(step));
+    }
+
     for (const button of this.findAll('[data-setting]')) {
       const setting = TOGGLE_SETTINGS.find((candidate) => candidate === button.dataset.setting);
 
@@ -162,6 +193,12 @@ export class DomGameView {
     for (const button of this.findAll('[data-track]')) {
       this.listen(button, () => this.nextTrack());
     }
+
+    // While the finisher plays, a tap anywhere on the court brings the result screen. On the
+    // click rather than the press: a press that brought the screen up could land its click
+    // on the button that appears under the finger.
+    this.listen(this.root, () => this.revealResult());
+    this.listen(this.root, (event) => this.skipFinisherByKey(/** @type {KeyboardEvent} */ (event)), 'keydown');
 
     for (const button of this.findAll('[data-show-tutorial]')) {
       this.listen(button, () => this.showTutorial(true));
@@ -210,6 +247,9 @@ export class DomGameView {
       target.removeEventListener(type, listener);
     }
     this.listeners = [];
+    this.cancelResultDelay();
+    this.stopContinue();
+    this.hideBanner();
   }
 
   /**
@@ -220,6 +260,27 @@ export class DomGameView {
   listen(target, listener, type = 'click') {
     target.addEventListener(type, listener);
     this.listeners.push([target, type, listener]);
+  }
+
+  /**
+   * Picks the previous or the next career rival, within the part of the ladder that is open,
+   * and has the menu redrawn for it.
+   *
+   * @param {number} step
+   */
+  stepRival(step) {
+    const career = this.rendered?.career;
+
+    if (!career) {
+      return;
+    }
+
+    const rival = Math.min(Math.max(0, career.index + step), career.unlocked);
+
+    if (rival !== career.index) {
+      this.preferences.set({ rival });
+      this.commandHandler(GAME_COMMAND.RESET);
+    }
   }
 
   /** Reflects the chosen mode and difficulty on their buttons and the menu. */
@@ -238,8 +299,13 @@ export class DomGameView {
       element.hidden = mode !== 'solo';
     }
 
-    for (const element of this.findAll('[data-not-rush]')) {
-      element.hidden = mode === 'rush';
+    for (const element of this.findAll('[data-career-only]')) {
+      element.hidden = mode !== 'career';
+    }
+
+    // Rush and career rivals bring their own power-ups, or none; Solo and two players choose.
+    for (const element of this.findAll('[data-power-ups-choice]')) {
+      element.hidden = mode === 'rush' || mode === 'career';
     }
 
     for (const element of this.findAll('[data-mode-tip]')) {
@@ -346,9 +412,18 @@ export class DomGameView {
       return;
     }
 
-    const text = result.mode === 'rush'
-      ? `I survived ${result.hits.player} hits in Rush mode of Ping Pong Architecture Lab. Beat that!`
-      : `I ${result.winner === 'player' ? 'won' : 'lost'} ${result.score.player}:${result.score.opponent} on ${DIFFICULTY_LABELS[result.difficulty]} in Ping Pong Architecture Lab. Longest rally: ${result.longestRally}.`;
+    const { career } = result;
+    const won = result.winner === 'player';
+    const score = `${result.score.player}:${result.score.opponent}`;
+    let text = `I ${won ? 'won' : 'lost'} ${score} on ${DIFFICULTY_LABELS[result.difficulty]} in Ping Pong Architecture Lab. Longest rally: ${result.longestRally}.`;
+
+    if (result.mode === 'rush') {
+      text = `I survived ${result.hits.player} hits in Rush mode of Ping Pong Architecture Lab. Beat that!`;
+    } else if (career) {
+      text = won
+        ? `I beat ${career.rival.name} ${score} in the career of Ping Pong Architecture Lab: ${career.earned} of ${MAX_STARS} stars.`
+        : `${career.rival.name} beat me ${score.split(':').reverse().join(':')} in the career of Ping Pong Architecture Lab. Rematch!`;
+    }
     const outcome = await this.device.share(text);
 
     note.textContent = { shared: '', copied: 'Copied to clipboard', cancelled: '', failed: 'Sharing is not available here' }[outcome];
@@ -359,6 +434,7 @@ export class DomGameView {
     // render() runs every frame during a match. Only touch the DOM when something changed:
     // the status element is an aria-live region, and rewriting it could spam screen readers.
     const previous = this.rendered;
+    this.pending = presentation;
 
     if (presentation.phase !== previous?.phase || presentation.mode !== previous?.mode) {
       this.showPhase(presentation.phase, presentation.mode);
@@ -366,6 +442,10 @@ export class DomGameView {
 
     if (presentation.status !== previous?.status) {
       this.status.textContent = presentation.status;
+    }
+
+    if (presentation.opponent.label !== previous?.opponent.label || presentation.mode !== previous?.mode) {
+      this.showLabels(presentation);
     }
 
     for (const side of /** @type {Side[]} */ (['player', 'opponent'])) {
@@ -391,17 +471,27 @@ export class DomGameView {
       this.matchPoint.dataset.side = presentation.matchPoint ?? '';
     }
 
+    const careerChanged = presentation.career?.index !== previous?.career?.index
+      || presentation.career?.stars !== previous?.career?.stars
+      || presentation.career?.unlocked !== previous?.career?.unlocked
+      || presentation.career?.eased !== previous?.career?.eased;
+
     if (
       presentation.bestRally !== previous?.bestRally
       || presentation.bestRush !== previous?.bestRush
       || presentation.mode !== previous?.mode
       || presentation.rules !== previous?.rules
+      || careerChanged
     ) {
       this.showMenuMeta(presentation);
     }
 
-    if (presentation.stats !== previous?.stats || presentation.mode !== previous?.mode) {
+    if (presentation.stats !== previous?.stats || presentation.mode !== previous?.mode || careerChanged) {
       this.showStats(presentation);
+    }
+
+    if (careerChanged) {
+      this.showRival(presentation);
     }
 
     if (presentation.phase === GAME_PHASE.GAME_OVER && previous?.phase !== GAME_PHASE.GAME_OVER) {
@@ -409,6 +499,56 @@ export class DomGameView {
     }
 
     this.rendered = presentation;
+  }
+
+  /**
+   * Whether the match that just ended gets a finisher, which the result screen waits for.
+   *
+   * @param {Presentation} presentation
+   */
+  finishes({ winner, mode }) {
+    return finisherApplies({
+      winner,
+      twoPlayers: mode === 'duo',
+      rush: mode === 'rush',
+      jokes: this.preferences.get().jokes === true,
+    });
+  }
+
+  /**
+   * A key pressed during the finisher only brings the result screen, so Space or Enter
+   * cannot also start the next match unseen; the keyboard input listens beyond the court,
+   * on the window, so the key stops here. A held key's repeats and shortcuts with a
+   * modifier are no request to skip.
+   *
+   * @param {KeyboardEvent} event
+   */
+  skipFinisherByKey(event) {
+    if (this.resultDelay === null || event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.revealResult();
+  }
+
+  /** Shows the result screen now, ending any wait for the finisher. */
+  revealResult() {
+    if (this.resultDelay === null) {
+      return;
+    }
+
+    this.cancelResultDelay();
+    this.overlays.over.hidden = false;
+    this.guideFocus(GAME_PHASE.GAME_OVER);
+  }
+
+  cancelResultDelay() {
+    if (this.resultDelay !== null) {
+      this.timers.clearTimeout(this.resultDelay);
+      this.resultDelay = null;
+    }
   }
 
   /**
@@ -421,21 +561,52 @@ export class DomGameView {
 
     this.root.dataset.phase = phase;
     this.root.dataset.mode = mode;
+    // The finisher plays on the board first; the result screen follows, or comes at a tap.
+    const finishing = phase === GAME_PHASE.GAME_OVER && phaseChanged && this.rendered !== null
+      && this.finishes(/** @type {Presentation} */ (this.pending));
+
     this.overlays.menu.hidden = phase !== GAME_PHASE.READY;
     this.overlays.pause.hidden = phase !== GAME_PHASE.PAUSED;
-    this.overlays.over.hidden = phase !== GAME_PHASE.GAME_OVER;
+    this.overlays.over.hidden = phase !== GAME_PHASE.GAME_OVER || finishing;
+    this.cancelResultDelay();
+    // A new result starts its own countdown; any other screen ends the last one.
+    this.stopContinue();
 
-    if (phaseChanged && this.rendered !== null) {
+    // A match that starts from the menu or the result screen, not one resumed, names its rival.
+    const previousPhase = this.rendered?.phase;
+
+    if (phase === GAME_PHASE.RUNNING && (previousPhase === GAME_PHASE.READY || previousPhase === GAME_PHASE.GAME_OVER)) {
+      this.showBanner(/** @type {Presentation} */ (this.pending));
+    } else if (phase !== GAME_PHASE.RUNNING) {
+      this.hideBanner();
+    }
+
+    if (finishing) {
+      this.resultDelay = this.timers.setTimeout(() => this.revealResult(), FINISHER_SECONDS * 1000);
+    } else if (phaseChanged && this.rendered !== null) {
       this.guideFocus(phase);
     }
     this.pauseButton.toggleAttribute('disabled', !inMatch);
     this.pauseButton.setAttribute('aria-label', phase === GAME_PHASE.PAUSED ? 'Resume' : 'Pause');
-    this.find('[data-label="opponent"]').textContent = mode === 'duo' ? 'P2' : 'CPU';
-    this.find('[data-label="player"]').textContent = { solo: 'You', rush: 'Hits', duo: 'P1' }[mode];
 
     if (phase !== GAME_PHASE.READY) {
       this.find('[data-share-note]').textContent = '';
     }
+  }
+
+  /**
+   * The scoreboard's side labels. A nickname is set in its own case and letter-spacing, and
+   * clipped with an ellipsis rather than pushing the scoreboard into the buttons.
+   *
+   * @param {Presentation} presentation
+   */
+  showLabels({ mode, opponent }) {
+    const label = this.find('[data-label="opponent"]');
+
+    label.textContent = opponent.label;
+    label.classList.toggle('scoreboard__label--nick', opponent.proper);
+    this.find('[data-scoreboard]').classList.toggle('scoreboard--nick', opponent.proper);
+    this.find('[data-label="player"]').textContent = PLAYER_LABELS[mode];
   }
 
   /**
@@ -460,10 +631,15 @@ export class DomGameView {
    *
    * @param {Presentation} presentation
    */
-  showMenuMeta({ mode, rules, bestRally, bestRush }) {
+  showMenuMeta({ mode, rules, bestRally, bestRush, career }) {
     const goal = rules.kind === 'rush' ? `${rules.lives} lives` : `First to ${rules.winningScore}`;
 
     for (const element of this.findAll('[data-menu-meta]')) {
+      if (career) {
+        element.replaceChildren(career.rival.story);
+        continue;
+      }
+
       if (mode === 'duo') {
         element.replaceChildren(`${goal} · Two players, one screen`);
         continue;
@@ -482,12 +658,17 @@ export class DomGameView {
    *
    * @param {Presentation} presentation
    */
-  showStats({ mode, stats }) {
+  showStats({ mode, stats, career }) {
     for (const element of this.findAll('[data-stats]')) {
-      const show = mode === 'solo' && stats.matches > 0;
+      const show = (mode === 'solo' && stats.matches > 0) || (career !== null && career.beaten > 0);
       element.hidden = !show;
 
       if (!show) {
+        continue;
+      }
+
+      if (career) {
+        element.replaceChildren(`${career.beaten} of ${career.count} beaten · ${career.totalStars}/${career.count * MAX_STARS} stars`);
         continue;
       }
 
@@ -507,19 +688,145 @@ export class DomGameView {
 
   /** @param {Presentation} presentation */
   showResult(presentation) {
-    const { winner, score, hits, longestRally, newBest, newBestRush, mode, difficulty } = presentation;
+    const { winner, score, hits, longestRally, newBest, newBestRush, mode, difficulty, opponent, career } = presentation;
     const title = this.find('[data-over-title]');
     const rush = mode === 'rush';
+    const setting = career ? `Career ${career.index + 1}/${career.count}`
+      : rush ? 'Rush' : mode === 'duo' ? 'Two players' : DIFFICULTY_LABELS[difficulty];
+    // Beating the last boss keeps the last arcade open.
+    const champion = career !== null && winner === 'player' && career.index === career.count - 1;
+    const stars = this.find('[data-over-stars]');
 
     this.lastResult = presentation;
-    title.textContent = rush ? 'Run over' : winner === 'player' ? 'Victory' : 'Defeat';
+    title.textContent = rush ? 'Run over' : champion ? 'Champion' : winner === 'player' ? 'Victory' : 'Defeat';
     title.dataset.winner = rush ? 'opponent' : (winner ?? '');
     this.find('[data-over-score]').textContent = rush ? `${hits.player} hits` : `${score.player} : ${score.opponent}`;
     this.find('[data-over-rally]').textContent = String(longestRally);
-    this.find('[data-over-difficulty]').textContent = rush ? 'Rush' : mode === 'duo' ? 'Two players' : DIFFICULTY_LABELS[difficulty];
+    this.find('[data-over-difficulty]').textContent = opponent.proper ? `${setting} · vs ${opponent.name}` : setting;
     this.find('[data-over-best]').hidden = !newBest;
     this.find('[data-over-best-rush]').hidden = !newBestRush;
+    stars.hidden = !career || career.earned === 0;
+    showStars(stars, career?.earned ?? 0);
+    // After a career win, the same button takes on the next rival.
+    this.find('[data-focus="over"]').textContent = career?.next ? 'Next rival' : 'Play again';
+    this.startContinue(presentation);
   }
+
+  /**
+   * The career rival card of the menu: its place on the ladder, its name, a boss tag and the
+   * best stars earned against it, with the steps to the rivals either side, as far as the
+   * ladder is open.
+   *
+   * @param {Presentation} presentation
+   */
+  showRival({ career }) {
+    if (!career) {
+      return;
+    }
+
+    this.find('[data-rival-place]').textContent = `${career.index + 1}/${career.count}`;
+    this.find('[data-rival-name]').textContent = career.rival.name;
+    this.find('[data-rival-boss]').hidden = !career.rival.boss;
+    this.find('[data-rival-tired]').hidden = !career.eased;
+    showStars(this.find('[data-rival-stars]'), career.stars);
+
+    for (const button of this.findAll('[data-rival-step]')) {
+      const target = career.index + Number(button.dataset.rivalStep);
+      button.toggleAttribute('disabled', target < 0 || target > career.unlocked);
+    }
+
+    for (const element of this.findAll('[data-mode-tip]')) {
+      element.textContent = career.eased
+        ? `After beating you twice, ${career.rival.name} is tired and plays slower.`
+        : MODE_TIPS.career;
+    }
+  }
+
+  /**
+   * Shows a career rival's name over the court as a match against it starts, for a moment.
+   * It is decoration: the status line names the rival for screen readers.
+   *
+   * @param {Presentation} presentation
+   */
+  showBanner({ career }) {
+    this.hideBanner();
+
+    if (!career) {
+      return;
+    }
+
+    this.banner.replaceChildren(...(career.rival.boss ? [bossTag(this.banner), career.rival.name] : [`vs ${career.rival.name}`]));
+    this.banner.hidden = false;
+    this.bannerTimer = this.timers.setTimeout(() => this.hideBanner(), BANNER_SECONDS * 1000);
+  }
+
+  hideBanner() {
+    if (this.bannerTimer !== null) {
+      this.timers.clearTimeout(this.bannerTimer);
+      this.bannerTimer = null;
+    }
+
+    this.banner.hidden = true;
+  }
+
+  /**
+   * After a loss to the computer, a parody of the arcade's "Continue?" screen counts down
+   * under the result, then gives up with "Game over". It is one of the fun extras and pure
+   * decoration: Play again works all along, and screen readers skip it.
+   *
+   * @param {Presentation} presentation
+   */
+  startContinue({ mode, winner }) {
+    const lost = mode === 'rush' || ((mode === 'solo' || mode === 'career') && winner === 'opponent');
+
+    this.stopContinue();
+    this.continueLine.hidden = !lost || this.preferences.get().jokes !== true;
+
+    if (!this.continueLine.hidden) {
+      this.tickContinue(CONTINUE_FROM);
+    }
+  }
+
+  /** @param {number} count seconds left; below zero the countdown has given up */
+  tickContinue(count) {
+    const over = count < 0;
+
+    this.continueLine.textContent = over ? 'Game over' : `Continue? ${count}`;
+    this.continueLine.dataset.state = over ? 'over' : 'counting';
+    restartAnimation(this.continueLine, 'is-ticking');
+    this.continueTimer = over ? null : this.timers.setTimeout(() => this.tickContinue(count - 1), 1000);
+  }
+
+  stopContinue() {
+    if (this.continueTimer !== null) {
+      this.timers.clearTimeout(this.continueTimer);
+      this.continueTimer = null;
+    }
+  }
+}
+
+/**
+ * Stars as glyphs, which screen readers skip, and as words, which they read.
+ *
+ * @param {HTMLElement} element
+ * @param {number} stars
+ */
+function showStars(element, stars) {
+  const glyphs = element.ownerDocument.createElement('span');
+  const words = element.ownerDocument.createElement('span');
+
+  glyphs.setAttribute('aria-hidden', 'true');
+  glyphs.textContent = '★'.repeat(stars) + '☆'.repeat(MAX_STARS - stars);
+  words.className = 'visually-hidden';
+  words.textContent = `${stars} of ${MAX_STARS} stars`;
+  element.replaceChildren(glyphs, words);
+}
+
+/** @param {HTMLElement} element */
+function bossTag(element) {
+  const tag = element.ownerDocument.createElement('small');
+  tag.textContent = 'Boss';
+  return tag;
 }
 
 /**

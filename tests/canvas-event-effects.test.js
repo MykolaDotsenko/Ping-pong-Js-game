@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { calloutFor, CURVE_SPIN, EDGE_OFFSET, playEvents } from '../src/adapters/canvas/event-effects.js';
 import { THEME } from '../src/adapters/canvas/theme.js';
 import { Effects } from '../src/adapters/effects.js';
-import { GAME_CONFIG } from '../src/config.js';
+import { GAME_CONFIG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
+import { createInitialState } from '../src/domain/game.js';
 
 const { width, height, ball } = GAME_CONFIG;
 const context = { config: GAME_CONFIG, random: () => 0.5 };
@@ -80,11 +81,20 @@ test('the callout floats on the court side of the paddle that hit', () => {
   assert.ok(opponent.y > 66);
 });
 
-test('every fifth hit of a rally pulses the whole court', () => {
+test('every fifth hit of a rally pulses the whole court, but a Multiball ball\'s return does not', () => {
   const ordinary = play([hit({ rally: 4 })]);
   const milestone = play([hit({ rally: 5 })]);
+  const extra = play([hit({ rally: 5, extra: true })]);
 
   assert.equal(milestone.rings.length, ordinary.rings.length + 1);
+  assert.equal(extra.rings.length, ordinary.rings.length, 'it keeps its sparks, but is no fifth hit');
+});
+
+test('a Multiball power-up announces itself in its own color', () => {
+  const effects = play([{ type: 'pickup', kind: 'multi', side: 'player', x: 200, y: 400 }]);
+
+  assert.equal(effects.labels[0].text, 'MULTIBALL');
+  assert.equal(effects.labels[0].color, `rgb(${THEME.lime})`);
 });
 
 test('the winner gets fireworks in their colors, spread over time and placed by the random source', () => {
@@ -121,4 +131,85 @@ test('the sparks of a point spray into the court, away from the goal line', () =
 
   assert.ok(atTop.particles.every((particle) => particle.vy > 0), 'down from the top goal');
   assert.ok(atBottom.particles.every((particle) => particle.vy < 0), 'up from the bottom goal');
+});
+
+const over = (seed = 1) => ({ ...createInitialState(GAME_CONFIG, seed), phase: 'game-over', opponent: { x: 250, vx: 0 }, player: { x: 120, vx: 0 } });
+const finished = (winner, { config = GAME_CONFIG, jokes = true, seed = 1 } = {}) => {
+  const effects = new Effects({ random: () => 0.5 });
+  playEvents(effects, [{ type: 'game-over', winner }], { config, random: () => 0.5, jokes, state: over(seed) });
+  return effects;
+};
+
+test('with the fun extras on, the player\'s win destroys the computer\'s paddle under a red callout', () => {
+  const effects = finished('player');
+
+  assert.equal(effects.hiddenPaddle, 'opponent');
+  assert.equal(effects.labels[0].text, 'PONGALITY');
+  assert.equal(effects.labels[0].color, `rgb(${THEME.red})`);
+  assert.ok(effects.shards.length > 0 || effects.particles.length > 50, 'the paddle comes apart');
+  assert.equal(effects.scheduled.length, 1, 'the fireworks wait for the finisher');
+
+  effects.update(0.6);
+  assert.equal(effects.scheduled.length, 7, 'then they are on their way');
+});
+
+test('every kind of finisher comes apart in its own way, at the loser\'s paddle', () => {
+  const seen = new Set();
+
+  for (let seed = 0; seed < 40; seed += 1) {
+    const effects = finished('player', { seed });
+    const shards = effects.shards;
+    const kind = shards.length > 4 ? 'shatter' : shards.length === 2 ? 'slice' : shards.length === 1 ? 'launch' : 'vaporize';
+    seen.add(kind);
+
+    for (const shard of shards) {
+      assert.ok(Math.abs(shard.x - 250) <= 60 && Math.abs(shard.y - (GAME_CONFIG.paddle.inset + 8)) < 1, `${kind} starts at the top paddle`);
+    }
+
+    if (kind === 'launch') {
+      assert.ok(shards[0].vy < 0, 'the top paddle is launched off the top');
+    }
+  }
+
+  assert.deepEqual([...seen].sort(), ['launch', 'shatter', 'slice', 'vaporize']);
+});
+
+test('between two people the winner finishes the other, and the bottom paddle goes off the bottom', () => {
+  const effects = finished('opponent', { config: TWO_PLAYER_CONFIG, seed: 3 });
+
+  assert.equal(effects.hiddenPaddle, 'player');
+  for (const shard of effects.shards) {
+    assert.ok(Math.abs(shard.x - 120) <= 60, 'at the player\'s paddle');
+  }
+});
+
+test('no finisher without the fun extras, on the player\'s defeat, or at the end of a Rush run', () => {
+  for (const effects of [finished('player', { jokes: false }), finished('opponent'), finished('opponent', { config: RUSH_CONFIG })]) {
+    assert.equal(effects.hiddenPaddle, null);
+    assert.equal(effects.shards.length, 0);
+    assert.equal(effects.scheduled.length, 7, 'the fireworks start at once');
+    assert.deepEqual(effects.labels, []);
+  }
+});
+
+test('a boss\'s attacks are announced and land with effects of their own', () => {
+  const drip = play([{ type: 'hazard-warn', kind: 'drip', x: 100 }]);
+  assert.equal(drip.rings.length, 1);
+
+  const lag = play([{ type: 'hazard-warn', kind: 'lag', x: 250 }]);
+  assert.equal(lag.labels[0].text, 'PING 999');
+
+  const beam = play([{ type: 'hazard-warn', kind: 'beam', x: 250 }]);
+  assert.ok(beam.active);
+
+  const splashed = play([{ type: 'hazard-hit', kind: 'drip', x: 120, y: 744 }]);
+  assert.equal(splashed.labels[0].text, 'SHRUNK!');
+  assert.ok(splashed.particles.length > 0);
+  assert.equal(splashed.flashAlpha, 0, 'a drip does not flash');
+
+  const zapped = play([{ type: 'hazard-hit', kind: 'beam', x: 250, y: 744 }]);
+  assert.ok(zapped.flashAlpha > 0);
+
+  const lagged = play([{ type: 'hazard-hit', kind: 'lag', x: 250, y: 400 }]);
+  assert.equal(lagged.labels[0].text, 'LAG!');
 });

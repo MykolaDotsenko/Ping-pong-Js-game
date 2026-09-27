@@ -12,11 +12,15 @@ const DEFAULTS = {
   sound: true,
   music: true,
   track: 'neon',
+  jokes: true,
   vibration: true,
   tutorialSeen: false,
   bestRally: 0,
   bestRush: 0,
   stats: NO_STATS,
+  rival: 0,
+  careerStars: [],
+  careerLosses: [],
 };
 
 function createStorage(initial = {}) {
@@ -42,11 +46,15 @@ test('restores stored choices', () => {
     sound: false,
     music: false,
     track: 'iron',
+    jokes: false,
     vibration: false,
     tutorialSeen: true,
     bestRally: 17,
     bestRush: 40,
     stats: { matches: 9, wins: 6, streak: 2, bestStreak: 4 },
+    rival: 3,
+    careerStars: [3, 1, 2],
+    careerLosses: [0, 0, 1, 2],
   };
   const preferences = new LocalPreferences({ localStorage: createStorage({ [KEY]: JSON.stringify(stored) }) });
 
@@ -54,13 +62,23 @@ test('restores stored choices', () => {
 });
 
 test('ignores malformed or outdated stored values', () => {
-  const stored = { mode: 'battle-royale', difficulty: 'impossible', track: 'polka', sound: 'yes', vibration: null, bestRally: -3, bestRush: '12', stats: 'lots' };
+  const stored = { mode: 'battle-royale', difficulty: 'impossible', track: 'polka', sound: 'yes', jokes: 'lots', vibration: null, bestRally: -3, bestRush: '12', stats: 'lots' };
   const preferences = new LocalPreferences({ localStorage: createStorage({ [KEY]: JSON.stringify(stored) }) });
 
   assert.deepEqual(preferences.get(), DEFAULTS);
   assert.deepEqual(new LocalPreferences({ localStorage: createStorage({ [KEY]: '{broken' }) }).get(), DEFAULTS);
   assert.deepEqual(new LocalPreferences({ localStorage: createStorage({ [KEY]: '42' }) }).get(), DEFAULTS);
   assert.equal(new LocalPreferences({ localStorage: createStorage({ [KEY]: '{"bestRally":2.5}' }) }).get().bestRally, 0);
+});
+
+test('career progress that cannot be true is brought back into range', () => {
+  const stored = { rival: -2, careerStars: [3, 9, -1, 'lots', 1.5, 2], careerLosses: 'many' };
+  const preferences = new LocalPreferences({ localStorage: createStorage({ [KEY]: JSON.stringify(stored) }) }).get();
+
+  assert.equal(preferences.rival, 0);
+  assert.deepEqual(preferences.careerStars, [3, 3, 0, 0, 0, 2]);
+  assert.deepEqual(preferences.careerLosses, []);
+  assert.equal(new LocalPreferences({ localStorage: createStorage({ [KEY]: JSON.stringify({ careerLosses: new Array(99).fill(1) }) }) }).get().careerLosses.length, 32);
 });
 
 test('statistics that cannot be true are brought back into range', () => {

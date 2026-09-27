@@ -1,0 +1,169 @@
+{
+  "solo-normal": {
+    "digest": "be8d2eec2ddc8c409d3c5c1d745c91348b48d11c4c81c040aa6593f5bb0a07fd",
+    "summary": {
+      "steps": 7200,
+      "score": {
+        "player": 1,
+        "opponent": 5
+      },
+      "hits": {
+        "player": 13,
+        "opponent": 17
+      },
+      "longestRally": 12,
+      "phase": "running",
+      "events": {
+        "countdown": 3,
+        "paddle-hit": 30,
+        "point": 6,
+        "serve": 7,
+        "wall-bounce": 27
+      }
+    }
+  },
+  "solo-easy": {
+    "digest": "6649a481238e2313600fb0ccb4147189994feb37e38e242367a1ec3d0a12cbb6",
+    "summary": {
+      "steps": 4800,
+      "score": {
+        "player": 2,
+        "opponent": 0
+      },
+      "hits": {
+        "player": 11,
+        "opponent": 8
+      },
+      "longestRally": 11,
+      "phase": "running",
+      "events": {
+        "countdown": 3,
+        "paddle-graze": 1,
+        "paddle-hit": 19,
+        "point": 2,
+        "serve": 3,
+        "wall-bounce": 19
+      }
+    }
+  },
+  "solo-hard": {
+    "digest": "4aeb4b5988a2336c577f148e214dcf441ba1f93224329f13536fda6821a52001",
+    "summary": {
+      "steps": 4800,
+      "score": {
+        "player": 0,
+        "opponent": 2
+      },
+      "hits": {
+        "player": 11,
+        "opponent": 13
+      },
+      "longestRally": 12,
+      "phase": "running",
+      "events": {
+        "countdown": 3,
+        "paddle-hit": 24,
+        "point": 2,
+        "serve": 3,
+        "wall-bounce": 21
+      }
+    }
+  },
+  "solo-keys": {
+    "digest": "4b3a554ca02bbfcdaa41dbb1fbcf6f8464e16d3bb982c7702df40a7f247bd6ca",
+    "summary": {
+      "steps": 3600,
+      "score": {
+        "player": 0,
+        "opponent": 1
+      },
+      "hits": {
+        "player": 9,
+        "opponent": 9
+      },
+      "longestRally": 16,
+      "phase": "running",
+      "events": {
+        "countdown": 3,
+        "paddle-hit": 18,
+        "point": 1,
+        "serve": 2,
+        "wall-bounce": 14
+      }
+    }
+  },
+  "rush": {
+    "digest": "b6eb53e4d4572e6cb20bd43b111fc9374b0c519246f90d43a547f09408a294f8",
+    "summary": {
+      "steps": 4800,
+      "score": {
+        "player": 0,
+        "opponent": 2
+      },
+      "hits": {
+        "player": 12,
+        "opponent": 14
+      },
+      "longestRally": 15,
+      "phase": "running",
+      "events": {
+        "countdown": 3,
+        "life-lost": 2,
+        "paddle-hit": 26,
+        "point": 2,
+        "serve": 3,
+        "wall-bounce": 12
+      }
+    }
+  },
+  "duo": {
+    "digest": "e2e20adb584b1fa4f4e9018d387f7606c8f8342326c072e5d4223b7edea95400",
+    "summary": {
+      "steps": 7200,
+      "score": {
+        "player": 3,
+        "opponent": 4
+      },
+      "hits": {
+        "player": 12,
+        "opponent": 12
+      },
+      "longestRally": 10,
+      "phase": "running",
+      "events": {
+        "countdown": 3,
+        "paddle-graze": 1,
+        "paddle-hit": 24,
+        "point": 7,
+        "serve": 8,
+        "wall-bounce": 31
+      }
+    }
+  },
+  "solo-power-ups": {
+    "digest": "13559bbf772eefeef34cb590edccd8b7a4a14694d51205e3a3c5f92fa922e7d9",
+    "summary": {
+      "steps": 7200,
+      "score": {
+        "player": 1,
+        "opponent": 5
+      },
+      "hits": {
+        "player": 14,
+        "opponent": 17
+      },
+      "longestRally": 12,
+      "phase": "running",
+      "events": {
+        "countdown": 3,
+        "paddle-graze": 1,
+        "paddle-hit": 32,
+        "pickup": 2,
+        "pickup-spawn": 4,
+        "point": 6,
+        "serve": 7,
+        "wall-bounce": 25
+      }
+    }
+  }
+}

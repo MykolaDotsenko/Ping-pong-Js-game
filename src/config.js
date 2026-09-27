@@ -1,6 +1,6 @@
 /**
  * @import { GameConfig } from './domain/types.js'
- * @import { Difficulty, MatchCatalog } from './application/ports.js'
+ * @import { Difficulty } from './application/ports.js'
  */
 
 /** Misses a Rush run allows; the menu names it on the Rush button. */
@@ -41,6 +41,8 @@ export const GAME_CONFIG = Object.freeze({
     predictionWeight: 0.75,
     error: 45,
     aim: 0.3,
+    curve: 0,
+    widthScale: 1,
   }),
   powerUps: Object.freeze({
     enabled: true,
@@ -52,7 +54,11 @@ export const GAME_CONFIG = Object.freeze({
     wideScale: 1.6,
     shrinkScale: 0.6,
     turboSpeed: 1250,
+    // Multiball: the split-off ball parts from the ball at about 34 degrees.
+    splitAngle: 0.6,
+    maxExtraBalls: 2,
   }),
+  boss: null,
 });
 
 /**
@@ -61,6 +67,7 @@ export const GAME_CONFIG = Object.freeze({
  * @property {Partial<GameConfig['ball']>} [ball]
  * @property {Partial<GameConfig['opponent']>} [opponent]
  * @property {Partial<GameConfig['powerUps']>} [powerUps]
+ * @property {GameConfig['boss']} [boss]
  */
 
 /**
@@ -68,13 +75,14 @@ export const GAME_CONFIG = Object.freeze({
  * @param {Tuning} tuning
  * @returns {GameConfig}
  */
-function tuned(base, tuning) {
+export function tuned(base, tuning) {
   return Object.freeze({
     ...base,
     rules: tuning.rules ?? base.rules,
     ball: Object.freeze({ ...base.ball, ...tuning.ball }),
     opponent: Object.freeze({ ...base.opponent, ...tuning.opponent }),
     powerUps: Object.freeze({ ...base.powerUps, ...tuning.powerUps }),
+    boss: tuning.boss === undefined ? base.boss : tuning.boss && Object.freeze({ ...tuning.boss }),
   });
 }
 
@@ -106,11 +114,4 @@ export const RUSH_CONFIG = tuned(GAME_CONFIG, {
 // Two people on one screen, each steering their own end of the court.
 export const TWO_PLAYER_CONFIG = tuned(GAME_CONFIG, {
   opponent: { controller: 'human' },
-});
-
-/** @type {MatchCatalog} */
-export const MATCH_CATALOG = Object.freeze({
-  difficulties: DIFFICULTY_CONFIGS,
-  rush: RUSH_CONFIG,
-  duo: TWO_PLAYER_CONFIG,
 });

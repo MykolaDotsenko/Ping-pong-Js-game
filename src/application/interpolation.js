@@ -33,5 +33,10 @@ export function interpolateState(previous, current, alpha) {
       x: lerp(previous.ball.x, current.ball.x, alpha),
       y: lerp(previous.ball.y, current.ball.y, alpha),
     },
+    // A Multiball ball blends with itself a step earlier; one that just split off has no past.
+    extraBalls: current.extraBalls.length === 0 ? current.extraBalls : current.extraBalls.map((ball) => {
+      const before = previous.extraBalls.find((candidate) => candidate.id === ball.id);
+      return before ? { ...ball, x: lerp(before.x, ball.x, alpha), y: lerp(before.y, ball.y, alpha) } : ball;
+    }),
   };
 }

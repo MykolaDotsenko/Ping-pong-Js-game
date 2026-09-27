@@ -19,17 +19,18 @@ const halfPaddle = paddle.width / 2;
 const hold = (x) => ({ horizontalAxis: 0, pointerX: x, opponentAxis: 0, opponentPointerX: null });
 
 /**
- * How far the ball's center is from a paddle's rectangle; below one radius they overlap.
+ * How far a ball's center is from a paddle's rectangle; below one radius they overlap.
  *
  * @param {import('../src/domain/types.js').GameState} state
  * @param {'player' | 'opponent'} side
  * @param {typeof PLAIN} config
+ * @param {{ x: number, y: number }} [ball] the ball, or one a Multiball split off
  */
-function clearance(state, side, config) {
+function clearance(state, side, config, ball = state.ball) {
   const half = paddleWidth(state, side, config) / 2;
   const top = side === 'player' ? config.height - config.paddle.inset - config.paddle.height : config.paddle.inset;
-  const dx = Math.max(state[side].x - half - state.ball.x, 0, state.ball.x - (state[side].x + half));
-  const dy = Math.max(top - state.ball.y, 0, state.ball.y - (top + config.paddle.height));
+  const dx = Math.max(state[side].x - half - ball.x, 0, ball.x - (state[side].x + half));
+  const dy = Math.max(top - ball.y, 0, ball.y - (top + config.paddle.height));
   return Math.hypot(dx, dy);
 }
 
@@ -215,7 +216,7 @@ function createBot(seed) {
   };
 }
 
-test('across many simulated matches the ball never overlaps a paddle', () => {
+test('across many simulated matches no ball, split-off ones included, ever overlaps a paddle', () => {
   const configs = {
     easy: DIFFICULTY_CONFIGS.easy,
     normal: GAME_CONFIG,
@@ -226,6 +227,7 @@ test('across many simulated matches the ball never overlaps a paddle', () => {
   let steps = 0;
   let hits = 0;
   let grazes = 0;
+  let splitSteps = 0;
   const overlaps = [];
 
   for (const [name, config] of Object.entries(configs)) {
@@ -250,16 +252,20 @@ test('across many simulated matches the ball never overlaps a paddle', () => {
           if (event.type === 'paddle-graze') grazes += 1;
         }
 
-        for (const side of /** @type {const} */ (['player', 'opponent'])) {
-          const gap = clearance(state, side, config);
+        splitSteps += state.extraBalls.length > 0 ? 1 : 0;
 
-          if (gap < config.ball.radius - 1e-6 && overlaps.length < 5) {
-            overlaps.push({ name, match, step: i, side, gap, ball: state.ball, paddle: state[side] });
+        for (const ball of [state.ball, ...state.extraBalls]) {
+          for (const side of /** @type {const} */ (['player', 'opponent'])) {
+            const gap = clearance(state, side, config, ball);
+
+            if (gap < config.ball.radius - 1e-6 && overlaps.length < 5) {
+              overlaps.push({ name, match, step: i, side, gap, ball, paddle: state[side] });
+            }
           }
-        }
 
-        assert.ok(Number.isFinite(state.ball.x) && Number.isFinite(state.ball.y));
-        assert.ok(state.ball.x >= config.ball.radius - 1e-6 && state.ball.x <= config.width - config.ball.radius + 1e-6);
+          assert.ok(Number.isFinite(ball.x) && Number.isFinite(ball.y));
+          assert.ok(ball.x >= config.ball.radius - 1e-6 && ball.x <= config.width - config.ball.radius + 1e-6);
+        }
       }
     }
   }
@@ -267,4 +273,5 @@ test('across many simulated matches the ball never overlaps a paddle', () => {
   assert.deepEqual(overlaps, []);
   assert.ok(steps > 100_000, `simulated ${steps} steps`);
   assert.ok(hits > 1000 && grazes > 20, `saw ${hits} hits and ${grazes} grazes`);
+  assert.ok(splitSteps > 500, `split-off balls were in play for ${splitSteps} steps`);
 });

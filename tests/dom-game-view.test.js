@@ -23,6 +23,7 @@ class FakeElement extends EventTarget {
     this.classList = {
       add: (name) => this.classes.add(name),
       remove: (name) => this.classes.delete(name),
+      toggle: (name, force) => (force ? this.classes.add(name) : this.classes.delete(name)),
     };
 
     for (const [name, value] of this.attributes) {
@@ -99,6 +100,7 @@ class FakeDialog extends FakeElement {
 function createRoot({ modalDialogs = true } = {}) {
   const elements = [
     ['status', { 'data-game-status': '' }],
+    ['scoreboard', { 'data-scoreboard': '' }],
     ['playerScore', { 'data-score': 'player' }],
     ['opponentScore', { 'data-score': 'opponent' }],
     ['playerLabel', { 'data-label': 'player' }],
@@ -116,11 +118,22 @@ function createRoot({ modalDialogs = true } = {}) {
     ['music', { 'data-setting': 'music' }],
     ['menuTrack', { 'data-track': '' }],
     ['pauseTrack', { 'data-track': '' }],
-    ['powerUps', { 'data-setting': 'powerUps', 'data-not-rush': '' }],
+    ['powerUps', { 'data-setting': 'powerUps', 'data-power-ups-choice': '' }],
     ['vibration', { 'data-setting': 'vibration' }],
+    ['jokes', { 'data-setting': 'jokes' }],
     ['solo', { 'data-mode': 'solo' }],
     ['rush', { 'data-mode': 'rush' }],
     ['duo', { 'data-mode': 'duo' }],
+    ['career', { 'data-mode': 'career' }],
+    ['rivalGroup', { 'data-career-only': '' }],
+    ['rivalPrevious', { 'data-rival-step': '-1' }],
+    ['rivalNext', { 'data-rival-step': '1' }],
+    ['rivalPlace', { 'data-rival-place': '' }],
+    ['rivalName', { 'data-rival-name': '' }],
+    ['rivalBoss', { 'data-rival-boss': '' }],
+    ['rivalTired', { 'data-rival-tired': '' }],
+    ['rivalStars', { 'data-rival-stars': '' }],
+    ['banner', { 'data-rival-banner': '' }],
     ['difficultyGroup', { 'data-solo-only': '' }],
     ['easy', { 'data-difficulty': 'easy' }],
     ['normal', { 'data-difficulty': 'normal' }],
@@ -145,6 +158,8 @@ function createRoot({ modalDialogs = true } = {}) {
     ['overDifficulty', { 'data-over-difficulty': '' }],
     ['overBest', { 'data-over-best': '' }],
     ['overBestRush', { 'data-over-best-rush': '' }],
+    ['continueLine', { 'data-continue': '', 'aria-hidden': 'true' }],
+    ['overStars', { 'data-over-stars': '' }],
   ].map(([name, attributes]) => [
     name,
     name === 'tutorial' && modalDialogs ? new FakeDialog(attributes) : new FakeElement(attributes),
@@ -158,7 +173,7 @@ function createRoot({ modalDialogs = true } = {}) {
     ...byName,
     board,
     document,
-    root: {
+    root: Object.assign(new EventTarget(), {
       dataset: {},
       scrolls: [],
       ownerDocument: document,
@@ -168,7 +183,7 @@ function createRoot({ modalDialogs = true } = {}) {
       contains: (element) => element === board || all.includes(element),
       querySelector: (selector) => all.find((element) => element.matches(selector)) ?? null,
       querySelectorAll: (selector) => all.filter((element) => element.matches(selector)),
-    },
+    }),
   };
 }
 
@@ -182,6 +197,7 @@ function createPreferences(initial = {}) {
     sound: true,
     music: true,
     track: 'neon',
+    jokes: true,
     vibration: true,
     tutorialSeen: true,
     bestRally: 0,
@@ -216,10 +232,32 @@ function createDevice(overrides = {}) {
 
 const TRACKS = [{ id: 'neon', label: 'Neon' }, { id: 'arena', label: 'Arena' }, { id: 'iron', label: 'Iron' }];
 
+function createTimers() {
+  const pending = new Map();
+  let nextId = 1;
+
+  return {
+    pending,
+    setTimeout(callback, ms) {
+      pending.set(nextId, { callback, ms });
+      return nextId++;
+    },
+    clearTimeout(id) {
+      pending.delete(id);
+    },
+    fire() {
+      const due = [...pending.values()];
+      pending.clear();
+      due.forEach(({ callback }) => callback());
+    },
+  };
+}
+
 function setup({ canVibrate = true, preferences = createPreferences(), device = createDevice(), modalDialogs = true } = {}) {
   const dom = createRoot({ modalDialogs });
   const { board } = dom;
   const previews = [];
+  const timers = createTimers();
   const view = new DomGameView({
     root: dom.root,
     board,
@@ -229,13 +267,14 @@ function setup({ canVibrate = true, preferences = createPreferences(), device = 
     rushLives: 3,
     tracks: TRACKS,
     previewTrack: (track) => previews.push(track),
+    timers,
   });
   const commands = [];
 
   view.onCommand((command) => commands.push({ command, focusedBefore: board.focusCalls.length }));
   view.connect();
 
-  return { view, dom, board, commands, preferences, device, previews };
+  return { view, dom, board, commands, preferences, device, previews, timers };
 }
 
 const click = (element) => element.dispatchEvent(new Event('click'));
@@ -247,6 +286,7 @@ function presentation(overrides = {}) {
     mode: 'solo',
     difficulty: 'normal',
     rules: { kind: 'match', winningScore: 7 },
+    opponent: { label: 'CPU', name: 'Computer', proper: false },
     status: 'First to 7. Start when ready.',
     score: { player: 0, opponent: 0 },
     hits: { player: 0, opponent: 0 },
@@ -262,6 +302,7 @@ function presentation(overrides = {}) {
     modifiers: { player: noModifiers, opponent: noModifiers },
     stats: DEFAULT_STATS,
     winner: null,
+    career: null,
     ...overrides,
   };
 }
@@ -295,7 +336,7 @@ test('command buttons hand focus back to the board before sending their command'
 const tutorialOpen = (dom) => dom.tutorial.hasAttribute('open');
 
 test('overlays and the pause button follow the match phase', () => {
-  const { view, dom } = setup();
+  const { view, dom, timers } = setup();
   const visible = () => ['menu', 'pause', 'over'].filter((name) => !dom[name].hidden)
     .concat(tutorialOpen(dom) ? ['tutorial'] : []);
 
@@ -314,8 +355,9 @@ test('overlays and the pause button follow the match phase', () => {
   assert.equal(dom.hudPause.getAttribute('aria-label'), 'Resume');
 
   view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }));
+  assert.ok(dom.hudPause.attributes.has('disabled'), 'disabled already while the finisher plays');
+  timers.fire();
   assert.deepEqual(visible(), ['over']);
-  assert.ok(dom.hudPause.attributes.has('disabled'));
 });
 
 test('mode buttons choose the next match, show the right options, and refresh the menu', () => {
@@ -366,9 +408,31 @@ test('setting toggles flip the preference and every matching switch', () => {
   click(dom.music);
   click(dom.powerUps);
   click(dom.vibration);
+  click(dom.jokes);
   assert.equal(preferences.get().music, false);
   assert.equal(preferences.get().powerUps, false);
   assert.equal(preferences.get().vibration, false);
+  assert.equal(preferences.get().jokes, false);
+  assert.equal(dom.jokes.getAttribute('aria-pressed'), 'false');
+});
+
+test('the scoreboard names the rival: a nickname in its own style, else CPU or P2', () => {
+  const { view, dom } = setup();
+  const nick = { label: 'Vitalik95', name: 'Vitalik95', proper: true };
+
+  view.render(presentation({ opponent: nick }));
+  assert.equal(dom.opponentLabel.textContent, 'Vitalik95');
+  assert.ok(dom.opponentLabel.classes.has('scoreboard__label--nick'));
+  assert.ok(dom.scoreboard.classes.has('scoreboard--nick'), 'the scoreboard makes room');
+
+  view.render(presentation({ mode: 'duo', opponent: { label: 'P2', name: 'Player 2', proper: false } }));
+  assert.equal(dom.opponentLabel.textContent, 'P2');
+  assert.equal(dom.playerLabel.textContent, 'P1');
+  assert.equal(dom.opponentLabel.classes.has('scoreboard__label--nick'), false);
+  assert.equal(dom.scoreboard.classes.has('scoreboard--nick'), false);
+
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent', opponent: nick }));
+  assert.equal(dom.overDifficulty.textContent, 'Normal · vs Vitalik95');
 });
 
 test('the track button shows the saved track and every tap moves on, turns music on and plays a sample', () => {
@@ -678,4 +742,346 @@ test('a missing element is reported by name', () => {
     () => new DomGameView({ root: incomplete, board: { focus() {} }, preferences: createPreferences(), canVibrate: true, device: createDevice() }),
     /\[data-game-status\] is missing/,
   );
+});
+
+test('a won match keeps the result screen back while the finisher plays, then brings it with focus', () => {
+  const { view, dom, timers } = setup();
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }));
+
+  assert.equal(dom.over.hidden, true);
+  assert.equal(timers.pending.size, 1);
+  assert.ok([...timers.pending.values()][0].ms <= 1200);
+
+  timers.fire();
+  assert.equal(dom.over.hidden, false);
+  assert.equal(dom.playAgain.focusCalls.length, 1);
+});
+
+/** A key press as the court sees it, recording whether the view kept it from going further. */
+function keyPress(overrides = {}) {
+  const event = Object.assign(new Event('keydown', { cancelable: true }), {
+    code: 'Space', repeat: false, ctrlKey: false, metaKey: false, altKey: false, ...overrides,
+  });
+  event.stopped = false;
+  event.stopPropagation = () => {
+    event.stopped = true;
+  };
+  return event;
+}
+
+function finishing() {
+  const context = setup();
+  context.view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  context.view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }));
+  return context;
+}
+
+test('a tap on the court or a key skips the finisher and shows the result at once', () => {
+  for (const event of [() => new Event('click'), () => keyPress()]) {
+    const { dom, timers } = finishing();
+    const type = event().type;
+
+    dom.root.dispatchEvent(event());
+    assert.equal(dom.over.hidden, false, type);
+    assert.equal(timers.pending.size, 0, `${type} cancels the wait`);
+    assert.equal(dom.playAgain.focusCalls.length, 1, `${type} hands focus to Play again`);
+
+    dom.root.dispatchEvent(event());
+    assert.equal(dom.playAgain.focusCalls.length, 1, 'a second one changes nothing');
+  }
+});
+
+test('a key that skips the finisher goes no further, so Space cannot also start the next match', () => {
+  const { dom } = finishing();
+  const space = keyPress();
+
+  dom.root.dispatchEvent(space);
+  assert.equal(space.defaultPrevented, true);
+  assert.equal(space.stopped, true);
+
+  // Once the result screen is up, keys mean what they always do.
+  const next = keyPress();
+  dom.root.dispatchEvent(next);
+  assert.equal(next.defaultPrevented, false);
+  assert.equal(next.stopped, false);
+});
+
+test('a held key and shortcuts with a modifier do not skip the finisher', () => {
+  for (const overrides of [{ repeat: true, code: 'ArrowLeft' }, { ctrlKey: true, code: 'KeyR' }, { metaKey: true }, { altKey: true }]) {
+    const { dom, timers } = finishing();
+    const key = keyPress(overrides);
+
+    dom.root.dispatchEvent(key);
+    assert.equal(dom.over.hidden, true, JSON.stringify(overrides));
+    assert.equal(timers.pending.size, 1);
+    assert.equal(key.defaultPrevented, false);
+    assert.equal(key.stopped, false);
+  }
+});
+
+test('the result comes at once when no finisher plays: a defeat, a Rush run, or the fun extras off', () => {
+  const cases = [
+    [createPreferences(), presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' })],
+    [createPreferences({ mode: 'rush' }), presentation({ phase: GAME_PHASE.GAME_OVER, mode: 'rush', winner: 'opponent' })],
+    [createPreferences({ jokes: false }), presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' })],
+  ];
+
+  for (const [preferences, result] of cases) {
+    const { view, dom, timers } = setup({ preferences });
+    view.render(presentation({ phase: GAME_PHASE.RUNNING, mode: result.mode }));
+    view.render(result);
+    assert.equal(dom.over.hidden, false);
+    // Nothing waits; a loss with the fun extras on only starts the "Continue?" countdown.
+    const countdown = result.winner === 'opponent' && preferences.get().jokes;
+    assert.deepEqual([...timers.pending.values()].map(({ ms }) => ms), countdown ? [1000] : []);
+  }
+
+  // Between two people the second player's win is finished too.
+  const duo = { mode: 'duo', opponent: { label: 'P2', name: 'Player 2', proper: false } };
+  const { view, dom, timers } = setup({ preferences: createPreferences({ mode: 'duo' }) });
+  view.render(presentation({ ...duo, phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ ...duo, phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
+  assert.equal(dom.over.hidden, true);
+  assert.equal(timers.pending.size, 1);
+});
+
+test('after a loss to the computer, "Continue?" counts down a second a step, then gives up', () => {
+  const { view, dom, timers } = setup();
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
+
+  assert.equal(dom.over.hidden, false, 'the result screen comes at once');
+  assert.equal(dom.continueLine.hidden, false);
+  assert.equal(dom.continueLine.textContent, 'Continue? 9');
+  assert.equal(dom.continueLine.getAttribute('aria-hidden'), 'true', 'decoration, which screen readers skip');
+  assert.deepEqual([...timers.pending.values()].map(({ ms }) => ms), [1000]);
+
+  for (let count = 8; count >= 0; count -= 1) {
+    timers.fire();
+    assert.equal(dom.continueLine.textContent, `Continue? ${count}`);
+    assert.equal(dom.continueLine.dataset.state, 'counting');
+  }
+
+  timers.fire();
+  assert.equal(dom.continueLine.textContent, 'Game over');
+  assert.equal(dom.continueLine.dataset.state, 'over');
+  assert.equal(timers.pending.size, 0, 'and stops there');
+  assert.ok(dom.continueLine.classes.has('is-ticking'), 'each step pops');
+});
+
+test('a Rush run counts down too; a win, a two-player match or the fun extras off do not', () => {
+  const duo = { mode: 'duo', opponent: { label: 'P2', name: 'Player 2', proper: false } };
+  const cases = [
+    [createPreferences({ mode: 'rush' }), { mode: 'rush', winner: 'opponent' }, true],
+    [createPreferences(), { winner: 'player' }, false],
+    [createPreferences({ mode: 'duo' }), { ...duo, winner: 'opponent' }, false],
+    [createPreferences({ jokes: false }), { winner: 'opponent' }, false],
+  ];
+
+  for (const [preferences, result, counts] of cases) {
+    const { view, dom } = setup({ preferences });
+    view.render(presentation({ ...result, phase: GAME_PHASE.RUNNING, winner: null }));
+    view.render(presentation({ ...result, phase: GAME_PHASE.GAME_OVER }));
+    assert.equal(dom.continueLine.hidden, !counts, JSON.stringify(result));
+  }
+});
+
+test('leaving the result screen stops the countdown, and the next loss starts it again from 9', () => {
+  const { view, dom, timers } = setup();
+  const lose = () => {
+    view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+    view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
+  };
+
+  lose();
+  timers.fire();
+  timers.fire();
+  assert.equal(dom.continueLine.textContent, 'Continue? 7');
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  assert.equal(timers.pending.size, 0);
+
+  lose();
+  assert.equal(dom.continueLine.textContent, 'Continue? 9');
+  view.disconnect();
+  assert.equal(timers.pending.size, 0);
+});
+
+test('leaving for the menu during the finisher drops the wait, so the result never pops up over the menu', () => {
+  const { view, dom, timers } = setup();
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }));
+  view.render(presentation({ phase: GAME_PHASE.READY }));
+
+  assert.equal(timers.pending.size, 0);
+  assert.equal(dom.over.hidden, true);
+  assert.equal(dom.menu.hidden, false);
+
+  view.disconnect();
+  assert.equal(timers.pending.size, 0);
+});
+
+// The career: the rival picker, the ladder in the menu, and the result of a career match.
+
+const RIVAL_VIEW = { name: 'The Janitor', short: 'Janitor', story: 'Mops the floor with players.', boss: true };
+
+function careerView(overrides = {}) {
+  return {
+    index: 3,
+    count: 9,
+    unlocked: 5,
+    rival: RIVAL_VIEW,
+    stars: 2,
+    earned: 0,
+    eased: false,
+    next: null,
+    totalStars: 11,
+    beaten: 5,
+    ...overrides,
+  };
+}
+
+const inCareer = (overrides = {}, career = {}) => presentation({
+  mode: 'career',
+  opponent: { label: 'Janitor', name: 'The Janitor', proper: true },
+  career: careerView(career),
+  ...overrides,
+});
+
+test('Career shows the rival picker instead of the difficulty, and no power-up switch', () => {
+  const { dom } = setup({ preferences: createPreferences({ mode: 'career' }) });
+
+  assert.equal(dom.rivalGroup.hidden, false);
+  assert.equal(dom.difficultyGroup.hidden, true);
+  assert.equal(dom.powerUps.hidden, true, 'every rival brings its own power-ups, or none');
+
+  click(dom.solo);
+  assert.equal(dom.rivalGroup.hidden, true);
+  assert.equal(dom.powerUps.hidden, false);
+});
+
+test('the rival card shows its place on the ladder, its name, a boss tag and its stars', () => {
+  const { view, dom } = setup({ preferences: createPreferences({ mode: 'career' }) });
+
+  view.render(inCareer());
+
+  assert.equal(dom.rivalPlace.textContent, '4/9');
+  assert.equal(dom.rivalName.textContent, 'The Janitor');
+  assert.equal(dom.rivalBoss.hidden, false);
+  assert.equal(dom.rivalTired.hidden, true);
+  assert.equal(dom.rivalStars.textContent, '★★☆2 of 3 stars');
+  assert.equal(dom.rivalStars.children[0].getAttribute('aria-hidden'), 'true', 'the glyphs are decoration');
+  assert.equal(dom.menuMeta.textContent, 'Mops the floor with players.');
+  assert.equal(dom.stats.hidden, false);
+  assert.equal(dom.stats.textContent, '5 of 9 beaten · 11/27 stars');
+  assert.match(dom.modeTip.textContent, /bosses/);
+
+  view.render(inCareer({}, { eased: true, rival: { ...RIVAL_VIEW, boss: false } }));
+  assert.equal(dom.rivalBoss.hidden, true);
+  assert.equal(dom.rivalTired.hidden, false);
+  assert.equal(dom.modeTip.textContent, 'After beating you twice, The Janitor is tired and plays slower.');
+});
+
+test('the rival steps move along the open part of the ladder and redraw the menu', () => {
+  const { view, dom, commands, preferences } = setup({ preferences: createPreferences({ mode: 'career' }) });
+
+  view.render(inCareer({}, { index: 3, unlocked: 3 }));
+  assert.equal(dom.rivalNext.hasAttribute('disabled'), true, 'the next rival is not open yet');
+  assert.equal(dom.rivalPrevious.hasAttribute('disabled'), false);
+
+  click(dom.rivalNext);
+  assert.deepEqual(commands, [], 'a closed rung does nothing');
+
+  click(dom.rivalPrevious);
+  assert.equal(preferences.get().rival, 2);
+  assert.deepEqual(commands.map(({ command }) => command), [GAME_COMMAND.RESET]);
+
+  view.render(inCareer({}, { index: 0, unlocked: 3 }));
+  assert.equal(dom.rivalPrevious.hasAttribute('disabled'), true);
+  click(dom.rivalPrevious);
+  assert.equal(preferences.get().rival, 2, 'nothing before the first rival');
+});
+
+test('a career result shows the stars earned, and a win takes on the next rival from the same button', () => {
+  const { view, dom } = setup({ preferences: createPreferences({ mode: 'career', jokes: false }) });
+
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
+  view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'player', score: { player: 7, opponent: 3 } }, { earned: 2, next: 'Hoarder Hryts' }));
+
+  assert.equal(dom.overTitle.textContent, 'Victory');
+  assert.equal(dom.overDifficulty.textContent, 'Career 4/9 · vs The Janitor');
+  assert.equal(dom.overStars.hidden, false);
+  assert.equal(dom.overStars.textContent, '★★☆2 of 3 stars');
+  assert.equal(dom.playAgain.textContent, 'Next rival');
+  assert.equal(dom.continueLine.hidden, true);
+
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
+  view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent', score: { player: 2, opponent: 7 } }));
+  assert.equal(dom.overTitle.textContent, 'Defeat');
+  assert.equal(dom.overStars.hidden, true);
+  assert.equal(dom.playAgain.textContent, 'Play again');
+});
+
+test('a career loss counts down "Continue?", and beating the final boss makes a champion', () => {
+  const { view, dom, timers } = setup({ preferences: createPreferences({ mode: 'career' }) });
+
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
+  view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
+  assert.equal(dom.continueLine.textContent, 'Continue? 9');
+
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }, { index: 8 }));
+  view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }, { index: 8, earned: 3 }));
+  timers.fire();
+  assert.equal(dom.overTitle.textContent, 'Champion');
+  assert.equal(dom.overTitle.dataset.winner, 'player');
+});
+
+test('a career match starts under the rival\'s name, which leaves before the serve', () => {
+  const { view, dom, timers } = setup({ preferences: createPreferences({ mode: 'career' }) });
+
+  view.render(inCareer({ phase: GAME_PHASE.READY }));
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
+
+  assert.equal(dom.banner.hidden, false);
+  assert.equal(dom.banner.textContent, 'BossThe Janitor');
+  assert.ok([...timers.pending.values()].some(({ ms }) => ms <= 3000), 'gone before the first serve');
+  timers.fire();
+  assert.equal(dom.banner.hidden, true);
+
+  // A resumed match does not bring it back; pausing puts it away at once.
+  view.render(inCareer({ phase: GAME_PHASE.PAUSED }));
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
+  assert.equal(dom.banner.hidden, true);
+
+  view.render(inCareer({ phase: GAME_PHASE.READY }, { rival: { ...RIVAL_VIEW, name: 'Rookie Roma', boss: false } }));
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }, { rival: { ...RIVAL_VIEW, name: 'Rookie Roma', boss: false } }));
+  assert.equal(dom.banner.textContent, 'vs Rookie Roma');
+  view.render(inCareer({ phase: GAME_PHASE.PAUSED }));
+  assert.equal(dom.banner.hidden, true);
+  assert.equal(timers.pending.size, 0);
+
+  // Outside the career there is no banner.
+  view.render(presentation({ phase: GAME_PHASE.READY }));
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  assert.equal(dom.banner.hidden, true);
+});
+
+test('a career result is shared with the rival\'s name and the stars', async () => {
+  const { view, dom, device } = setup({ preferences: createPreferences({ mode: 'career', jokes: false }) });
+
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
+  view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'player', score: { player: 7, opponent: 2 } }, { earned: 2 }));
+  click(dom.share);
+  await nextTick();
+  assert.equal(device.shared[0], 'I beat The Janitor 7:2 in the career of Ping Pong Architecture Lab: 2 of 3 stars.');
+
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
+  view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent', score: { player: 4, opponent: 7 } }));
+  click(dom.share);
+  await nextTick();
+  assert.equal(device.shared[1], 'The Janitor beat me 7:4 in the career of Ping Pong Architecture Lab. Rematch!');
 });

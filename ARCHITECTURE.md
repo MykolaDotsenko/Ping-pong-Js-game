@@ -25,16 +25,20 @@ script.js  ← composition root; the only module that touches browser globals
    +--> adapters/local-preferences.js
    +--> adapters/browser-frame-scheduler.js
    |
+   +--> catalog.js ──> config.js      the choosable matches, the career ladder included
+   |
    +--> application/game-controller.js
                  |
                  +--> application/ports.js
                  +--> application/game-loop.js
                  +--> application/interpolation.js
+                 +--> application/career.js, application/nicknames.js
                  +--> domain/game.js
                            |
                            +--> domain/physics.js
                            +--> domain/opponent.js
                            +--> domain/power-ups.js ──> domain/random.js
+                           +--> domain/hazards.js
 ```
 
 Dependencies point inward.
@@ -57,12 +61,13 @@ These rules are enforced by ESLint per directory (`eslint.config.js`). `tests/ar
 - score transitions, win condition, and winner
 - the serve countdown: three seconds counted aloud before the first serve, a short pause before every later one, while the paddles can already move
 - rallies: hits since the serve, the longest rally of the match, and every side's total hits
-- power-ups: when one appears, what it does to whom, and how long it lasts
+- power-ups: when one appears, what it does to whom, and how long it lasts; Multiball's split-off balls, which bounce, are returned and score like the ball, but stay out of the rally and the hits, so records remain those of the ball
 - a second human on the top paddle, when the rules say the opponent is human
 - paddle bounds and smoothed paddle velocity
 - ball movement, wall reflection, swept contact between the ball and a paddle's face, corners and sides, bounce angles and speed progression
 - spin, and the curve it puts on the ball
-- the computer opponent
+- the computer opponent, and the tunings a career rival may add: returns that curve away from the player, and a paddle of its own size
+- a career boss's attacks on the player's end of the court (`hazards.js`): drips, one aimed at the player, a beam announced a second before it strikes a column, and lag, which makes the player see the balls in fits and starts. A hit only shrinks the paddle for a few seconds; attacks come in live play only, never overlap, and stop at a point
 
 The domain accepts plain data and returns new state. It does not draw, play sounds, register listeners, query the DOM, schedule frames, read the clock, or know which device produced an input command. The shapes it works with (`GameState`, `GameConfig`, `InputSnapshot`, `GameEvent`, `Rules`, `Pickup`) are declared once in `src/domain/types.js`.
 
@@ -78,7 +83,7 @@ Power-ups need chance: what kind appears, where, and when. The core is forbidden
 
 ### Game events
 
-Every transition lists what happened in `state.events`: `match-start`, `menu`, `paused`, `resumed`, `countdown`, `serve`, `paddle-hit`, `paddle-graze`, `wall-bounce`, `pickup-spawn`, `pickup`, `point`, `match-point`, `life-lost` and `game-over`, each with the data an effect needs (where, how fast, which side, the rally count). Quiet steps share one frozen empty list, so they allocate nothing.
+Every transition lists what happened in `state.events`: `match-start`, `menu`, `paused`, `resumed`, `countdown`, `serve`, `paddle-hit`, `paddle-graze`, `wall-bounce`, `pickup-spawn`, `pickup`, `point`, `match-point`, `life-lost`, `hazard-warn`, `hazard-hit` and `game-over`, each with the data an effect needs (where, how fast, which side, the rally count, whether a Multiball ball made the hit). Quiet steps share one frozen empty list, so they allocate nothing.
 
 Events are plain data on the state rather than callbacks or an event bus. The domain stays pure, tests assert on events directly, and any number of adapters can react without the domain knowing they exist.
 
@@ -94,6 +99,8 @@ Events are plain data on the state rather than callbacks or an event bus. The do
 - drama: a short hit-stop on hard hits, and slow motion while a match-point ball closes on a paddle
 - keep the best rally (a Solo record), the best Rush run and the Solo win statistics, and flag a record worth celebrating; records are read fresh from the preferences, which another tab may have raised
 - count leaving a Solo match after its first point as a loss, so quitting cannot protect a winning streak
+- run the career (`career.js`): a win earns up to three stars and moves the ladder on to the next rival, the ladder is open up to the first rival not yet beaten, and a rival that beats the player twice in a row plays tired, slower and, for a boss, attacking less often. Career matches keep their own record and never touch the Solo ones
+- name the opponent: a career rival by its own name, otherwise, with the Fun switch on, the computer under an arcade-club nickname drawn from the match seed
 - run the frame loop only while a match is running
 - translate current state into presentation data
 
@@ -146,7 +153,7 @@ Translates pointer, touch, and keyboard input into device-neutral movement snaps
 
 ### DomGameView
 
-Owns the HUD, the menu with its modes, the tutorial, pause and result overlays, and the settings. Controls declare their meaning in markup — `data-command`, `data-mode`, `data-difficulty`, `data-setting` — so the view binds them generically. It hands sharing and full screen to `BrowserDevice`, hiding those buttons where the browser lacks the feature. It only writes to the DOM when the presentation changes, which keeps the `aria-live` status region from being rewritten every frame, and it never repeats the rules from memory: the menu line is built from the rules in the presentation.
+Owns the HUD, the menu with its modes and the career's rival picker, the tutorial, pause and result overlays, and the settings. Controls declare their meaning in markup — `data-command`, `data-mode`, `data-difficulty`, `data-setting`, `data-rival-step` — so the view binds them generically. After a won match with a finisher (`finisher.js`, which the renderer and the sound board consult too), the result screen waits the 1.2 seconds the finisher takes; a tap or a key brings it at once, and that key goes no further, so `Space` cannot also start the next match unseen. After a loss, a decorative CONTINUE? line counts down under the result; a career match starts under the rival's name for a moment. Both are hidden from screen readers, which the status line informs. It hands sharing and full screen to `BrowserDevice`, hiding those buttons where the browser lacks the feature. It only writes to the DOM when the presentation changes, which keeps the `aria-live` status region from being rewritten every frame, and it never repeats the rules from memory: the menu line is built from the rules in the presentation.
 
 Focus is managed deliberately:
 
@@ -158,7 +165,7 @@ Focus is managed deliberately:
 
 The renderer converts game state into pixels and implements `FeedbackPort`: game events become sparks, shockwave rings, screen shake, flashes, paddle squash, a grid pulse and victory fireworks, simulated by `Effects`, a small presentation-only particle system with injectable randomness.
 
-`canvas-renderer.js` only owns the canvas, its size and its frames. What a frame contains lives in `src/adapters/canvas/`: `theme.js` (colors and shared helpers), `court.js` (the pre-rendered court and glow sprites), `scene.js` (ball, trail, paddles, power-ups, the Ghost fog), `hud.js` (countdown, rally counter, callouts), `ball-trail.js` and `event-effects.js` (the visual side of each game event). Each is unit-tested against a recording 2D context.
+`canvas-renderer.js` only owns the canvas, its size and its frames. What a frame contains lives in `src/adapters/canvas/`: `theme.js` (colors and shared helpers), `court.js` (the pre-rendered court and glow sprites), `scene.js` (ball, trail, Multiball balls, paddles, power-ups, a boss's drips and beams, the Ghost fog), `hud.js` (countdown, rally counter, callouts), `ball-trail.js` and `event-effects.js` (the visual side of each game event). Each is unit-tested against a recording 2D context. Like Ghost, Lag lives only in the picture: while it lasts, the renderer redraws the balls about seven times a second, with no trail to give them away, and the game underneath runs on smoothly.
 
 It is built for phones:
 
@@ -227,7 +234,9 @@ A simple overlap check misses a paddle when a fast ball travels past it between 
 - a ball that flies into a side or back corner bounces off it (`paddle-graze`), keeping its progress toward the goal, and the point still goes to the other side
 - a paddle that runs into the ball side-on stops against it and passes on none of its own speed, so a missed ball keeps its course however the player moves. An earlier version placed the ball beside the paddle where the paddle ended the step, and a tap across the court dragged a missed ball up to 360 units in one frame
 
-A property test plays 60 bot matches across every mode, over 100,000 steps with yanked paddles, and asserts that the ball never overlaps a paddle. The difficulty balance, measured with the same bots before and after the change, moved only within noise.
+A property test plays 60 bot matches across every mode, over 100,000 steps with yanked paddles, and asserts that no ball, Multiball's split-off ones included, ever overlaps a paddle. The difficulty balance, measured with the same bots before and after the change, moved only within noise.
+
+Split-off balls go through the same `collide` step as the ball: a side wall, then the paddle each is heading for. Only what a return counts for differs, so the ball's own path is computed exactly as before; the reference matches below prove it.
 
 ## Opponent strategy
 
@@ -238,8 +247,11 @@ The opponent is designed to feel like a person rather than a wall:
 - **misjudgement:** its error grows with ball speed and changes with every hit; it is derived from the rally state, so it stays deterministic
 - **aim:** it meets the ball off-center so the return angles away from the player
 - **no spin prediction:** a curved shot is the player's way past it
+- **one ball at a time:** with Multiball balls in play, it keeps its eye on whichever will reach its paddle first, of those still in front of it; with the ball alone, nothing changes
 
 Prediction and physical ability remain separate: prediction chooses a target, and the speed cap limits how fast the paddle can reach it.
+
+Multiball was measured with the same human-like bots before and after it was added: the win rate on every difficulty moved only within noise. It favours whoever collects it, like every power-up; a player who follows both balls breaks about even when the computer collects it.
 
 ### Difficulty tuning
 
@@ -265,6 +277,10 @@ The dependency-free unit suite targets deterministic rules and the logic of the 
 - application: loop lifecycle with time scale and hold, interpolation, commands, the match built per mode, drama, feedback dispatch, the rally, Rush and win-streak records, and forfeits
 - adapters: input with two-player halves and dialogs, the view with modes, the modal tutorial and focus, the canvas renderer and its modules, effects and callouts, sound and music on one audio context, vibration, the wake lock, sharing and full screen, and preferences across tabs, driven through fake event targets, a recording 2D context, fake audio contexts and fake storage thanks to injected globals
 - architecture: the lint rules themselves, and that every module loads without a browser
+
+### Reference matches
+
+New features must not change how a classic match plays. `tests/reference-matches.test.js` replays seven recorded bot matches (Solo on every difficulty, keyboard steering, Rush, two players, and Solo with power-ups) and compares a SHA-256 digest of every step, the ball, paddles, score, rally, lives, events and any split-off balls included, with `tests/fixtures/reference-matches.json`. A change meant to alter classic play re-records the fixture with `npm run reference:record` and says why in its commit. So far only the power-up match has been re-recorded, once, when Multiball joined the kinds a power-up is drawn from; before that, the collision code it shares with the ball was reworked and all seven matches replayed identically.
 
 `tests/modules-load.test.js` loads every module under `src/`, so a file no test exercises counts at 0% instead of being left out. The coverage gate then holds the whole of `src/` to 95% lines and 90% branches and functions, and every file on its own to 90% lines, 85% branches and 80% functions, so no module can hide behind the average.
 
@@ -306,7 +322,7 @@ The boundaries make future changes local:
 
 - tune or add difficulties → `config.js`
 - add a mode → a `Rules` variant in `domain/types.js` and a preset in `config.js`
-- add a power-up → a kind in `domain/power-ups.js`, its look in `adapters/canvas/theme.js`, its sound in the sound board
+- add a power-up → a kind in `domain/power-ups.js`, its look in `adapters/canvas/theme.js`, its sound in the sound board; the power-up reference match is re-recorded, since the kinds are drawn from the seeded random source
 - change the opponent's personality → `domain/opponent.js`
 - new effects or sounds for an event → `adapters/canvas/event-effects.js` or the sound board, without touching the game
 - randomize serves → draw from the seeded random source already in the state, keeping the core deterministic

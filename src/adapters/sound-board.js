@@ -1,5 +1,7 @@
+import { finisherApplies } from './finisher.js';
+
 /**
- * @import { GameEvent } from '../domain/types.js'
+ * @import { GameConfig, GameEvent, GameState } from '../domain/types.js'
  * @import { FeedbackPort, PreferencesPort } from '../application/ports.js'
  * @import { AudioOutput } from './audio-output.js'
  */
@@ -51,15 +53,42 @@ export class SoundBoard {
     this.master = null;
   }
 
-  /** @param {readonly GameEvent[]} events */
-  handle(events) {
+  /**
+   * @param {readonly GameEvent[]} events
+   * @param {GameState} [state]
+   * @param {GameConfig} [config]
+   */
+  handle(events, state, config) {
     if (!this.preferences.get().sound || !this.ensureContext()) {
       return;
     }
 
     for (const event of events) {
       this.play(event);
+
+      if (event.type === 'game-over' && config && this.finishes(event.winner, config)) {
+        this.crunch();
+      }
     }
+  }
+
+  /**
+   * @param {GameState['lastPoint']} winner
+   * @param {GameConfig} config
+   */
+  finishes(winner, config) {
+    return finisherApplies({
+      winner,
+      twoPlayers: config.opponent.controller === 'human',
+      rush: config.rules.kind === 'rush',
+      jokes: this.preferences.get().jokes === true,
+    });
+  }
+
+  /** The finisher landing: a low crack and a falling whine over the victory fanfare. */
+  crunch() {
+    this.tone({ frequency: 110, endFrequency: 28, duration: 0.4, type: 'sawtooth', volume: 0.5 });
+    this.tone({ frequency: 1600, endFrequency: 180, duration: 0.22, type: 'square', volume: 0.22, delay: 0.03 });
   }
 
   /** @returns {boolean} whether sound can play */
@@ -109,6 +138,25 @@ export class SoundBoard {
       case 'life-lost':
         this.tone({ frequency: 200, endFrequency: 60, duration: 0.5, type: 'sawtooth', volume: 0.3 });
         break;
+      case 'hazard-warn':
+        // A drip's plink, a beam charging up, or the chirp of a dial-up connection before lag.
+        if (event.kind === 'drip') {
+          this.tone({ frequency: 1500, endFrequency: 1100, duration: 0.08, type: 'sine', volume: 0.2 });
+        } else if (event.kind === 'beam') {
+          this.tone({ frequency: 160, endFrequency: 900, duration: 0.9, type: 'sawtooth', volume: 0.12 });
+        } else {
+          this.arpeggio([NOTE.C6, NOTE.G6, NOTE.C6, NOTE.G6], 0.06, 'square', 0.12);
+        }
+        break;
+      case 'hazard-hit':
+        if (event.kind === 'lag') {
+          this.tone({ frequency: 95, duration: 0.3, type: 'square', volume: 0.22 });
+        } else if (event.kind === 'beam') {
+          this.tone({ frequency: 1200, endFrequency: 140, duration: 0.24, type: 'sawtooth', volume: 0.3 });
+        } else {
+          this.tone({ frequency: 420, endFrequency: 90, duration: 0.2, type: 'triangle', volume: 0.3 });
+        }
+        break;
       case 'paddle-hit': {
         // Pitch climbs with the rally, so a long exchange audibly builds tension.
         const base = event.side === 'player' ? 520 : 390;
@@ -116,7 +164,8 @@ export class SoundBoard {
         this.tone({ frequency: pitch, duration: 0.09, type: 'square', volume: 0.3 });
         this.tone({ frequency: pitch * 2, duration: 0.05, type: 'sine', volume: 0.16 });
 
-        if (event.rally % 5 === 0) {
+        // A Multiball ball's returns do not count toward the rally, so they earn no chime.
+        if (event.rally % 5 === 0 && !event.extra) {
           this.arpeggio([NOTE.C6, NOTE.E6, NOTE.G6], 0.05, 'sine', 0.22, 0.04);
         }
         break;

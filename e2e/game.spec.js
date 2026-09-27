@@ -1,20 +1,23 @@
 import { expect, test as base } from '@playwright/test';
 
+import { NICKNAMES } from '../src/application/nicknames.js';
 import { GAME_CONFIG } from '../src/config.js';
 
 // A first visit opens the tutorial over the menu. Most tests model a returning player, so
 // they store that choice before the page loads; the tutorial has a test of its own.
 const test = base.extend({
   tutorialSeen: [true, { option: true }],
-  context: async ({ context, tutorialSeen }, use) => {
+  /** Other preferences to store before the page loads, such as `{ jokes: false }`. */
+  stored: [{}, { option: true }],
+  context: async ({ context, tutorialSeen, stored }, use) => {
     // Runs before every page load, so it must not overwrite choices a test has since made.
-    await context.addInitScript((seen) => {
+    await context.addInitScript((preferences) => {
       const key = 'ping-pong-lab:preferences';
 
       if (window.localStorage.getItem(key) === null) {
-        window.localStorage.setItem(key, JSON.stringify({ tutorialSeen: seen }));
+        window.localStorage.setItem(key, JSON.stringify(preferences));
       }
-    }, tutorialSeen);
+    }, { tutorialSeen, ...stored });
     await use(context);
   },
 });
@@ -342,7 +345,8 @@ test('the chosen difficulty and sound setting survive a reload', async ({ page }
 });
 
 test.describe('with full motion', () => {
-  test.use({ reducedMotion: 'no-preference' });
+  // The plain computer, so the status lines can be checked word for word.
+  test.use({ reducedMotion: 'no-preference', stored: { jokes: false } });
 
   test('a lost match ends on the result screen, and Play again starts a new one', async ({ page, hasTouch }) => {
     const errors = [];
@@ -369,6 +373,8 @@ test.describe('with full motion', () => {
     await expect(page.locator('[data-over-score]')).toHaveText('0 : 7');
     await expect(status(page)).toHaveText('Match complete — computer won.');
     await expect(page.locator('[data-hud-pause]')).toBeDisabled();
+    // Without the fun extras there is no "Continue?" countdown.
+    await expect(page.locator('[data-continue]')).toBeHidden();
 
     // The victory fireworks need frames for a few seconds, then the screen goes quiet.
     await page.clock.runFor(6000);
@@ -528,6 +534,17 @@ test('Rush shows the lives as hearts and ends when they run out', async ({ page,
   await page.clock.runFor(8500);
   await expect(page.getByRole('heading', { name: 'Run over' })).toBeVisible();
   await expect(page.locator('[data-over-score]')).toHaveText('0 hits');
+
+  // Like an arcade cabinet, the result screen offers a few seconds to continue, then gives up.
+  const countdown = page.locator('[data-continue]');
+  await expect(countdown).toBeVisible();
+  await expect(countdown).toHaveText(/^Continue\? \d$/);
+  const left = Number((await countdown.textContent()).at(-1));
+  await page.clock.runFor(1000);
+  await expect(countdown).toHaveText(left > 0 ? `Continue? ${left - 1}` : 'Game over');
+  await page.clock.runFor(10_000);
+  await expect(countdown).toHaveText('Game over');
+  await expect(page.getByRole('button', { name: 'Play again' })).toBeEnabled();
 });
 
 test('two players get their own halves of the board and no thumb rail', async ({ page, hasTouch }) => {
@@ -558,6 +575,198 @@ test('the mode and the power-up switch survive a reload', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: /2P/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: 'Power-ups' })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('the computer signs in under an arcade-club nickname, until the Fun switch is turned off', async ({ page }) => {
+  await page.goto('/');
+
+  const label = page.locator('[data-label="opponent"]');
+  const nickname = await label.textContent();
+  expect(NICKNAMES).toContain(nickname);
+
+  await playButton(page).click();
+  await expect(status(page)).toHaveText(`You 0 — 0 ${nickname}`);
+  await page.keyboard.press('Escape');
+  await page.locator('[data-overlay="pause"]').getByRole('button', { name: 'Fun' }).click();
+  // The switch takes effect as play goes on.
+  await page.keyboard.press('Escape');
+
+  await expect(label).toHaveText('CPU');
+  await expect(status(page)).toHaveText('You 0 — 0 Computer');
+  await page.reload();
+  await expect(label).toHaveText('CPU', { timeout: 5000 });
+});
+
+// Runs the paused clock in small steps until the match is over, so the test sees the moment
+// it ends rather than some time after.
+async function runUntilMatchOver(page) {
+  for (let elapsed = 0; elapsed < 20_000; elapsed += 100) {
+    if ((await status(page).textContent()).startsWith('Match complete')) {
+      return;
+    }
+
+    await page.clock.runFor(100);
+  }
+
+  throw new Error(`the match is still on: ${await status(page).textContent()}`);
+}
+
+// A two-player match in which nobody moves: every serve beats the paddle it heads for, the
+// points alternate, and Player 2 wins 6 : 7 after about 27 seconds. Either winner of a
+// two-player match gets the finisher.
+async function playIdleDuo(page, hasTouch) {
+  const press = (locator) => (hasTouch ? locator.tap() : locator.click());
+
+  await freezeTime(page);
+  await press(page.getByRole('button', { name: /2P/ }));
+  await press(playButton(page));
+  await page.clock.runFor(26_000);
+  await runUntilMatchOver(page);
+  await expect(status(page)).toHaveText('Match complete — player 2 won.');
+}
+
+test('a won match ends with a Pongality before the result screen, and the next match brings the paddle back', async ({ page, hasTouch }) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const result = page.locator('[data-overlay="over"]');
+  const playAgain = page.getByRole('button', { name: 'Play again' });
+
+  await playIdleDuo(page, hasTouch);
+  await expect(result).toBeHidden();
+  await expect(page.locator('[data-hud-pause]')).toBeDisabled();
+
+  await page.clock.runFor(1200);
+  await expect(result).toBeVisible();
+  await expect(playAgain).toBeFocused();
+
+  // Once the pieces and the fireworks are gone, the loser's paddle is gone with them.
+  await page.clock.runFor(6000);
+  expect(await readPlayerX(page)).toBeNull();
+  expect(await readOpponentX(page)).toBeCloseTo(GAME_CONFIG.width / 2, -1);
+
+  await (hasTouch ? playAgain.tap() : playAgain.click());
+  await page.clock.runFor(1000);
+  expect(await readPlayerX(page)).toBeCloseTo(GAME_CONFIG.width / 2, -1);
+  expect(errors).toEqual([]);
+});
+
+test('a tap or a key skips the Pongality to the result screen, and starts nothing else', async ({ page, hasTouch }) => {
+  const result = page.locator('[data-overlay="over"]');
+
+  await playIdleDuo(page, hasTouch);
+  await expect(result).toBeHidden();
+  await (hasTouch ? board(page).tap() : page.keyboard.press('Space'));
+  await expect(result).toBeVisible();
+
+  // Space at the result screen means Play again, but the press that skipped the finisher
+  // must not count as one: the match stays over.
+  await page.clock.runFor(2000);
+  await expect(status(page)).toHaveText('Match complete — player 2 won.');
+  await expect(result).toBeVisible();
+});
+
+/** The width of the player's paddle, in board units, measured on its core stripe like readPlayerX. */
+function readPlayerWidth(page) {
+  const { width, height, paddle } = GAME_CONFIG;
+  const rowY = height - paddle.inset - paddle.height / 2;
+
+  return board(page).evaluate((canvas, { boardWidth, boardRowY }) => {
+    const scale = canvas.width / boardWidth;
+    const row = canvas.getContext('2d').getImageData(0, Math.round(boardRowY * scale), canvas.width, 1).data;
+    let first = -1;
+    let last = -1;
+
+    for (let x = 0; x < canvas.width; x += 1) {
+      if (row[x * 4] > 135 && row[x * 4] < 195 && row[x * 4 + 1] > 225 && row[x * 4 + 2] > 235) {
+        first = first < 0 ? x : first;
+        last = x;
+      }
+    }
+
+    return first < 0 ? 0 : (last - first) / scale;
+  }, { boardWidth: width, boardRowY: rowY });
+}
+
+test.describe('the career', () => {
+  // The first three rivals are beaten, so the ladder is open up to the first boss.
+  test.use({ stored: { mode: 'career', careerStars: [3, 2, 1] } });
+
+  test('opens the ladder as far as the rivals beaten, and names the rival as a match starts', async ({ page, hasTouch }) => {
+    const press = (locator) => (hasTouch ? locator.tap() : locator.click());
+    const next = page.getByRole('button', { name: 'Next rival' });
+
+    await page.goto('/');
+    await expect(page.getByRole('group', { name: 'Difficulty' })).toBeHidden();
+    await expect(page.locator('[data-rival-name]')).toHaveText('Rookie Roma');
+    await expect(page.getByRole('button', { name: 'Previous rival' })).toBeDisabled();
+    await expect(page.locator('[data-rival-stars]')).toContainText('3 of 3 stars');
+
+    for (const name of ['Aunt Halyna', 'Twisty Taras', 'The Janitor']) {
+      await press(next);
+      await expect(page.locator('[data-rival-name]')).toHaveText(name);
+    }
+
+    await expect(next).toBeDisabled();
+    await expect(page.locator('[data-rival-boss]')).toBeVisible();
+    await expect(page.locator('[data-menu-meta]')).toContainText('bucket');
+
+    await press(playButton(page));
+    await expect(status(page)).toHaveText('You 0 — 0 The Janitor');
+    await expect(page.locator('[data-label="opponent"]')).toHaveText('Janitor');
+    await expect(page.locator('[data-rival-banner]')).toContainText('The Janitor');
+  });
+
+  test.describe('against the first boss', () => {
+    test.use({ stored: { mode: 'career', careerStars: [3, 2, 1], rival: 3 } });
+
+    test('a drip from the boss shrinks the paddle of a player who stands still', async ({ page, hasTouch }) => {
+      // A fixed seed makes the match replay the same way: a point clears drips still falling,
+      // so the seed decides which volley lands.
+      await page.addInitScript(() => {
+        Math.random = () => 0.5;
+      });
+      await freezeTime(page);
+      await (hasTouch ? playButton(page).tap() : playButton(page).click());
+
+      // Stand still in the middle: one drip of every attack is aimed at the player.
+      const surface = hasTouch ? page.locator('.rail') : board(page);
+      const middle = await pointOn(surface, 0.5);
+      await (hasTouch ? surface.tap(middle) : surface.hover(middle));
+      await page.clock.runFor(3000);
+
+      const normal = await readPlayerWidth(page);
+      expect(normal).toBeGreaterThan(80);
+
+      // The first attack comes seven to ten seconds into play, after any serve pauses, and a
+      // drip takes over a second to fall; with this seed the first volley lands.
+      let shrunk = normal;
+
+      for (let elapsed = 0; elapsed < 27_000 && shrunk > normal * 0.8; elapsed += 250) {
+        await page.clock.runFor(250);
+        shrunk = await readPlayerWidth(page);
+      }
+
+      expect(shrunk).toBeLessThan(normal * 0.8);
+    });
+  });
+
+  test('a lost career match counts down to game over, and the same rival waits for a rematch', async ({ page, hasTouch }) => {
+    await freezeTime(page);
+    await (hasTouch ? playButton(page).tap() : playButton(page).click());
+
+    // Park the paddle in a corner; Rookie Roma's slow ball scores seven points in about 40 seconds.
+    const surface = hasTouch ? page.locator('.rail') : board(page);
+    const corner = await pointOn(surface, 0.01);
+    await (hasTouch ? surface.tap(corner) : surface.hover(corner));
+    await page.clock.runFor(30_000);
+    await runUntilMatchOver(page);
+
+    await expect(page.getByRole('heading', { name: 'Defeat' })).toBeVisible();
+    await expect(page.locator('[data-over-difficulty]')).toHaveText('Career 1/9 · vs Rookie Roma');
+    await expect(page.locator('[data-continue]')).toBeVisible();
+    await expect(page.locator('[data-over-stars]')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();
+  });
 });
 
 test('Escape and the pause screen expose music and sound switches', async ({ page }) => {
