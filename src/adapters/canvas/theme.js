@@ -2,7 +2,7 @@
  * The neon look shared by every part of the canvas renderer: colors, fonts and the few
  * drawing helpers they all use.
  *
- * @import { GameConfig, PowerUpKind, SuperKind } from '../../domain/types.js'
+ * @import { GameConfig, HazardKind, PowerUpKind, SuperKind } from '../../domain/types.js'
  */
 
 // Pure white (#ffffff) is reserved for the ball core, and each paddle has a unique core
@@ -50,6 +50,25 @@ export const SUPER_STYLE = Object.freeze({
   phantom: Object.freeze({ rgb: '216, 180, 254', label: 'PHANTOM' }),
   thunder: Object.freeze({ rgb: '96, 165, 250', label: 'THUNDER' }),
 });
+
+// The landlord's phases are the faults of its building: a leaky roof drips, bad wiring throws a
+// beam, bad Wi-Fi lags, and the final notice brings all three. Its paddle glows in the color of
+// the phase, and the title announces it.
+/** @type {Readonly<Record<HazardKind | 'all', { rgb: string, title: string }>>} */
+export const PHASE_STYLE = Object.freeze({
+  drip: Object.freeze({ rgb: '125, 211, 252', title: 'LEAKY ROOF!' }),
+  beam: Object.freeze({ rgb: '251, 191, 36', title: 'BAD WIRING!' }),
+  lag: Object.freeze({ rgb: '167, 139, 250', title: 'BAD WI-FI!' }),
+  all: Object.freeze({ rgb: '239, 68, 68', title: 'FINAL NOTICE!' }),
+});
+
+/**
+ * @param {readonly HazardKind[]} kinds the attacks of a phase
+ * @returns {{ rgb: string, title: string }}
+ */
+export function phaseStyle(kinds) {
+  return kinds.length === 1 ? PHASE_STYLE[kinds[0]] : PHASE_STYLE.all;
+}
 
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 

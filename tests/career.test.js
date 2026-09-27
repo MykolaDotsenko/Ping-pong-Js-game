@@ -6,6 +6,8 @@ import { MATCH_CATALOG, RIVALS } from '../src/catalog.js';
 import { DIFFICULTY_CONFIGS, GAME_CONFIG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
 import { advanceGame, createInitialState, startGame } from '../src/domain/game.js';
 
+/** @import { GameConfig } from '../src/domain/types.js' */
+
 // The Last Arcade: the career ladder and its rules.
 
 test('a win earns a star, a clear win two, and conceding at most one point three', () => {
@@ -23,6 +25,7 @@ test('the ladder is open up to the first rival not yet beaten, and to the end on
   assert.equal(unlockedRival([1, 3, 2], 9), 3);
   assert.equal(unlockedRival([1, 0, 2], 9), 1, 'a gap closes the ladder behind it');
   assert.equal(unlockedRival([1, 1, 1, 1, 1, 1, 1, 1, 1], 9), 8);
+  assert.equal(unlockedRival([1, 1, 1, 1, 1, 1, 1, 1, 1], 10), 9, 'a ladder that grew opens its new top');
 });
 
 test('a rival that has beaten the player twice in a row plays tired, and a boss attacks less', () => {
@@ -40,9 +43,9 @@ test('a rival that has beaten the player twice in a row plays tired, and a boss 
   assert.ok(Object.isFrozen(tired) && Object.isFrozen(tired.opponent));
 });
 
-test('nine rivals, three of them bosses, the last the final boss, each with a story and a short name', () => {
-  assert.equal(RIVALS.length, 9);
-  assert.deepEqual(RIVALS.map((rival, index) => (rival.boss ? index : null)).filter((index) => index !== null), [3, 6, 8]);
+test('ten rivals, four of them bosses, the last the final boss, each with a story and a short name', () => {
+  assert.equal(RIVALS.length, 10);
+  assert.deepEqual(RIVALS.map((rival, index) => (rival.boss ? index : null)).filter((index) => index !== null), [3, 6, 8, 9]);
 
   for (const rival of RIVALS) {
     assert.ok(rival.short.length > 0 && rival.short.length <= 9, `${rival.name}: "${rival.short}" fits the scoreboard`);
@@ -53,6 +56,20 @@ test('nine rivals, three of them bosses, the last the final boss, each with a st
   }
 
   assert.equal(new Set(RIVALS.map((rival) => rival.name)).size, RIVALS.length);
+});
+
+test('the final boss borrows the other bosses\' attacks in turn, then all of them at once', () => {
+  const bosses = RIVALS.filter((rival) => rival.boss);
+  const final = /** @type {NonNullable<GameConfig['boss']>} */ (bosses.at(-1)?.config.boss);
+  const borrowed = bosses.slice(0, -1).map((rival) => rival.config.boss?.attack);
+
+  assert.ok(final.phases, 'only the final boss has phases');
+  assert.ok(bosses.slice(0, -1).every((rival) => !rival.config.boss?.phases));
+  assert.deepEqual(final.phases[0], [final.attack], 'its first phase is its own attack');
+  assert.deepEqual(final.phases.slice(0, -1).map((phase) => phase[0]), borrowed, 'one boss after another');
+  assert.deepEqual([...(final.phases.at(-1) ?? [])].sort(), [...borrowed].sort(), 'and in the end every one of them');
+  assert.ok(Object.isFrozen(easedConfig(RIVALS[9].config).boss), 'a tired final boss keeps its phases');
+  assert.deepEqual(easedConfig(RIVALS[9].config).boss?.phases, final.phases);
 });
 
 test('each rival plays a real match: points, hits, and for a boss its attacks', () => {

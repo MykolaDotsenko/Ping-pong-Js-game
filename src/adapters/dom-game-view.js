@@ -6,6 +6,7 @@ import { finisherApplies, FINISHER_SECONDS } from './finisher.js';
 /**
  * @import { GamePhase, Side } from '../domain/types.js'
  * @import {
+ *   CareerView,
  *   CommandHandler,
  *   Difficulty,
  *   GameCommand,
@@ -409,6 +410,8 @@ export class DomGameView {
 
     if (result.mode === 'rush') {
       text = `I survived ${result.hits.player} hits in Rush mode of Paddle Noir. Beat that!`;
+    } else if (career && won && isFinalRival(career)) {
+      text = `I beat ${career.rival.name} ${score} and saved the last arcade in Paddle Noir: ${career.earned} of ${MAX_STARS} stars.`;
     } else if (career) {
       text = won
         ? `I beat ${career.rival.name} ${score} in Paddle Noir career mode: ${career.earned} of ${MAX_STARS} stars.`
@@ -692,8 +695,8 @@ export class DomGameView {
     const rush = mode === 'rush';
     const setting = career ? `Career ${career.index + 1}/${career.count}`
       : rush ? 'Rush' : mode === 'duo' ? 'Two players' : DIFFICULTY_LABELS[difficulty];
-    // Beating the last boss keeps the last arcade open.
-    const champion = career !== null && winner === 'player' && career.index === career.count - 1;
+    // Beating the final boss keeps the last arcade open.
+    const champion = career !== null && winner === 'player' && isFinalRival(career);
     const stars = this.find('[data-over-stars]');
 
     this.lastResult = presentation;
@@ -704,6 +707,7 @@ export class DomGameView {
     this.find('[data-over-difficulty]').textContent = opponent.proper ? `${setting} · vs ${opponent.name}` : setting;
     this.find('[data-over-best]').hidden = !newBest;
     this.find('[data-over-best-rush]').hidden = !newBestRush;
+    this.find('[data-over-champion]').hidden = !champion;
     stars.hidden = !career || career.earned === 0;
     showStars(stars, career?.earned ?? 0);
     // After a career win, the same button takes on the next rival.
@@ -712,9 +716,9 @@ export class DomGameView {
   }
 
   /**
-   * The career rival card of the menu: its place on the ladder, its name, a boss tag and the
-   * best stars earned against it, with the steps to the rivals either side, as far as the
-   * ladder is open.
+   * The career rival card of the menu: its place on the ladder, its name, a boss tag, which
+   * names the final boss as such, and the best stars earned against it, with the steps to the
+   * rivals either side, as far as the ladder is open.
    *
    * @param {Presentation} presentation
    */
@@ -726,6 +730,7 @@ export class DomGameView {
     this.find('[data-rival-place]').textContent = `${career.index + 1}/${career.count}`;
     this.find('[data-rival-name]').textContent = career.rival.name;
     this.find('[data-rival-boss]').hidden = !career.rival.boss;
+    this.find('[data-rival-boss]').textContent = bossLabel(career);
     this.find('[data-rival-tired]').hidden = !career.eased;
     showStars(this.find('[data-rival-stars]'), career.stars);
 
@@ -748,7 +753,7 @@ export class DomGameView {
       return;
     }
 
-    this.banner.replaceChildren(...(career.rival.boss ? [bossTag(this.banner), career.rival.name] : [`vs ${career.rival.name}`]));
+    this.banner.replaceChildren(...(career.rival.boss ? [bossTag(this.banner, bossLabel(career)), career.rival.name] : [`vs ${career.rival.name}`]));
     this.banner.hidden = false;
     this.bannerTimer = this.timers.setTimeout(() => this.hideBanner(), BANNER_SECONDS * 1000);
   }
@@ -841,10 +846,26 @@ function showStars(element, stars) {
   element.replaceChildren(glyphs, words);
 }
 
-/** @param {HTMLElement} element */
-function bossTag(element) {
+/**
+ * @param {CareerView} career
+ * @returns {boolean} whether the rival is the final boss, the last one on the ladder
+ */
+function isFinalRival(career) {
+  return career.rival.boss && career.index === career.count - 1;
+}
+
+/** @param {CareerView} career */
+function bossLabel(career) {
+  return isFinalRival(career) ? 'Final boss' : 'Boss';
+}
+
+/**
+ * @param {HTMLElement} element
+ * @param {string} label
+ */
+function bossTag(element, label) {
   const tag = element.ownerDocument.createElement('small');
-  tag.textContent = 'Boss';
+  tag.textContent = label;
   return tag;
 }
 

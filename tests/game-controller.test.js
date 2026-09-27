@@ -758,10 +758,10 @@ test('the career menu names the rival and shows where the player stands on the l
 
   assert.strictEqual(lastOf(renderer.frames).config.opponent.maxSpeed, RIVALS[1].config.opponent.maxSpeed * 0.9, 'tired');
   assert.deepEqual(presentation.opponent, { label: 'Halyna', name: 'Aunt Halyna', proper: true });
-  assert.equal(presentation.status, 'Career, 2 of 9: Aunt Halyna. First to 7.');
+  assert.equal(presentation.status, 'Career, 2 of 10: Aunt Halyna. First to 7.');
   assert.deepEqual(presentation.career, {
     index: 1,
-    count: 9,
+    count: 10,
     unlocked: 1,
     rival: { name: 'Aunt Halyna', short: 'Halyna', story: RIVALS[1].story, boss: false },
     stars: 0,
@@ -788,8 +788,8 @@ test('a career win earns stars, keeps the best, and moves the ladder on to the n
   finishCareerMatch(context, { won: true, conceded: 1 });
 
   assert.deepEqual(lastOf(context.preferences.writes), {
-    careerStars: [3, 0, 0, 0, 0, 0, 0, 0, 0],
-    careerLosses: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    careerStars: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    careerLosses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     rival: 1,
   });
 
@@ -812,8 +812,8 @@ test('a career loss earns nothing, counts toward a tired rival, and keeps the ri
   finishCareerMatch(context, { won: false });
 
   assert.deepEqual(lastOf(context.preferences.writes), {
-    careerStars: [2, 0, 0, 0, 0, 0, 0, 0, 0],
-    careerLosses: [0, 2, 0, 0, 0, 0, 0, 0, 0],
+    careerStars: [2, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    careerLosses: [0, 2, 0, 0, 0, 0, 0, 0, 0, 0],
     rival: 1,
   });
   assert.equal(lastOf(context.view.presentations).status, 'Match complete — Aunt Halyna won.');
@@ -826,15 +826,27 @@ test('a career loss earns nothing, counts toward a tired rival, and keeps the ri
 });
 
 test('a replayed win keeps the better stars, and beating the final boss leaves it chosen', () => {
-  const beaten = [3, 3, 3, 3, 3, 3, 3, 3, 1];
-  const context = setup({ mode: 'career', rival: 8, careerStars: beaten });
+  const beaten = [3, 3, 3, 3, 3, 3, 3, 3, 3, 1];
+  const context = setup({ mode: 'career', rival: 9, careerStars: beaten });
 
   context.view.handler(GAME_COMMAND.START);
   finishCareerMatch(context, { won: true, conceded: 5 });
 
   assert.deepEqual(lastOf(context.preferences.writes).careerStars, beaten, 'one star does not replace a better result');
-  assert.equal(lastOf(context.preferences.writes).rival, 8);
+  assert.equal(lastOf(context.preferences.writes).rival, 9);
   assert.equal(lastOf(context.view.presentations).career.next, null);
+});
+
+test('a champion of the nine regulars finds the landlord waiting at the top of the ladder', () => {
+  const context = setup({ mode: 'career', rival: 8, careerStars: [3, 3, 3, 3, 3, 3, 3, 3, 2] });
+
+  assert.equal(lastOf(context.view.presentations).career.unlocked, 9, 'stars saved before the ladder grew open it');
+
+  context.view.handler(GAME_COMMAND.START);
+  finishCareerMatch(context, { won: true, conceded: 5 });
+
+  assert.equal(lastOf(context.preferences.writes).rival, 9);
+  assert.equal(lastOf(context.view.presentations).career.next, 'The Landlord');
 });
 
 test('the career keeps its own records: no Solo streak, no best rally, and leaving costs nothing', () => {

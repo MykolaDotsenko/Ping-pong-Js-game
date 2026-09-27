@@ -2,10 +2,11 @@ import { clamp } from './physics.js';
 import { paddleWidth } from './power-ups.js';
 import { nextBetween } from './random.js';
 
-/** @import { GameConfig, GameEvent, GameState, Hazard, HazardKind } from './types.js' */
+/** @import { GameConfig, GameEvent, GameState, Hazard, HazardKind, Side } from './types.js' */
 
 /** Shared by every state without a boss attack under way, so the usual match allocates none. */
 export const NO_HAZARDS = Object.freeze(/** @type {Hazard[]} */ ([]));
+const NO_ATTACKS = Object.freeze(/** @type {HazardKind[]} */ ([]));
 
 // Drips fall from under the boss's paddle, one into each third of the court, so one is always
 // aimed at the player and the others fence the way out.
@@ -30,6 +31,53 @@ export function initialHazardState(seed, config) {
 
   const first = nextBetween(seed, ...config.boss.every);
   return { hazards: NO_HAZARDS, attackIn: first.value, seed: first.seed };
+}
+
+/**
+ * Whether a boss is the final one: the only boss with phases.
+ *
+ * @param {GameConfig} config
+ * @returns {boolean}
+ */
+export function isFinalBoss(config) {
+  return Boolean(config.boss?.phases);
+}
+
+/**
+ * The attacks a final boss has in its current phase; any other boss has its one attack, and
+ * a match without a boss none.
+ *
+ * @param {Record<Side, number>} score
+ * @param {GameConfig} config
+ * @returns {readonly HazardKind[]}
+ */
+export function bossAttacks(score, config) {
+  const { boss } = config;
+
+  if (!boss) {
+    return NO_ATTACKS;
+  }
+
+  return boss.phases?.[bossPhase(score, config)] ?? [boss.attack];
+}
+
+/**
+ * The phase a final boss is in. It moves on as the player closes in on winning, so each phase
+ * lasts an even share of the points the player needs; a boss without phases is always in its
+ * first.
+ *
+ * @param {Record<Side, number>} score
+ * @param {GameConfig} config
+ * @returns {number} counted from 0
+ */
+export function bossPhase(score, config) {
+  const phases = config.boss?.phases;
+
+  if (!phases || config.rules.kind !== 'match') {
+    return 0;
+  }
+
+  return Math.min(phases.length - 1, Math.floor((score.player * phases.length) / config.rules.winningScore));
 }
 
 /**
@@ -72,7 +120,8 @@ function strikePlayer(state, kind, config) {
 }
 
 /**
- * Starts the boss's next attack, announced now and striking once its warning is over.
+ * Starts the boss's next attack, announced now and striking once its warning is over. A final
+ * boss attacks with its phase's attack, or one drawn from its phase's several.
  *
  * @param {GameState} state
  * @param {GameConfig} config
@@ -89,8 +138,11 @@ function launchAttack(state, config, events) {
     seed = roll.seed;
     return roll.value;
   };
+  const kinds = bossAttacks(state.score, config);
+  // Only a choice draws from the random source, so a boss with one attack plays as it always has.
+  const kind = kinds.length === 1 ? kinds[0] : kinds[Math.min(kinds.length - 1, Math.floor(draw(0, kinds.length)))];
 
-  if (boss.attack === 'drip') {
+  if (kind === 'drip') {
     const margin = DRIP_RADIUS + 6;
     const lane = width / 3;
     const aimed = clamp(state.player.x + draw(-24, 24), margin, width - margin);
@@ -105,12 +157,12 @@ function launchAttack(state, config, events) {
     return { hazards, seed };
   }
 
-  const x = boss.attack === 'beam'
+  const x = kind === 'beam'
     ? clamp(state.player.x + draw(-40, 40), BEAM_HALF_WIDTH, width - BEAM_HALF_WIDTH)
     : width / 2;
 
-  events.push({ type: 'hazard-warn', kind: boss.attack, x });
-  return { hazards: [{ kind: boss.attack, x, y: config.height / 2, warn: boss.warning, ttl: BEAM_SECONDS }], seed };
+  events.push({ type: 'hazard-warn', kind, x });
+  return { hazards: [{ kind, x, y: config.height / 2, warn: boss.warning, ttl: BEAM_SECONDS }], seed };
 }
 
 /**

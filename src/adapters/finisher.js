@@ -1,3 +1,4 @@
+import { isFinalBoss } from '../domain/hazards.js';
 import { otherSide } from '../domain/power-ups.js';
 
 /**
@@ -6,20 +7,22 @@ import { otherSide } from '../domain/power-ups.js';
  * preference; it plays for the player's wins against the computer and for either winner
  * between two people, never at the end of a Rush run, where the run is lost. A match won with
  * a super ends in that super's own finisher; any other in one of seven, now and then in a comic
- * one instead; and a win to nil is PERFECT!. The renderer, the sound board and the view all
- * decide from this one place, so they agree.
+ * one instead; beating the final boss is an EVICTALITY of its own; and a win to nil is
+ * PERFECT!. The renderer, the sound board and the view all decide from this one place, so they
+ * agree.
  *
  * @import { GameConfig, GameEvent, GameState, Side, SuperKind } from '../domain/types.js'
  *
  * @typedef {'shatter' | 'launch' | 'slice' | 'vaporize' | 'meteor' | 'blackhole' | 'freeze'} RegularFinisher
  * @typedef {'incinerate' | 'shred' | 'derez' | 'electrocute'} SuperFinisher
  * @typedef {'tiny' | 'snooze'} ComicFinisher
- * @typedef {RegularFinisher | SuperFinisher | ComicFinisher} FinisherKind
+ * @typedef {'evict'} FinalFinisher
+ * @typedef {RegularFinisher | SuperFinisher | ComicFinisher | FinalFinisher} FinisherKind
  *
  * @typedef {object} Finisher
  * @property {FinisherKind} kind
  * @property {Side} loser whose paddle goes
- * @property {string} title the callout: PONGALITY, or a comic finisher's own
+ * @property {string} title the callout: PONGALITY, or a comic or final finisher's own
  * @property {SuperKind | null} super the super that won the match, whose finisher this is
  * @property {boolean} perfect the loser never scored
  *
@@ -28,6 +31,7 @@ import { otherSide } from '../domain/power-ups.js';
  * @property {boolean} twoPlayers a second person on the top paddle
  * @property {boolean} rush
  * @property {boolean} jokes the fun extras preference
+ * @property {boolean} [final] against the final boss
  */
 
 /** How long the finisher takes; the result screen waits this long, unless a tap skips it. */
@@ -44,11 +48,15 @@ export const SUPER_FINISHERS = Object.freeze({ fireball: 'incinerate', zigzag: '
 /** @type {Readonly<Record<ComicFinisher, string>>} */
 export const COMIC_TITLES = Object.freeze({ tiny: 'TINYALITY', snooze: 'SNOOZALITY' });
 
+/** Beating the final boss evicts the landlord, whatever won the match. */
+export const FINAL_TITLE = 'EVICTALITY';
+
 /** @type {readonly FinisherKind[]} */
 export const FINISHER_KINDS = Object.freeze([
   ...REGULAR_FINISHERS,
   ...Object.values(SUPER_FINISHERS),
   .../** @type {ComicFinisher[]} */ (Object.keys(COMIC_TITLES)),
+  'evict',
 ]);
 
 /** Of the finishers that no super decides, this many in a hundred are comic. */
@@ -71,12 +79,16 @@ export function finisherApplies({ winner, twoPlayers, rush, jokes }) {
  *   the match seed picks the kind, unless a super won the match
  * @returns {Finisher | null}
  */
-export function finisherFor({ winner, twoPlayers, rush, jokes, seed, super: superKind = null, perfect = false }) {
+export function finisherFor({ winner, twoPlayers, rush, jokes, final = false, seed, super: superKind = null, perfect = false }) {
   if (!finisherApplies({ winner, twoPlayers, rush, jokes })) {
     return null;
   }
 
   const loser = winner === 'player' ? 'opponent' : 'player';
+
+  if (final) {
+    return { kind: 'evict', loser, title: FINAL_TITLE, super: superKind, perfect };
+  }
 
   if (superKind) {
     return { kind: SUPER_FINISHERS[superKind], loser, title: 'PONGALITY', super: superKind, perfect };
@@ -107,6 +119,7 @@ export function finisherAt(event, state, config, jokes) {
     twoPlayers: config.opponent.controller === 'human',
     rush: config.rules.kind === 'rush',
     jokes,
+    final: isFinalBoss(config),
     seed: state.seed,
     super: event.super ?? null,
     perfect: state.score[otherSide(event.winner)] === 0,

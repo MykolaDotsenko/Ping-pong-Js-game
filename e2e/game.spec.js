@@ -862,6 +862,27 @@ test.describe('the career', () => {
     });
   });
 
+  test.describe('with the nine regulars beaten', () => {
+    test.use({ stored: { mode: 'career', careerStars: [3, 3, 3, 3, 3, 3, 3, 3, 3], rival: 9 } });
+
+    test('the landlord waits at the top of the ladder as the final boss, and plays a real match', async ({ page, hasTouch }) => {
+      await freezeTime(page);
+      await expect(page.locator('[data-rival-name]')).toHaveText('The Landlord');
+      await expect(page.locator('[data-rival-place]')).toHaveText('10/10');
+      await expect(page.locator('[data-rival-boss]')).toHaveText('Final boss');
+      await expect(page.getByRole('button', { name: 'Next rival' })).toBeDisabled();
+
+      await (hasTouch ? playButton(page).tap() : playButton(page).click());
+      await expect(status(page)).toHaveText('You 0 — 0 The Landlord');
+      await expect(page.locator('[data-rival-banner]')).toContainText('Final boss');
+      await expect(page.locator('[data-label="opponent"]')).toHaveText('Landlord');
+
+      // The countdown ends in the first serve, and the match plays on.
+      await page.clock.runFor(GAME_CONFIG.startDelaySeconds * 1000 + 500);
+      expect(Math.abs((await readBall(page)).y - GAME_CONFIG.height / 2)).toBeGreaterThan(30);
+    });
+  });
+
   test('a lost career match counts down to game over, and the same rival waits for a rematch', async ({ page, hasTouch }) => {
     await freezeTime(page);
     await (hasTouch ? playButton(page).tap() : playButton(page).click());
@@ -874,7 +895,7 @@ test.describe('the career', () => {
     await runUntilMatchOver(page);
 
     await expect(page.getByRole('heading', { name: 'Defeat' })).toBeVisible();
-    await expect(page.locator('[data-over-difficulty]')).toHaveText('Career 1/9 · vs Rookie Roma');
+    await expect(page.locator('[data-over-difficulty]')).toHaveText('Career 1/10 · vs Rookie Roma');
     await expect(page.locator('[data-continue]')).toBeVisible();
     await expect(page.locator('[data-over-stars]')).toBeHidden();
     await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();

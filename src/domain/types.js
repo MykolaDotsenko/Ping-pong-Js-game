@@ -74,9 +74,11 @@
  *   | { type: 'hazard-hit', kind: HazardKind, x: number, y: number }
  *   | { type: 'super-ready', side: Side, kind: SuperKind }
  *   | { type: 'super-swerve', x: number, y: number }
+ *   | { type: 'boss-phase', phase: number }
  *   | { type: 'game-over', winner: Side, super?: SuperKind }} GameEvent
  *   A paddle-hit's `super` is the super that return fired and `saved` the one it answered; a
- *   point's and a game-over's `super` is the super that scored it.
+ *   point's and a game-over's `super` is the super that scored it. A boss-phase is a final boss
+ *   moving on to its next phase, counted from 0, as the player closes in on winning.
  *
  * @typedef {object} GameState
  * @property {GamePhase} phase
@@ -126,6 +128,10 @@
  *
  * @typedef {object} BossConfig How a career boss attacks the player.
  * @property {HazardKind} attack
+ * @property {readonly (readonly HazardKind[])[]} [phases] A final boss's phases, which it moves
+ *   through as the player closes in on winning, each an even share of the points needed: the
+ *   attacks of each, drawn one at a time from a phase that has several. The first phase is the
+ *   boss's `attack`; a boss without phases always attacks with it.
  * @property {[number, number]} every Seconds of play between attacks, chosen at random in this range.
  * @property {number} warning Seconds a beam or lag is announced before it strikes.
  * @property {number} shrinkSeconds How long a drip or a beam that hits shrinks the player's paddle.

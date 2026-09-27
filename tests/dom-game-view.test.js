@@ -162,6 +162,7 @@ function createRoot({ modalDialogs = true } = {}) {
     ['overDifficulty', { 'data-over-difficulty': '' }],
     ['overBest', { 'data-over-best': '' }],
     ['overBestRush', { 'data-over-best-rush': '' }],
+    ['overChampion', { 'data-over-champion': '' }],
     ['continueLine', { 'data-continue': '', 'aria-hidden': 'true' }],
     ['overStars', { 'data-over-stars': '' }],
   ].map(([name, attributes]) => [
@@ -1076,12 +1077,41 @@ test('a career loss counts down "Continue?", and beating the final boss makes a 
   view.render(inCareer({ phase: GAME_PHASE.RUNNING }));
   view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
   assert.equal(dom.continueLine.textContent, 'Continue? 9');
+  assert.equal(dom.overChampion.hidden, true);
 
   view.render(inCareer({ phase: GAME_PHASE.RUNNING }, { index: 8 }));
   view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }, { index: 8, earned: 3 }));
   timers.fire();
   assert.equal(dom.overTitle.textContent, 'Champion');
   assert.equal(dom.overTitle.dataset.winner, 'player');
+  assert.equal(dom.overChampion.hidden, false, 'the arcade stays open');
+});
+
+test('the final boss is named as such, on the rival card and as the match starts', () => {
+  const { view, dom } = setup({ preferences: createPreferences({ mode: 'career' }) });
+  const landlord = { index: 9, count: 10, unlocked: 9, rival: { ...RIVAL_VIEW, name: 'The Landlord' } };
+
+  view.render(inCareer({}, landlord));
+  assert.equal(dom.rivalBoss.textContent, 'Final boss');
+  assert.equal(dom.rivalBoss.hidden, false);
+
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }, landlord));
+  assert.equal(dom.banner.textContent, 'Final bossThe Landlord');
+
+  view.render(inCareer({ phase: GAME_PHASE.READY }));
+  assert.equal(dom.rivalBoss.textContent, 'Boss', 'the other bosses are just bosses');
+});
+
+test('beating the final boss is shared as saving the last arcade', async () => {
+  const { view, dom, device } = setup({ preferences: createPreferences({ mode: 'career', jokes: false }) });
+  const landlord = { index: 9, count: 10, earned: 2, rival: { ...RIVAL_VIEW, name: 'The Landlord' } };
+
+  view.render(inCareer({ phase: GAME_PHASE.RUNNING }, landlord));
+  view.render(inCareer({ phase: GAME_PHASE.GAME_OVER, winner: 'player', score: { player: 7, opponent: 3 } }, landlord));
+  click(dom.share);
+  await nextTick();
+
+  assert.equal(device.shared[0], 'I beat The Landlord 7:3 and saved the last arcade in Paddle Noir: 2 of 3 stars.');
 });
 
 test('a career match starts under the rival\'s name, which leaves before the serve', () => {

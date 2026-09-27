@@ -8,9 +8,11 @@ import { DIFFICULTY_CONFIGS, GAME_CONFIG, RUSH_CONFIG, TWO_PLAYER_CONFIG, tuned 
 // Solo match, Rush, two players, and the career ladder below.
 
 // The Last Arcade: the career ladder. Nine regulars of the last arcade in town, each with a
-// tuning and one line of story, from a first-timer to the router in the back room. The fourth,
-// the seventh and the last are bosses, which attack the player's end of the court. Every name
-// is made up and names nobody.
+// tuning and one line of story, from a first-timer to the router in the back room, and at the
+// top the landlord who wants the place gone. The fourth, the seventh and the ninth are bosses,
+// which attack the player's end of the court; the landlord is the final boss, who borrows all
+// three of their attacks, one after another as the player closes in on winning. Every name is
+// made up and names nobody.
 
 const NO_POWER_UPS = Object.freeze({ enabled: false });
 
@@ -113,6 +115,26 @@ export const RIVALS = Object.freeze([
       opponent: { maxSpeed: 480, reach: 0.8, predictionWeight: 0.9, error: 30, aim: 0.4 },
       powerUps: NO_POWER_UPS,
       boss: { attack: 'lag', every: [9, 12], warning: 1, shrinkSeconds: 0, lagSeconds: 2.2 },
+    }),
+  },
+  {
+    name: 'The Landlord',
+    short: 'Landlord',
+    story: 'Owns the building. Wants a parking lot where the arcade stands.',
+    boss: true,
+    config: tuned(GAME_CONFIG, {
+      ball: { initialSpeed: 480, maxSpeed: 1200, speedIncrease: 1.06 },
+      opponent: { maxSpeed: 480, reach: 0.8, predictionWeight: 0.9, error: 30, aim: 0.45, widthScale: 1.15 },
+      powerUps: NO_POWER_UPS,
+      supers: { cpuChance: 0.75 },
+      boss: {
+        attack: 'drip',
+        phases: [['drip'], ['beam'], ['lag'], ['drip', 'beam', 'lag']],
+        every: [7, 9.5],
+        warning: 1,
+        shrinkSeconds: 2.5,
+        lagSeconds: 2,
+      },
     }),
   },
 ]);
