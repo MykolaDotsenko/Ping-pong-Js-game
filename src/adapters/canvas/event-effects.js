@@ -1,6 +1,9 @@
+import { matchPointSide } from '../../domain/game.js';
 import { paddleWidth } from '../../domain/power-ups.js';
+import { CURVE_SPIN, EDGE_OFFSET, isLoaded } from '../../domain/supers.js';
 import { finisherFor } from '../finisher.js';
-import { PICKUP_STYLE, speedIntensity, THEME } from './theme.js';
+import { meterBox } from './hud.js';
+import { PICKUP_STYLE, speedIntensity, SUPER_STYLE, THEME } from './theme.js';
 
 /**
  * @import { GameConfig, GameEvent, GameState, Side } from '../../domain/types.js'
@@ -14,9 +17,9 @@ import { PICKUP_STYLE, speedIntensity, THEME } from './theme.js';
  * @property {GameState} [state] the state the events came with, for where the paddles are
  */
 
-// A hit this far from the paddle's center, or with this much curve or speed, earns a callout.
-export const EDGE_OFFSET = 0.8;
-export const CURVE_SPIN = 0.35;
+// A hit this far from the paddle's center, or with this much curve, earns a callout; these are
+// the returns that charge a super meter more. A fast enough one is a smash.
+export { CURVE_SPIN, EDGE_OFFSET };
 export const SMASH_SPEED_SHARE = 0.75;
 
 /**
@@ -47,6 +50,13 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
         break;
       case 'paddle-hit':
         celebrateHit(effects, event, config);
+        break;
+      case 'super-ready':
+        chargeUp(effects, event, config, state);
+        break;
+      case 'super-swerve':
+        effects.burst({ x: event.x, y: event.y, color: `rgb(${SUPER_STYLE.zigzag.rgb})`, count: 14, speed: 260, life: 0.35, size: 1.8 });
+        effects.ring({ x: event.x, y: event.y, color: `rgba(${SUPER_STYLE.zigzag.rgb}, 0.8)`, radius: 6, growth: 220, life: 0.3, width: 2 });
         break;
       case 'paddle-graze': {
         // A glancing touch off the paddle's side: a dull spark and no fanfare, since it saves nothing.
@@ -86,7 +96,12 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
         break;
       }
       case 'match-point':
-        effects.label({ text: 'MATCH POINT', x: width / 2, y: height / 2, color: `rgb(${THEME.amber})`, life: 1.4, size: 34 });
+        // One point from winning with a super in hand: time to finish it.
+        if (state && isLoaded(state.meters[event.side])) {
+          finishIt(effects, event.side, config);
+        } else {
+          effects.label({ text: 'MATCH POINT', x: width / 2, y: height / 2, color: `rgb(${THEME.amber})`, life: 1.4, size: 34 });
+        }
         effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.amber}, 0.9)`, radius: 30, growth: 700, life: 0.8, width: 6 });
         break;
       case 'life-lost':
@@ -124,13 +139,22 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
 }
 
 /**
- * The callout a hit earns, if any: a curve beats a smash, which beats a catch at the edge.
+ * The callout a hit earns, if any: a super it fires names itself, and one it answers is SAVED!;
+ * otherwise a curve beats a smash, which beats a catch at the edge.
  *
  * @param {Extract<GameEvent, { type: 'paddle-hit' }>} event
  * @param {GameConfig} config
  * @returns {{ text: string, rgb: string } | null}
  */
 export function calloutFor(event, config) {
+  if (event.super) {
+    return { text: `${SUPER_STYLE[event.super].label}!`, rgb: SUPER_STYLE[event.super].rgb };
+  }
+
+  if (event.saved) {
+    return { text: 'SAVED!', rgb: THEME.side[event.side].rgb };
+  }
+
   if (Math.abs(event.spin) >= CURVE_SPIN) {
     return { text: 'CURVE!', rgb: THEME.lime };
   }
@@ -169,7 +193,18 @@ function celebrateHit(effects, event, config) {
 
   if (callout) {
     const labelY = event.side === 'player' ? event.y - 40 : event.y + 44;
-    effects.label({ text: callout.text, x: event.x, y: labelY, color: `rgb(${callout.rgb})` });
+    // A super's name is bigger, and centered so it always reads in full.
+    effects.label({ text: callout.text, x: event.super ? width / 2 : event.x, y: labelY, color: `rgb(${callout.rgb})`, size: event.super ? 38 : 30 });
+  }
+
+  if (event.super) {
+    // A super goes off: a blast in its color from the paddle that fired it.
+    const color = `rgb(${SUPER_STYLE[event.super].rgb})`;
+    effects.burst({ x: event.x, y: event.y, color, count: 46, speed: 460, direction: outward, spread: 2.6, life: 0.6, size: 2.6 });
+    effects.ring({ x: event.x, y: event.y, color, radius: 10, growth: 760, life: 0.5, width: 5 });
+    effects.flash(color, 0.14);
+    effects.shake(0.45);
+    effects.pulse(0.9);
   }
 
   // Every fifth hit of the rally rings out; a Multiball ball's returns do not count toward it.
@@ -177,6 +212,40 @@ function celebrateHit(effects, event, config) {
     effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.amber}, 0.9)`, radius: 30, growth: 620, life: 0.7, width: 5 });
     effects.flash(`rgb(${THEME.amber})`, 0.1);
   }
+}
+
+/**
+ * A meter just filled: it rings out in the color of the super it now holds, and at match
+ * point the side is told to finish it.
+ *
+ * @param {Effects} effects
+ * @param {Extract<GameEvent, { type: 'super-ready' }>} event
+ * @param {GameConfig} config
+ * @param {GameState} [state]
+ */
+function chargeUp(effects, { side, kind }, config, state) {
+  const box = meterBox(side, config);
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  const color = `rgb(${SUPER_STYLE[kind].rgb})`;
+
+  effects.ring({ x, y, color, radius: 8, growth: 320, life: 0.5, width: 3 });
+  effects.burst({ x, y, color, count: 18, speed: 200, life: 0.45, size: 1.8 });
+
+  if (state && matchPointSide(state, config) === side) {
+    finishIt(effects, side, config);
+  }
+}
+
+/**
+ * FINISH IT!: a side one point from winning holds a super.
+ *
+ * @param {Effects} effects
+ * @param {Side} side
+ * @param {GameConfig} config
+ */
+function finishIt(effects, side, config) {
+  effects.label({ text: 'FINISH IT!', x: config.width / 2, y: config.height / 2, color: `rgb(${THEME.side[side].rgb})`, life: 1.2, size: 38 });
 }
 
 /**

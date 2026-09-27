@@ -2,7 +2,7 @@ import { GAME_PHASE } from '../domain/game.js';
 import { BallTrail } from './canvas/ball-trail.js';
 import { GlowSprites, paintCourt, paintGrid } from './canvas/court.js';
 import { playEvents } from './canvas/event-effects.js';
-import { drawLabels, drawRally, drawServeCountdown } from './canvas/hud.js';
+import { drawLabels, drawMeters, drawRally, drawServeCountdown } from './canvas/hud.js';
 import { drawBall, drawExtraBalls, drawGhostFog, drawHazards, drawPaddle, drawPickups, drawTrail } from './canvas/scene.js';
 import { THEME } from './canvas/theme.js';
 import { Effects } from './effects.js';
@@ -291,6 +291,7 @@ export class CanvasRenderer {
     }
 
     drawServeCountdown(ctx, state, config);
+    drawMeters(ctx, state, config, now);
     drawLabels(ctx, effects.labels);
 
     if (effects.flashAlpha > 0) {

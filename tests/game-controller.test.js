@@ -718,6 +718,30 @@ function finishCareerMatch({ controller, scheduler }, { won, conceded = 0 }) {
   scheduler.flush(1020);
 }
 
+test('supers are the player\'s choice in Solo, two-player and career matches, and never in Rush', () => {
+  const choose = (choices) => buildMatchConfig(MATCH_CATALOG, { mode: 'solo', difficulty: 'normal', powerUps: true, supers: true, ...choices });
+
+  for (const mode of ['solo', 'duo', 'career']) {
+    const on = choose({ mode });
+    assert.equal(on.supers.enabled, true, mode);
+    assert.equal(choose({ mode, supers: false }).supers.enabled, false, mode);
+    assert.equal(on.supers.cpuChance, (mode === 'duo' ? TWO_PLAYER_CONFIG : mode === 'career' ? RIVALS[0].config : GAME_CONFIG).supers.cpuChance);
+  }
+
+  assert.strictEqual(choose({ mode: 'rush' }), RUSH_CONFIG);
+  assert.equal(choose({ difficulty: 'hard' }).supers.cpuChance, DIFFICULTY_CONFIGS.hard.supers.cpuChance, 'each difficulty keeps its own');
+  assert.equal(choose({ mode: 'career', rival: 3, losses: 2 }).supers.enabled, true, 'a tired rival plays supers too');
+  assert.strictEqual(choose({ supers: false }), GAME_CONFIG, 'without supers a match is built exactly as before');
+});
+
+test('the match the controller builds follows the Supers setting', () => {
+  const { renderer } = setup({ supers: true });
+  assert.equal(lastOf(renderer.frames).config.supers.enabled, true);
+
+  const { renderer: plain } = setup({ supers: false });
+  assert.equal(lastOf(plain.frames).config.supers.enabled, false);
+});
+
 test('a career match is built from the chosen rival, which plays tired after beating the player twice', () => {
   const choose = (choices) => buildMatchConfig(MATCH_CATALOG, { mode: 'career', difficulty: 'hard', powerUps: false, ...choices });
 

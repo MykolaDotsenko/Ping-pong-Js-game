@@ -27,6 +27,18 @@ test('the player feels their own hits, points and the end of a match', () => {
   assert.deepEqual(calls, [12, [18, 40, 18], 45, [30, 60, 30, 60, 120], [160]]);
 });
 
+test('firing a super thumps, answering one knocks, and a full meter taps twice, for the player only', () => {
+  const { haptics, calls } = setup();
+  const hit = (side, extra) => ({ type: 'paddle-hit', side, x: 0, y: 0, speed: 400, spin: 0, rally: 1, ...extra });
+
+  haptics.handle([hit('player', { super: 'fireball' })]);
+  haptics.handle([hit('player', { saved: 'zigzag' })]);
+  haptics.handle([{ type: 'super-ready', side: 'player', kind: 'thunder' }]);
+  haptics.handle([hit('opponent', { super: 'phantom' }), { type: 'super-ready', side: 'opponent', kind: 'zigzag' }]);
+
+  assert.deepEqual(calls, [[25, 30, 45], 30, [12, 40, 24]]);
+});
+
 test('vibration can be switched off', () => {
   const { haptics, calls } = setup({ vibration: false });
 

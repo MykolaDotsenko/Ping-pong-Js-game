@@ -44,34 +44,40 @@ const DRAMA_MIN_SPEED_SHARE = 0.55;
 
 /**
  * Builds the tuning for the next match from the player's choices. A career rival plays as it
- * always does, power-ups included, unless it has beaten the player twice in a row.
+ * always does, power-ups included, unless it has beaten the player twice in a row. Supers are
+ * the player's choice in every match but a Rush run, which never has them.
  *
  * @param {MatchCatalog} catalog
- * @param {{ mode: Mode, difficulty: string, powerUps: boolean, rival?: number, losses?: number }} choices
+ * @param {{ mode: Mode, difficulty: string, powerUps: boolean, supers?: boolean, rival?: number, losses?: number }} choices
  * @returns {GameConfig}
  */
 export function buildMatchConfig(catalog, choices) {
-  let base = catalog.difficulties[/** @type {keyof MatchCatalog['difficulties']} */ (choices.difficulty)]
-    ?? catalog.difficulties.normal;
-
   if (choices.mode === 'rush') {
     return catalog.rush;
   }
 
   if (choices.mode === 'career') {
     const { config } = catalog.career[choices.rival ?? 0] ?? catalog.career[0];
-    return (choices.losses ?? 0) >= EASE_AFTER ? easedConfig(config) : config;
+    return withSupers((choices.losses ?? 0) >= EASE_AFTER ? easedConfig(config) : config, choices.supers);
   }
 
-  if (choices.mode === 'duo') {
-    base = catalog.duo;
-  }
+  const base = choices.mode === 'duo'
+    ? catalog.duo
+    : catalog.difficulties[/** @type {keyof MatchCatalog['difficulties']} */ (choices.difficulty)] ?? catalog.difficulties.normal;
+  const powered = choices.powerUps === base.powerUps.enabled
+    ? base
+    : { ...base, powerUps: { ...base.powerUps, enabled: choices.powerUps } };
 
-  if (choices.powerUps === base.powerUps.enabled) {
-    return base;
-  }
+  return withSupers(powered, choices.supers);
+}
 
-  return { ...base, powerUps: { ...base.powerUps, enabled: choices.powerUps } };
+/**
+ * @param {GameConfig} config
+ * @param {boolean} [supers]
+ * @returns {GameConfig}
+ */
+function withSupers(config, supers = false) {
+  return supers === config.supers.enabled ? config : { ...config, supers: { ...config.supers, enabled: supers } };
 }
 
 export class GameController {
@@ -247,8 +253,8 @@ export class GameController {
   }
 
   selectedConfig() {
-    const { mode, difficulty, powerUps, careerLosses } = this.preferences.get();
-    return buildMatchConfig(this.catalog, { mode, difficulty, powerUps, rival: this.rival, losses: careerLosses[this.rival] ?? 0 });
+    const { mode, difficulty, powerUps, supers, careerLosses } = this.preferences.get();
+    return buildMatchConfig(this.catalog, { mode, difficulty, powerUps, supers, rival: this.rival, losses: careerLosses[this.rival] ?? 0 });
   }
 
   /**

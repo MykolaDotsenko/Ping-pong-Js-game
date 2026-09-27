@@ -181,6 +181,28 @@ test('every event type has a sound, and milestone rallies add a chime', () => {
   assert.equal(contexts[0].oscillators.length - beforeExtra, 2);
 });
 
+test('supers sound off: a meter filling, each super its own way, a swerve and a save', () => {
+  const { board, contexts } = setup();
+  const count = (events) => {
+    const before = contexts[0]?.oscillators.length ?? 0;
+    board.handle(events);
+    return contexts[0].oscillators.length - before;
+  };
+  const plain = count([hit(1)]);
+  const kinds = ['fireball', 'zigzag', 'phantom', 'thunder'].map((kind) => {
+    const before = contexts[0].oscillators.length;
+    board.handle([{ ...hit(1), super: kind }]);
+    return contexts[0].oscillators.slice(before + plain).map((oscillator) => `${oscillator.type}@${oscillator.frequency.events[0][1]}`).join(' ');
+  });
+
+  assert.equal(new Set(kinds).size, 4, 'each super sounds different');
+  assert.ok(kinds.every((sound) => sound.length > 0));
+  assert.ok(count([{ ...hit(1), saved: 'zigzag' }]) > plain, 'a save clangs');
+  assert.equal(count([{ type: 'super-ready', side: 'player', kind: 'zigzag' }]), 4);
+  assert.equal(count([{ type: 'super-ready', side: 'opponent', kind: 'zigzag' }]), 3);
+  assert.equal(count([{ type: 'super-swerve', x: 0, y: 0 }]), 1);
+});
+
 test('sound effects and music share one audio context', () => {
   FakeAudioContext.created = [];
   const audio = new AudioOutput({ AudioContext: FakeAudioContext });

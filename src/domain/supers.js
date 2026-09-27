@@ -293,20 +293,34 @@ function shotProgress(y, side, config) {
 }
 
 /**
+ * The stretch of the court, in board y, where a phantom in flight cannot be seen; null for any
+ * other shot.
+ *
+ * @param {SuperShot | null} shot
+ * @param {GameConfig} config
+ * @returns {{ from: number, to: number } | null} from the smaller y to the larger
+ */
+export function phantomBand(shot, config) {
+  if (!shot || shot.kind !== 'phantom') {
+    return null;
+  }
+
+  const start = faceLine(shot.side, config);
+  const span = faceLine(otherSide(shot.side), config) - start;
+  const [a, b] = [start + span * PHANTOM_FROM, start + span * PHANTOM_TO];
+
+  return { from: Math.min(a, b), to: Math.max(a, b) };
+}
+
+/**
  * Whether the ball is a phantom in the middle of the court, where nobody can see it.
  *
  * @param {GameState} state
  * @param {GameConfig} config
  */
 export function phantomHidden(state, config) {
-  const shot = state.superShot;
-
-  if (!shot || shot.kind !== 'phantom') {
-    return false;
-  }
-
-  const progress = shotProgress(state.ball.y, shot.side, config);
-  return progress > PHANTOM_FROM && progress < PHANTOM_TO;
+  const band = phantomBand(state.superShot, config);
+  return band !== null && state.ball.y > band.from && state.ball.y < band.to;
 }
 
 /**

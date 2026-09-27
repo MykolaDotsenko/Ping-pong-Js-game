@@ -56,6 +56,7 @@ const requiredFiles = [
   'tests/game.test.js',
   'tests/hazards.test.js',
   'tests/supers.test.js',
+  'tests/canvas-supers.test.js',
   'tests/game-controller.test.js',
   'tests/game-loop.test.js',
   'tests/haptics.test.js',

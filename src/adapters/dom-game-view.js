@@ -27,7 +27,7 @@ const MODE_TIPS = Object.freeze({
   career: 'Beat each regular to open the next. Three of them are bosses who fight dirty.',
 });
 const PLAYER_LABELS = Object.freeze({ solo: 'You', rush: 'Hits', duo: 'P1', career: 'You' });
-const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps', 'jokes']);
+const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps', 'supers', 'jokes']);
 /** Where the arcade's "Continue?" countdown starts, a second a step, after a loss. */
 const CONTINUE_FROM = 9;
 /** How long a career rival's name stays up at the start of a match, over the countdown. */
@@ -306,6 +306,11 @@ export class DomGameView {
     // Rush and career rivals bring their own power-ups, or none; Solo and two players choose.
     for (const element of this.findAll('[data-power-ups-choice]')) {
       element.hidden = mode === 'rush' || mode === 'career';
+    }
+
+    // A Rush run never has supers; every other match is the player's choice.
+    for (const element of this.findAll('[data-supers-choice]')) {
+      element.hidden = mode === 'rush';
     }
 
     for (const element of this.findAll('[data-mode-tip]')) {

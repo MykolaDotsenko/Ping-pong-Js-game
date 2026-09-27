@@ -2,7 +2,7 @@
  * The neon look shared by every part of the canvas renderer: colors, fonts and the few
  * drawing helpers they all use.
  *
- * @import { GameConfig, PowerUpKind } from '../../domain/types.js'
+ * @import { GameConfig, PowerUpKind, SuperKind } from '../../domain/types.js'
  */
 
 // Pure white (#ffffff) is reserved for the ball core, and each paddle has a unique core
@@ -39,6 +39,16 @@ export const PICKUP_STYLE = Object.freeze({
   turbo: Object.freeze({ rgb: '251, 191, 36', glyph: '⚡', label: 'TURBO' }),
   ghost: Object.freeze({ rgb: '167, 139, 250', glyph: '◌', label: 'GHOST' }),
   multi: Object.freeze({ rgb: '163, 230, 53', glyph: '••', label: 'MULTIBALL' }),
+});
+
+// Each super has a color of its own, which its ball, its trail, its callout and a full meter
+// holding it all wear.
+/** @type {Readonly<Record<SuperKind, { rgb: string, label: string }>>} */
+export const SUPER_STYLE = Object.freeze({
+  fireball: Object.freeze({ rgb: '249, 115, 22', label: 'FIREBALL' }),
+  zigzag: Object.freeze({ rgb: '250, 204, 21', label: 'ZIGZAG' }),
+  phantom: Object.freeze({ rgb: '216, 180, 254', label: 'PHANTOM' }),
+  thunder: Object.freeze({ rgb: '96, 165, 250', label: 'THUNDER' }),
 });
 
 export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
