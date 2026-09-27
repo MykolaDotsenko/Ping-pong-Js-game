@@ -38,6 +38,7 @@ script.js  ← composition root; the only module that touches browser globals
                            +--> domain/physics.js
                            +--> domain/opponent.js
                            +--> domain/power-ups.js ──> domain/random.js
+                           +--> domain/supers.js
                            +--> domain/hazards.js
 ```
 
@@ -67,6 +68,7 @@ These rules are enforced by ESLint per directory (`eslint.config.js`). `tests/ar
 - ball movement, wall reflection, swept contact between the ball and a paddle's face, corners and sides, bounce angles and speed progression
 - spin, and the curve it puts on the ball
 - the computer opponent, and the tunings a career rival may add: returns that curve away from the player, and a paddle of its own size
+- supers (`supers.js`): returns charge each side's meter, more off the paddle's edge, with curve, or when they answer a super, and a lost point helps the side behind. A full meter holds a super drawn from the seeded random source, never the one that side fired last, and fires with the next flick at a return, or, for the computer, when chance says so. A fireball flies faster than any ordinary ball, wide of the receiver; a zigzag swerves at each third of the court; a phantom hides halfway across; thunder heads straight for the receiver and breaks late, with a spin that grows as it comes, computed to land a set distance wide whatever its speed. A super ends when it is returned, and the return goes on from the pace an ordinary rally would have had; a point it wins, and a match, carry its name
 - a career boss's attacks on the player's end of the court (`hazards.js`): drips, one aimed at the player, a beam announced a second before it strikes a column, and lag, which makes the player see the balls in fits and starts. A hit only shrinks the paddle for a few seconds; attacks come in live play only, never overlap, and stop at a point
 
 The domain accepts plain data and returns new state. It does not draw, play sounds, register listeners, query the DOM, schedule frames, read the clock, or know which device produced an input command. The shapes it works with (`GameState`, `GameConfig`, `InputSnapshot`, `GameEvent`, `Rules`, `Pickup`) are declared once in `src/domain/types.js`.
@@ -83,7 +85,7 @@ Power-ups need chance: what kind appears, where, and when. The core is forbidden
 
 ### Game events
 
-Every transition lists what happened in `state.events`: `match-start`, `menu`, `paused`, `resumed`, `countdown`, `serve`, `paddle-hit`, `paddle-graze`, `wall-bounce`, `pickup-spawn`, `pickup`, `point`, `match-point`, `life-lost`, `hazard-warn`, `hazard-hit` and `game-over`, each with the data an effect needs (where, how fast, which side, the rally count, whether a Multiball ball made the hit). Quiet steps share one frozen empty list, so they allocate nothing.
+Every transition lists what happened in `state.events`: `match-start`, `menu`, `paused`, `resumed`, `countdown`, `serve`, `paddle-hit`, `paddle-graze`, `wall-bounce`, `pickup-spawn`, `pickup`, `point`, `match-point`, `life-lost`, `hazard-warn`, `hazard-hit`, `super-ready`, `super-swerve` and `game-over`, each with the data an effect needs (where, how fast, which side, the rally count, whether a Multiball ball made the hit, the super a return fired or answered, the super that won a point). Quiet steps share one frozen empty list, so they allocate nothing.
 
 Events are plain data on the state rather than callbacks or an event bus. The domain stays pure, tests assert on events directly, and any number of adapters can react without the domain knowing they exist.
 
@@ -94,7 +96,7 @@ Events are plain data on the state rather than callbacks or an event bus. The do
 - start, restart, pause/resume, and back to the menu
 - idempotent pause when the page loses focus
 - advance one simulation step and hand its events to every feedback adapter
-- build the match from the mode, difficulty and options chosen in the preferences when a new match starts, never mid-match (`buildMatchConfig`)
+- build the match from the mode, difficulty and options chosen in the preferences when a new match starts, never mid-match (`buildMatchConfig`); supers are off in every preset, so the Supers setting turns them on for the match being built, in every mode but Rush
 - tell the input adapter how many people are steering
 - drama: a short hit-stop on hard hits, and slow motion while a match-point ball closes on a paddle
 - keep the best rally (a Solo record), the best Rush run and the Solo win statistics, and flag a record worth celebrating; records are read fresh from the preferences, which another tab may have raised
@@ -165,7 +167,9 @@ Focus is managed deliberately:
 
 The renderer converts game state into pixels and implements `FeedbackPort`: game events become sparks, shockwave rings, screen shake, flashes, paddle squash, a grid pulse and victory fireworks, simulated by `Effects`, a small presentation-only particle system with injectable randomness.
 
-`canvas-renderer.js` only owns the canvas, its size and its frames. What a frame contains lives in `src/adapters/canvas/`: `theme.js` (colors and shared helpers), `court.js` (the pre-rendered court and glow sprites), `scene.js` (ball, trail, Multiball balls, paddles, power-ups, a boss's drips and beams, the Ghost fog), `hud.js` (countdown, rally counter, callouts), `ball-trail.js` and `event-effects.js` (the visual side of each game event). Each is unit-tested against a recording 2D context. Like Ghost, Lag lives only in the picture: while it lasts, the renderer redraws the balls about seven times a second, with no trail to give them away, and the game underneath runs on smoothly.
+`canvas-renderer.js` only owns the canvas, its size and its frames. What a frame contains lives in `src/adapters/canvas/`: `theme.js` (colors and shared helpers), `court.js` (the pre-rendered court and glow sprites), `scene.js` (ball, trail, Multiball balls, paddles, power-ups, a boss's drips and beams, the Ghost fog), `hud.js` (countdown, rally counter, the super meters, callouts), `ball-trail.js` and `event-effects.js` (the visual side of each game event). Each is unit-tested against a recording 2D context. Like Ghost, Lag lives only in the picture: while it lasts, the renderer redraws the balls about seven times a second, with no trail to give them away, and the game underneath runs on smoothly. A phantom is hidden the same way, from the stretch of court the domain reports (`phantomBand`), and shows only as a faint ring that careful eyes can follow.
+
+`finisher.js` decides the finisher once, from the game-over event and the final score, for the board, the sound board and the view alike: a super's own finisher for a match a super won, otherwise one of seven drawn from the match seed, now and then a comic one instead, and PERFECT! for a win to nil. Every finisher fits in the 1.2 seconds the result screen waits, flashes at most once, and is skipped by a tap.
 
 It is built for phones:
 
@@ -183,11 +187,11 @@ The page is laid out in CSS only. The stage is a size container, and the court t
 
 ### SoundBoard and MusicPlayer
 
-Both implement `FeedbackPort` with Web Audio, and every sound is synthesized at play time from oscillators and generated noise, with no audio files. The sound board plays effects: hit pitch climbs with the rally, every fifth hit adds a chime, and the countdown, power-ups, match point and a lost life each have their own cue. The music player is a step sequencer that plays one of five original tracks, written as data in `music-tracks.js` (tempo, bar roots, bass, chords, lead and drum patterns). Notes are scheduled ahead of the clock, so timing stays exact whatever the frame rate; a track starts with bass and kick alone, adds the chords with snare and hi-hat at three hits and the lead at six, fades on pause, stops at the menu, and starts every match from the bass again. Drums are synthesized too: a falling sine for the kick and high-passed noise for the snare and hi-hat. Choosing a track in the menu or on the pause screen plays a four-second preview with every layer in; it never interrupts a match, and a track changed during a pause plays from its first bar on resume. Every envelope starts silent before its first scheduled value, because a new gain node passes full level until then and a source starting a sample early would click. Both play through one audio context, owned by `AudioOutput`: browsers limit how many a page may open, so it is created once, on the first event, which always follows a click or key press, and resumed whenever the browser suspended it.
+Both implement `FeedbackPort` with Web Audio, and every sound is synthesized at play time from oscillators and generated noise, with no audio files. The sound board plays effects: hit pitch climbs with the rally, every fifth hit adds a chime, and the countdown, power-ups, match point, a lost life, a meter filling, each super and each finisher have their own cue. The music player is a step sequencer that plays one of five original tracks, written as data in `music-tracks.js` (tempo, bar roots, bass, chords, lead and drum patterns). Notes are scheduled ahead of the clock, so timing stays exact whatever the frame rate; a track starts with bass and kick alone, adds the chords with snare and hi-hat at three hits and the lead at six, fades on pause, stops at the menu, and starts every match from the bass again. Drums are synthesized too: a falling sine for the kick and high-passed noise for the snare and hi-hat. Choosing a track in the menu or on the pause screen plays a four-second preview with every layer in; it never interrupts a match, and a track changed during a pause plays from its first bar on resume. Every envelope starts silent before its first scheduled value, because a new gain node passes full level until then and a source starting a sample early would click. Both play through one audio context, owned by `AudioOutput`: browsers limit how many a page may open, so it is created once, on the first event, which always follows a click or key press, and resumed whenever the browser suspended it.
 
 ### Haptics
 
-Implements `FeedbackPort` with `navigator.vibrate`: short pulses for the player's own hits, patterns for points and the end of a match. It is inert where vibration is unsupported, and the view hides the vibration switch there.
+Implements `FeedbackPort` with `navigator.vibrate`: short pulses for the player's own hits, patterns for points, the end of a match, a super fired or answered and a meter filling. It is inert where vibration is unsupported, and the view hides the vibration switch there.
 
 ### WakeLock and BrowserDevice
 
@@ -246,12 +250,15 @@ The opponent is designed to feel like a person rather than a wall:
 - **prediction:** it folds the ball's straight path at the side walls to find where it will cross its paddle, and trusts that prediction as much as its difficulty allows
 - **misjudgement:** its error grows with ball speed and changes with every hit; it is derived from the rally state, so it stays deterministic
 - **aim:** it meets the ball off-center so the return angles away from the player
-- **no spin prediction:** a curved shot is the player's way past it
+- **no spin prediction:** a curved shot is the player's way past it, and a super's swerve or late break fools it the same way
+- **no sight of a phantom:** while one is out of sight it can only guess where it went, and may be well out, whatever its difficulty
 - **one ball at a time:** with Multiball balls in play, it keeps its eye on whichever will reach its paddle first, of those still in front of it; with the ball alone, nothing changes
 
 Prediction and physical ability remain separate: prediction chooses a target, and the speed cap limits how fast the paddle can reach it.
 
 Multiball was measured with the same human-like bots before and after it was added: the win rate on every difficulty moved only within noise. It favours whoever collects it, like every power-up; a player who follows both balls breaks about even when the computer collects it.
+
+Supers were tuned with the same bots, and with a second harness that fires each kind of super many times from rally situations: the computer waiting in the middle, as it does, and bots that react a fifth of a second late, as people do. On Normal each super wins about half its points, fewer on Hard; each side fires two or three a match; and a lost point's charge helps the side behind. Turned on, supers make the harder matches more winnable, since the bots answer the computer's supers better than it answers theirs: a decent bot's win rate on Hard rises from about a quarter to about two in five, and a casual one's on Normal from one in twenty to about one in six. The career ladder keeps its order, its last two rivals within a few points of each other either way. The Supers switch brings back the classic balance, which the reference matches pin. One finding shaped them: a computer that misjudges toward a wall stops there and still covers the corner, so supers that land near a wall are caught, and the fireball, phantom and thunder aim a set distance from the receiver instead of into the corner.
 
 ### Difficulty tuning
 
@@ -273,14 +280,14 @@ Documentation can become stale, so the project encodes its rules as checks that 
 
 The dependency-free unit suite targets deterministic rules and the logic of the adapters:
 
-- domain: state machine and events, the match and Rush rules, scoring and match point, the countdown and serve pauses, paddle control for one or two people, paddle contact on faces, corners and sides with a no-overlap property test, spin and curves, the speed cap, the opponent, power-ups, the random source, and a full rally
+- domain: state machine and events, the match and Rush rules, scoring and match point, the countdown and serve pauses, paddle control for one or two people, paddle contact on faces, corners and sides with a no-overlap property test, spin and curves, the speed cap, the opponent, power-ups, supers, the random source, and a full rally
 - application: loop lifecycle with time scale and hold, interpolation, commands, the match built per mode, drama, feedback dispatch, the rally, Rush and win-streak records, and forfeits
 - adapters: input with two-player halves and dialogs, the view with modes, the modal tutorial and focus, the canvas renderer and its modules, effects and callouts, sound and music on one audio context, vibration, the wake lock, sharing and full screen, and preferences across tabs, driven through fake event targets, a recording 2D context, fake audio contexts and fake storage thanks to injected globals
 - architecture: the lint rules themselves, and that every module loads without a browser
 
 ### Reference matches
 
-New features must not change how a classic match plays. `tests/reference-matches.test.js` replays seven recorded bot matches (Solo on every difficulty, keyboard steering, Rush, two players, and Solo with power-ups) and compares a SHA-256 digest of every step, the ball, paddles, score, rally, lives, events and any split-off balls included, with `tests/fixtures/reference-matches.json`. A change meant to alter classic play re-records the fixture with `npm run reference:record` and says why in its commit. So far only the power-up match has been re-recorded, once, when Multiball joined the kinds a power-up is drawn from; before that, the collision code it shares with the ball was reworked and all seven matches replayed identically.
+New features must not change how a classic match plays. `tests/reference-matches.test.js` replays eight recorded bot matches (Solo on every difficulty, keyboard steering, Rush, two players, Solo with power-ups, and Solo with supers, charged faster so one match fires every kind) and compares a SHA-256 digest of every step, the ball, paddles, score, rally, lives, events, any split-off balls and, with supers on, the meters included, with `tests/fixtures/reference-matches.json`. A change meant to alter classic play re-records the fixture with `npm run reference:record` and says why in its commit. So far only the power-up match has been re-recorded, once, when Multiball joined the kinds a power-up is drawn from; before that, the collision code it shares with the ball was reworked and all seven matches replayed identically, and they did again when supers were added, off in every classic preset.
 
 `tests/modules-load.test.js` loads every module under `src/`, so a file no test exercises counts at 0% instead of being left out. The coverage gate then holds the whole of `src/` to 95% lines and 90% branches and functions, and every file on its own to 90% lines, 85% branches and 80% functions, so no module can hide behind the average.
 
@@ -296,7 +303,7 @@ Playwright checks the assembled system on desktop and mobile Chromium. Instead o
 - Rush lives running out, and two players steering their own halves of the board
 - the heads-up display fitting a 320px-wide phone without sideways scrolling, and every control of its menu and pause screen at least 44 by 44 pixels
 - a phone held sideways: the HUD beside a full-height court, and a menu sheet that fits with fingertip-sized controls
-- preferences surviving a reload, and the result screen after a full match
+- preferences surviving a reload, the Supers switch hidden in Rush, the super meter on the court only while supers are on, and the result screen after a full match
 - auto-pause on focus loss, and an idle render loop outside of a match
 - a canvas backing store that matches device pixels, and an installable manifest
 
@@ -323,6 +330,7 @@ The boundaries make future changes local:
 - tune or add difficulties → `config.js`
 - add a mode → a `Rules` variant in `domain/types.js` and a preset in `config.js`
 - add a power-up → a kind in `domain/power-ups.js`, its look in `adapters/canvas/theme.js`, its sound in the sound board; the power-up reference match is re-recorded, since the kinds are drawn from the seeded random source
+- add a super → a kind in `domain/supers.js` with its launch and flight, its look in `adapters/canvas/theme.js`, a finisher in `adapters/finisher.js`, its sound in the sound board; the supers reference match is re-recorded, since the kinds are drawn from the seeded random source
 - change the opponent's personality → `domain/opponent.js`
 - new effects or sounds for an event → `adapters/canvas/event-effects.js` or the sound board, without touching the game
 - randomize serves → draw from the seeded random source already in the state, keeping the core deterministic

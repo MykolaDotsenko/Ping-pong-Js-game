@@ -34,11 +34,13 @@ const PHANTOM_SPIN = 0.3;
 // A zigzag leans this far from straight, in radians, and swerves the other way as it crosses
 // each third of the court.
 const ZIGZAG_LEAN = 0.6;
-// A phantom vanishes between these shares of its way across, and shows again in time to be met.
+// A phantom vanishes between these shares of its way across, and shows again just before it
+// arrives: the receiver must read it from its start, or from its faint shimmer.
 export const PHANTOM_FROM = 0.3;
 export const PHANTOM_TO = 0.9;
-// Thunder flies straight at the receiver's paddle and breaks late: its spin grows with the
-// square of the way it has come, just enough to land this far to the side, whatever its speed.
+// Thunder flies at the ball's top speed, straight at the receiver's paddle, and breaks late:
+// its spin grows with the square of the way it has come, just enough to land this far to the
+// side, whatever its speed.
 const THUNDER_BREAK = 110;
 const THUNDER_START_SPIN = 0.05;
 const THUNDER_SPEED_SHARE = 1;
@@ -161,9 +163,9 @@ function openSide(receiverX, ball, config) {
 /**
  * What a super does to the ordinary return it rides on. A fireball flies faster than any
  * ordinary ball can, wide of the receiver's paddle toward the open side of the court. A zigzag
- * leans toward the open side and swerves at each third of the court. A phantom goes wide too
- * and vanishes halfway across. Thunder heads straight for the receiver's paddle and breaks
- * late toward the open side.
+ * leans toward the open side and swerves at each third of the court. A phantom goes wide too,
+ * curving on while it vanishes halfway across. Thunder heads straight for the receiver's
+ * paddle and breaks late toward the open side.
  *
  * @param {SuperKind} kind
  * @param {Ball} ball
