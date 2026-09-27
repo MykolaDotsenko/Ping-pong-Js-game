@@ -155,11 +155,11 @@ Translates pointer, touch, and keyboard input into device-neutral movement snaps
 
 ### DomGameView
 
-Owns the HUD, the menu with its modes and the career's rival picker, the tutorial, pause and result overlays, and the settings. Controls declare their meaning in markup — `data-command`, `data-mode`, `data-difficulty`, `data-setting`, `data-rival-step` — so the view binds them generically. After a won match with a finisher (`finisher.js`, which the renderer and the sound board consult too), the result screen waits the 1.2 seconds the finisher takes; a tap or a key brings it at once, and that key goes no further, so `Space` cannot also start the next match unseen. After a loss, a decorative CONTINUE? line counts down under the result; a career match starts under the rival's name for a moment. Both are hidden from screen readers, which the status line informs. It hands sharing and full screen to `BrowserDevice`, hiding those buttons where the browser lacks the feature. It only writes to the DOM when the presentation changes, which keeps the `aria-live` status region from being rewritten every frame, and it never repeats the rules from memory: the menu line is built from the rules in the presentation.
+Owns the HUD, the title menu with its mode cards and the career's rival picker, the tutorial and settings dialogs, and the pause and result overlays. On the title screen the scoreboard, the pause button and the thumb rail stay hidden in the room kept for them, so a match starts without the court moving; the menu's neon sign is SVG lit by CSS, once a visit. Controls declare their meaning in markup — `data-command`, `data-mode`, `data-difficulty`, `data-setting`, `data-rival-step` — so the view binds them generically. After a won match with a finisher (`finisher.js`, which the renderer and the sound board consult too), the result screen waits the 1.2 seconds the finisher takes; a tap or a key brings it at once, and that key goes no further, so `Space` cannot also start the next match unseen. After a loss, a decorative CONTINUE? line counts down under the result; a career match starts under the rival's name for a moment. Both are hidden from screen readers, which the status line informs. It hands sharing and full screen to `BrowserDevice`, hiding those buttons where the browser lacks the feature. It only writes to the DOM when the presentation changes, which keeps the `aria-live` status region from being rewritten every frame, and it never repeats the rules from memory: the menu line is built from the rules in the presentation.
 
 Focus is managed deliberately:
 
-- the tutorial is a native `<dialog>` opened with `showModal()`, once on a first visit: the page behind it is inert, focus starts on its button and `Escape` closes it; `InputController` ignores game keys and touches while any dialog is open, so `Space` presses the dialog's button instead of starting a match behind it
+- the tutorial and the settings are native `<dialog>`s opened with `showModal()`, the tutorial once on a first visit and the settings from the menu: the page behind is inert, focus starts inside (on the tutorial's button, on the first switch of the settings) and `Escape` closes them; `InputController` ignores game keys and touches while any dialog is open, so `Space` presses the dialog's focused button instead of starting a match behind it
 - the pause and result screens are labelled dialogs whose main button takes focus when they appear; play hands focus back to the board, unless the player had moved it elsewhere on the page
 - after a command button, focus returns to the board, so `Space` controls the game instead of re-activating the button
 
@@ -282,7 +282,7 @@ The dependency-free unit suite targets deterministic rules and the logic of the 
 
 - domain: state machine and events, the match and Rush rules, scoring and match point, the countdown and serve pauses, paddle control for one or two people, paddle contact on faces, corners and sides with a no-overlap property test, spin and curves, the speed cap, the opponent, power-ups, supers, the random source, and a full rally
 - application: loop lifecycle with time scale and hold, interpolation, commands, the match built per mode, drama, feedback dispatch, the rally, Rush and win-streak records, and forfeits
-- adapters: input with two-player halves and dialogs, the view with modes, the modal tutorial and focus, the canvas renderer and its modules, effects and callouts, sound and music on one audio context, vibration, the wake lock, sharing and full screen, and preferences across tabs, driven through fake event targets, a recording 2D context, fake audio contexts and fake storage thanks to injected globals
+- adapters: input with two-player halves and dialogs, the view with modes, the modal tutorial and settings, and focus, the canvas renderer and its modules, effects and callouts, sound and music on one audio context, vibration, the wake lock, sharing and full screen, and preferences across tabs, driven through fake event targets, a recording 2D context, fake audio contexts and fake storage thanks to injected globals
 - architecture: the lint rules themselves, and that every module loads without a browser
 
 ### Reference matches
@@ -299,11 +299,12 @@ Playwright checks the assembled system on desktop and mobile Chromium. Instead o
 - mouse steering, the keyboard taking over from a resting mouse, and layout-independent keys
 - the phone layout, the thumb rail, and the court staying in view with scrolling locked during a match
 - the three-second countdown before the first serve
-- the first-visit tutorial as a modal dialog: `Space` closes it without starting a match, `Escape` closes it too, and either is remembered
+- the first-visit tutorial as a modal dialog: `Space` closes it without starting a match, `Escape` closes it too, and either is remembered; the settings dialog, whose keys belong to it too
+- the title screen keeping the scoreboard, the pause button and the thumb rail for the match, without moving the court
 - Rush lives running out, and two players steering their own halves of the board
 - the heads-up display fitting a 320px-wide phone without sideways scrolling, and every control of its menu and pause screen at least 44 by 44 pixels
 - a phone held sideways: the HUD beside a full-height court, and a menu sheet that fits with fingertip-sized controls
-- preferences surviving a reload, the Supers switch hidden in Rush, the super meter on the court only while supers are on, and the result screen after a full match
+- preferences surviving a reload, the Supers switch saying where it applies, the super meter on the court only while supers are on, and the result screen after a full match
 - auto-pause on focus loss, and an idle render loop outside of a match
 - a canvas backing store that matches device pixels, and an installable manifest
 

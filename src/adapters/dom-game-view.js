@@ -20,12 +20,6 @@ import { finisherApplies, FINISHER_SECONDS } from './finisher.js';
 /** @type {readonly string[]} */
 const COMMANDS = Object.values(GAME_COMMAND);
 const DIFFICULTY_LABELS = Object.freeze({ easy: 'Easy', normal: 'Normal', hard: 'Hard' });
-const MODE_TIPS = Object.freeze({
-  solo: 'Flick the paddle as you hit to curve the ball.',
-  rush: 'The ball only gets faster. Curve it past the computer to keep your lives.',
-  duo: 'Player 1 steers from the bottom half, Player 2 from the top.',
-  career: 'Beat each regular to open the next. Three of them are bosses who fight dirty.',
-});
 const PLAYER_LABELS = Object.freeze({ solo: 'You', rush: 'Hits', duo: 'P1', career: 'You' });
 const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps', 'supers', 'jokes']);
 /** Where the arcade's "Continue?" countdown starts, a second a step, after a loss. */
@@ -43,10 +37,11 @@ const BANNER_SECONDS = 2.2;
  */
 
 /**
- * The HTML around the board: the HUD, the menu with its modes and settings, the tutorial,
- * pause and result overlays. Controls declare what they do with data attributes:
- * data-command sends a game command, data-mode and data-difficulty pick the next match,
- * data-setting toggles a preference such as sound, and data-track picks the next music track.
+ * The HTML around the board: the HUD, the menu with its modes, the tutorial and settings
+ * dialogs, and the pause and result overlays. Controls declare what they do with data
+ * attributes: data-command sends a game command, data-mode and data-difficulty pick the next
+ * match, data-setting toggles a preference such as sound, and data-track picks the next
+ * music track.
  *
  * @implements {ViewPort}
  */
@@ -58,18 +53,16 @@ export class DomGameView {
    * @param {PreferencesPort} options.preferences
    * @param {boolean} options.canVibrate hides the vibration setting where it would do nothing
    * @param {Device} options.device sharing and full screen, hidden where unsupported
-   * @param {number} options.rushLives shown on the Rush button before that mode is chosen
    * @param {readonly { id: TrackId, label: string }[]} options.tracks the music tracks, in the order the track button cycles
    * @param {(track: TrackId) => void} options.previewTrack plays a short sample of the chosen track
    * @param {{ setTimeout: typeof setTimeout, clearTimeout: typeof clearTimeout }} options.timers
    */
-  constructor({ root, board, preferences, canVibrate, device, rushLives, tracks, previewTrack, timers }) {
+  constructor({ root, board, preferences, canVibrate, device, tracks, previewTrack, timers }) {
     this.root = root;
     this.board = board;
     this.preferences = preferences;
     this.canVibrate = canVibrate;
     this.device = device;
-    this.rushLives = rushLives;
     this.tracks = tracks;
     this.previewTrack = previewTrack;
     this.timers = timers;
@@ -87,6 +80,7 @@ export class DomGameView {
     this.overlays = {
       menu: this.find('[data-overlay="menu"]'),
       tutorial: this.find('[data-overlay="tutorial"]'),
+      settings: this.find('[data-overlay="settings"]'),
       pause: this.find('[data-overlay="pause"]'),
       over: this.find('[data-overlay="over"]'),
     };
@@ -118,7 +112,7 @@ export class DomGameView {
     const element = this.root.querySelector(selector);
 
     if (!element) {
-      throw new Error(`Ping Pong could not start because ${selector} is missing from the page.`);
+      throw new Error(`Paddle Noir could not start because ${selector} is missing from the page.`);
     }
 
     return /** @type {HTMLElement} */ (element);
@@ -214,6 +208,14 @@ export class DomGameView {
     this.listen(this.overlays.tutorial, () => this.markTutorialSeen(), 'cancel');
     this.listen(this.overlays.tutorial, () => this.markTutorialSeen(), 'close');
 
+    for (const button of this.findAll('[data-show-settings]')) {
+      this.listen(button, () => this.showSettingsDialog(true));
+    }
+
+    for (const button of this.findAll('[data-dismiss-settings]')) {
+      this.listen(button, () => this.showSettingsDialog(false));
+    }
+
     for (const button of this.findAll('[data-share]')) {
       button.hidden = !this.device.canShare;
       this.listen(button, () => this.shareResult());
@@ -228,10 +230,6 @@ export class DomGameView {
 
     for (const element of this.findAll('[data-setting="vibration"]')) {
       element.hidden = !this.canVibrate;
-    }
-
-    for (const element of this.findAll('[data-rush-lives]')) {
-      element.textContent = `${this.rushLives} lives`;
     }
 
     this.showChoices();
@@ -303,20 +301,6 @@ export class DomGameView {
       element.hidden = mode !== 'career';
     }
 
-    // Rush and career rivals bring their own power-ups, or none; Solo and two players choose.
-    for (const element of this.findAll('[data-power-ups-choice]')) {
-      element.hidden = mode === 'rush' || mode === 'career';
-    }
-
-    // A Rush run never has supers; every other match is the player's choice.
-    for (const element of this.findAll('[data-supers-choice]')) {
-      element.hidden = mode === 'rush';
-    }
-
-    for (const element of this.findAll('[data-mode-tip]')) {
-      element.textContent = MODE_TIPS[mode];
-    }
-
     this.root.dataset.mode = mode;
   }
 
@@ -334,8 +318,11 @@ export class DomGameView {
     const track = this.currentTrack();
 
     for (const button of this.findAll('[data-track]')) {
-      button.textContent = track.label;
       button.setAttribute('aria-label', `Music track: ${track.label}`);
+    }
+
+    for (const label of this.findAll('[data-track-label]')) {
+      label.textContent = track.label;
     }
   }
 
@@ -354,30 +341,28 @@ export class DomGameView {
   }
 
   /**
-   * Opens the tutorial as a modal dialog, which makes the page behind it inert and moves focus
-   * to its button, or closes it. Browsers without modal dialogs still show it.
+   * Opens the tutorial, or closes it; either way out of it counts as having seen it.
    *
    * @param {boolean} visible
    */
   showTutorial(visible) {
-    const dialog = /** @type {HTMLDialogElement} */ (this.overlays.tutorial);
-    const open = dialog.hasAttribute('open');
+    const wasOpen = this.overlays.tutorial.hasAttribute('open');
 
-    if (visible && !open) {
-      if (typeof dialog.showModal === 'function') {
-        dialog.showModal();
-      } else {
-        dialog.setAttribute('open', '');
-      }
-    } else if (!visible && open) {
-      if (typeof dialog.close === 'function') {
-        dialog.close();
-      } else {
-        dialog.removeAttribute('open');
-      }
+    showDialog(this.overlays.tutorial, visible);
 
+    if (wasOpen && !visible) {
       this.markTutorialSeen();
     }
+  }
+
+  /**
+   * Opens the settings, or closes them. The switches apply as they are pressed, so closing
+   * has nothing to save.
+   *
+   * @param {boolean} visible
+   */
+  showSettingsDialog(visible) {
+    showDialog(this.overlays.settings, visible);
   }
 
   markTutorialSeen() {
@@ -420,14 +405,14 @@ export class DomGameView {
     const { career } = result;
     const won = result.winner === 'player';
     const score = `${result.score.player}:${result.score.opponent}`;
-    let text = `I ${won ? 'won' : 'lost'} ${score} on ${DIFFICULTY_LABELS[result.difficulty]} in Ping Pong Architecture Lab. Longest rally: ${result.longestRally}.`;
+    let text = `I ${won ? 'won' : 'lost'} ${score} on ${DIFFICULTY_LABELS[result.difficulty]} in Paddle Noir. Longest rally: ${result.longestRally}.`;
 
     if (result.mode === 'rush') {
-      text = `I survived ${result.hits.player} hits in Rush mode of Ping Pong Architecture Lab. Beat that!`;
+      text = `I survived ${result.hits.player} hits in Rush mode of Paddle Noir. Beat that!`;
     } else if (career) {
       text = won
-        ? `I beat ${career.rival.name} ${score} in the career of Ping Pong Architecture Lab: ${career.earned} of ${MAX_STARS} stars.`
-        : `${career.rival.name} beat me ${score.split(':').reverse().join(':')} in the career of Ping Pong Architecture Lab. Rematch!`;
+        ? `I beat ${career.rival.name} ${score} in Paddle Noir career mode: ${career.earned} of ${MAX_STARS} stars.`
+        : `${career.rival.name} beat me ${score.split(':').reverse().join(':')} in Paddle Noir career mode. Rematch!`;
     }
     const outcome = await this.device.share(text);
 
@@ -566,6 +551,12 @@ export class DomGameView {
 
     this.root.dataset.phase = phase;
     this.root.dataset.mode = mode;
+
+    // Once a match has been played, the menu's neon sign is on when the player comes back.
+    if (phase !== GAME_PHASE.READY) {
+      this.root.dataset.played = 'true';
+    }
+
     // The finisher plays on the board first; the result screen follows, or comes at a tap.
     const finishing = phase === GAME_PHASE.GAME_OVER && phaseChanged && this.rendered !== null
       && this.finishes(/** @type {Presentation} */ (this.pending));
@@ -632,7 +623,8 @@ export class DomGameView {
 
   /**
    * The menu's summary line: how this mode is won, and the record that goes with it. The
-   * rules come from the match configuration, so the text cannot drift from the game.
+   * rules come from the match configuration, so the text cannot drift from the game. In the
+   * career it tells who the rival is, or why they are tired.
    *
    * @param {Presentation} presentation
    */
@@ -641,7 +633,9 @@ export class DomGameView {
 
     for (const element of this.findAll('[data-menu-meta]')) {
       if (career) {
-        element.replaceChildren(career.rival.story);
+        element.replaceChildren(career.eased
+          ? `After beating you twice, ${career.rival.name} is tired and plays slower.`
+          : career.rival.story);
         continue;
       }
 
@@ -739,12 +733,6 @@ export class DomGameView {
       const target = career.index + Number(button.dataset.rivalStep);
       button.toggleAttribute('disabled', target < 0 || target > career.unlocked);
     }
-
-    for (const element of this.findAll('[data-mode-tip]')) {
-      element.textContent = career.eased
-        ? `After beating you twice, ${career.rival.name} is tired and plays slower.`
-        : MODE_TIPS.career;
-    }
   }
 
   /**
@@ -806,6 +794,32 @@ export class DomGameView {
     if (this.continueTimer !== null) {
       this.timers.clearTimeout(this.continueTimer);
       this.continueTimer = null;
+    }
+  }
+}
+
+/**
+ * Opens a dialog as a modal, which makes the page behind it inert and moves focus into it, or
+ * closes it. Browsers without modal dialogs still show it.
+ *
+ * @param {HTMLElement} element
+ * @param {boolean} visible
+ */
+function showDialog(element, visible) {
+  const dialog = /** @type {HTMLDialogElement} */ (element);
+  const open = dialog.hasAttribute('open');
+
+  if (visible && !open) {
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal();
+    } else {
+      dialog.setAttribute('open', '');
+    }
+  } else if (!visible && open) {
+    if (typeof dialog.close === 'function') {
+      dialog.close();
+    } else {
+      dialog.removeAttribute('open');
     }
   }
 }

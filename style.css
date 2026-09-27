@@ -1,7 +1,6 @@
 :root {
   color-scheme: dark;
   --bg: #05060f;
-  --panel: rgba(11, 14, 32, 0.8);
   --line: rgba(148, 163, 255, 0.18);
   --text: #e7ecff;
   --muted: #9aa4c7;
@@ -437,49 +436,110 @@ kbd {
 }
 
 .panel--menu .logo { order: 1; }
-.panel--menu .segmented--modes { order: 2; }
+.panel--menu .modes { order: 2; }
 .panel--menu [data-solo-only],
 .panel--menu [data-career-only] { order: 3; }
 .panel--menu .cta { order: 4; }
 .panel--menu .panel__meta { order: 5; }
 .panel--menu .panel__stats { order: 6; }
-.panel--menu .toggles { order: 7; }
-.panel--menu .panel__tip { order: 8; }
-.panel--menu .panel__row { order: 9; }
+.panel--menu .panel__row { order: 7; }
 
+/* The name as a neon sign: each word is a tube over its unlit glass, with a pale core, a glow
+   and a halo on the wall behind it. */
 .logo {
-  display: grid;
-  gap: calc(1.5 * var(--u));
-  margin: 0 0 calc(2 * var(--u));
+  width: min(100%, calc(62 * var(--u)));
+  margin: 0;
 }
 
-.logo__word {
-  font-size: calc(25 * var(--u));
-  font-weight: 900;
-  line-height: 0.9;
-  letter-spacing: 0.05em;
-  background: linear-gradient(180deg, #ffffff 12%, var(--player) 55%, var(--violet) 92%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 0 calc(2.4 * var(--u)) rgba(var(--player-rgb), 0.6)) drop-shadow(0 0 calc(7 * var(--u)) rgba(var(--opponent-rgb), 0.4));
-  animation: flicker 7s linear infinite;
+.logo__art {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
 }
 
-.logo__tag {
-  font-size: max(10px, calc(3.4 * var(--u)));
-  font-weight: 700;
-  letter-spacing: 0.42em;
-  text-transform: uppercase;
-  color: var(--muted);
+.logo__art use {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
-@keyframes flicker {
-  0%, 18%, 22%, 60%, 64%, 100% {
+.logo__glass {
+  stroke: rgba(148, 163, 255, 0.1);
+  stroke-width: 6;
+}
+
+.logo__halo {
+  stroke-width: 12;
+  filter: url(#logo-halo);
+  opacity: 0.4;
+}
+
+.logo__glow {
+  stroke-width: 7;
+  filter: url(#logo-glow);
+}
+
+.logo__tube {
+  stroke-width: 5;
+}
+
+.logo__core {
+  stroke-width: 1.6;
+}
+
+.logo__sign--paddle {
+  stroke: var(--player);
+}
+
+.logo__sign--noir {
+  stroke: var(--opponent);
+}
+
+.logo__rules {
+  stroke: var(--violet);
+}
+
+.logo__sign--paddle .logo__core {
+  stroke: #e3fcff;
+}
+
+.logo__sign--noir .logo__core {
+  stroke: #ffe6f3;
+}
+
+.logo__rules .logo__core {
+  stroke: #efeaff;
+}
+
+/* The sign lights up word by word as the page opens, with one stutter each: two flashes in
+   all, well under three a second, done in 1.2 seconds. Then it stays on, and back from a
+   match it is on already. */
+.logo__sign--paddle .logo__lit {
+  animation: neon-on 0.8s 0.1s both;
+}
+
+.logo__sign--noir .logo__lit {
+  animation: neon-on 0.7s 0.5s both;
+}
+
+[data-played] .logo__lit {
+  animation: none;
+}
+
+@keyframes neon-on {
+  0% {
+    opacity: 0;
+  }
+  16% {
     opacity: 1;
   }
-  20%, 62% {
-    opacity: 0.55;
+  30% {
+    opacity: 0.25;
+  }
+  52%,
+  100% {
+    opacity: 1;
   }
 }
 
@@ -520,8 +580,7 @@ kbd {
   letter-spacing: 0.06em;
 }
 
-.panel__meta,
-.panel__tip {
+.panel__meta {
   margin: 0;
   font-size: max(12px, calc(3.6 * var(--u)));
   color: var(--muted);
@@ -529,21 +588,6 @@ kbd {
 
 .panel__meta strong {
   color: var(--text);
-}
-
-.panel__tip {
-  max-width: 30ch;
-  font-size: max(12px, calc(3.3 * var(--u)));
-  opacity: 0.85;
-}
-
-.panel__link {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 calc(2 * var(--u));
-  font-size: max(12px, calc(3.3 * var(--u)));
-  color: var(--violet);
 }
 
 .panel__row {
@@ -620,6 +664,81 @@ kbd {
   color: #041018;
   background: linear-gradient(90deg, var(--player), var(--violet));
   box-shadow: 0 0 calc(4 * var(--u)) rgba(var(--player-rgb), 0.45);
+}
+
+/* The four modes as cards, two by two: an icon, the name and a line on what it is. */
+.modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(2 * var(--u));
+  width: min(100%, 26rem);
+}
+
+.mode {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: calc(2.4 * var(--u));
+  min-height: 44px;
+  padding: calc(1.8 * var(--u)) calc(2.6 * var(--u));
+  border: 1px solid var(--line);
+  border-radius: max(12px, calc(3.6 * var(--u)));
+  line-height: 1.15;
+  text-align: left;
+  color: var(--muted);
+  background: linear-gradient(180deg, rgba(22, 26, 56, 0.72), rgba(10, 12, 28, 0.72));
+  transition: color 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 120ms ease;
+}
+
+.mode:hover {
+  border-color: rgba(var(--violet-rgb), 0.6);
+}
+
+.mode:active {
+  transform: scale(0.97);
+}
+
+.mode__icon {
+  grid-row: span 2;
+  width: max(20px, calc(6.4 * var(--u)));
+  height: max(20px, calc(6.4 * var(--u)));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mode__ball {
+  fill: currentColor;
+  stroke: none;
+}
+
+.mode__name {
+  font-size: max(13px, calc(4 * var(--u)));
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.mode__note {
+  overflow: hidden;
+  font-size: max(10px, calc(2.9 * var(--u)));
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mode[aria-pressed="true"] {
+  border-color: rgba(var(--player-rgb), 0.75);
+  color: var(--text);
+  background: linear-gradient(135deg, rgba(var(--player-rgb), 0.24), rgba(var(--violet-rgb), 0.2));
+  box-shadow: 0 0 calc(4 * var(--u)) rgba(var(--player-rgb), 0.3), inset 0 0 calc(3 * var(--u)) rgba(var(--player-rgb), 0.15);
+}
+
+.mode[aria-pressed="true"] .mode__icon {
+  color: var(--player);
+  filter: drop-shadow(0 0 calc(1.2 * var(--u)) rgba(var(--player-rgb), 0.8));
 }
 
 .toggles {
@@ -903,8 +1022,7 @@ kbd {
   }
 }
 
-/* Shorter courts fit the menu with 44px controls by tightening the spacing and the logo; on
-   the smallest the tagline and the tip go, and the tip is in "How to play" anyway. */
+/* Shorter courts fit the menu with 44px controls by tightening the spacing and the logo. */
 @container board (max-width: 350px) {
   .overlay {
     padding: calc(5 * var(--u));
@@ -914,12 +1032,8 @@ kbd {
     gap: calc(3 * var(--u));
   }
 
-  .panel--menu .logo {
-    margin: 0;
-  }
-
-  .logo__word {
-    font-size: calc(20 * var(--u));
+  .logo {
+    width: min(100%, calc(58 * var(--u)));
   }
 
   .toggles {
@@ -928,72 +1042,9 @@ kbd {
 }
 
 @container board (max-width: 300px) {
-  .logo__word {
-    font-size: calc(18 * var(--u));
+  .logo {
+    width: min(100%, calc(54 * var(--u)));
   }
-
-  .logo__tag,
-  .panel--menu .panel__tip {
-    display: none;
-  }
-}
-
-/* ---------- About ---------- */
-
-.about {
-  width: min(100% - 2rem, 40rem);
-  margin: 3rem auto 4rem;
-  padding: 1.6rem;
-  border: 1px solid var(--line);
-  border-radius: 1.4rem;
-  background: var(--panel);
-}
-
-.eyebrow {
-  margin: 0 0 0.7rem;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--player);
-}
-
-.about h2 {
-  margin: 0 0 0.6rem;
-  font-size: clamp(1.4rem, 4vw, 1.9rem);
-}
-
-.about__lead {
-  margin: 0 0 1.2rem;
-  line-height: 1.6;
-  color: var(--muted);
-}
-
-.layers {
-  display: grid;
-  gap: 0.8rem;
-  margin: 0 0 1.2rem;
-  padding: 0;
-  list-style: none;
-}
-
-.layers li {
-  display: grid;
-  gap: 0.2rem;
-  padding: 0.85rem 1rem;
-  border-left: 3px solid var(--violet);
-  border-radius: 0.6rem;
-  background: rgba(15, 18, 40, 0.55);
-  line-height: 1.5;
-  color: var(--muted);
-}
-
-.layers strong {
-  color: var(--text);
-}
-
-.about__link {
-  color: var(--violet);
 }
 
 /* ---------- Modes, lives, match point ---------- */
@@ -1001,29 +1052,6 @@ kbd {
 .hud__group {
   display: flex;
   gap: clamp(4px, 2cqw, 8px);
-}
-
-/* Four modes share the row evenly, so it fits a 320px-wide phone. */
-.segmented--modes {
-  width: min(100%, 26rem);
-}
-
-.segmented--modes button {
-  display: grid;
-  flex: 1 1 0;
-  align-content: center;
-  gap: calc(0.4 * var(--u));
-  min-width: 0;
-  padding: calc(1.2 * var(--u)) calc(1.2 * var(--u));
-  line-height: 1.1;
-}
-
-.segmented--modes small {
-  white-space: nowrap;
-  font-size: max(10px, calc(2.4 * var(--u)));
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  opacity: 0.8;
 }
 
 .segmented[hidden],
@@ -1108,9 +1136,26 @@ kbd {
 }
 
 .ghost--small {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(1.6 * var(--u));
   min-width: 0;
   padding: 0 calc(3.6 * var(--u));
   font-size: max(12px, calc(3.3 * var(--u)));
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.ghost__icon {
+  flex: none;
+  width: max(16px, calc(4.4 * var(--u)));
+  height: max(16px, calc(4.4 * var(--u)));
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
 }
 
 /* ---------- Tutorial ---------- */
@@ -1210,6 +1255,174 @@ kbd {
     padding: 1.8cqw 2.6cqw;
     line-height: 1.3;
   }
+}
+
+/* ---------- Settings ---------- */
+
+/* Every switch in one modal, the same kind as the tutorial: a row each, with a line on where
+   it applies, and the credits last. The rows scroll on a short screen; the title and Done
+   stay put. */
+.panel--settings {
+  gap: 4cqw;
+  min-height: 0;
+  max-height: calc(min(88dvh, 46rem) - 12cqw - 2px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.panel--settings .panel__title {
+  font-size: 9cqw;
+}
+
+.settings {
+  display: grid;
+  align-content: start;
+  gap: 2cqw;
+  width: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3cqw;
+  min-height: 48px;
+  padding: 1.6cqw 3.6cqw;
+  border: 1px solid var(--line);
+  border-radius: 3cqw;
+  font-size: max(14px, 4cqw);
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: left;
+  color: var(--text);
+  background: rgba(15, 18, 40, 0.7);
+}
+
+.setting[hidden] {
+  display: none;
+}
+
+.setting:hover {
+  border-color: rgba(var(--violet-rgb), 0.6);
+}
+
+.setting__text {
+  display: grid;
+  min-width: 0;
+}
+
+.setting__note {
+  font-size: max(12px, 3.3cqw);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* A switch on the right: the knob slides over when it is on. */
+.switch {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.3);
+  transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.switch::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+[aria-pressed="true"] > .switch {
+  background: var(--player);
+  box-shadow: 0 0 12px rgba(var(--player-rgb), 0.6);
+}
+
+[aria-pressed="true"] > .switch::before {
+  transform: translateX(18px);
+  background: #041018;
+}
+
+/* The track picker names the track playing; a tap moves to the next one. */
+.setting__value {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2cqw;
+  color: var(--player);
+}
+
+.setting__value::before {
+  content: "♪" / "";
+  text-shadow: 0 0 8px rgba(var(--player-rgb), 0.8);
+}
+
+.setting__value::after {
+  content: "›" / "";
+  font-size: 1.3em;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.settings__about {
+  margin: 0;
+  font-size: max(12px, 3.3cqw);
+  text-align: center;
+  color: var(--muted);
+}
+
+.settings__about a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--violet);
+}
+
+/* On a short screen the rows sit closer, so all of them fit without scrolling, down to a
+   small phone. */
+@media (max-height: 760px) {
+  .panel--settings {
+    gap: 3cqw;
+  }
+
+  .panel--settings .panel__title {
+    font-size: 8cqw;
+  }
+
+  .settings {
+    gap: 1.2cqw;
+  }
+
+  .setting {
+    min-height: 44px;
+    padding-block: 1cqw;
+  }
+}
+
+/* ---------- Title screen ---------- */
+
+/* The title screen shows the name, not a match: the score, the pause button, the thumb rail
+   and the key hints appear as one starts, in the room kept for them, so nothing moves. */
+.scoreboard,
+.rail,
+.help {
+  transition: opacity 250ms ease, visibility 250ms;
+}
+
+[data-phase="ready"] .scoreboard,
+[data-phase="ready"] [data-hud-pause],
+[data-phase="ready"] .rail,
+[data-phase="ready"] .help {
+  visibility: hidden;
+  opacity: 0;
 }
 
 /* ---------- Two players ---------- */
@@ -1326,7 +1539,7 @@ kbd {
     gap: calc(3 * var(--u));
   }
 
-  /* The switches take two rows here; tighter spacing keeps the whole menu on a 320px-tall screen. */
+  /* The mode cards take two rows here; tighter spacing keeps the whole menu on a 320px-tall screen. */
   .panel__main {
     gap: calc(1.6 * var(--u));
   }
@@ -1335,16 +1548,8 @@ kbd {
     padding: calc(0.5 * var(--u));
   }
 
-  .panel--menu .logo {
-    margin: 0;
-  }
-
-  .logo__word {
-    font-size: calc(16 * var(--u));
-  }
-
-  .panel--menu .panel__tip {
-    display: block;
+  .logo {
+    width: min(100%, calc(52 * var(--u)));
   }
 
   .toggles {
@@ -1358,31 +1563,88 @@ kbd {
     align-items: center;
     gap: calc(2 * var(--u)) calc(4 * var(--u));
   }
-}
 
-/* Wide screens: the game on the left like an arcade cabinet, the write-up beside it. */
-@media (min-width: 1100px) {
-  .page {
-    display: grid;
-    grid-template-columns: minmax(0, 760px) minmax(340px, 440px);
-    justify-content: center;
-    /* The game stays pinned at the top, whole, however long the write-up beside it is. */
-    align-items: start;
-    column-gap: 24px;
+  /* The tutorial and the settings use the width instead: their rows stand two by two, sized
+     for the screen's short side. The credits fill the settings' last cell, and Done moves up
+     beside their title. */
+  .dialog {
+    width: min(94vw, 46rem);
+    max-height: 94dvh;
+    padding: 12px 16px;
   }
 
-  .arena {
-    position: sticky;
-    top: 0;
+  .panel--tutorial,
+  .panel--settings {
+    gap: 10px;
+    max-height: calc(94dvh - 26px);
   }
 
-  .about {
+  .panel--tutorial .panel__title,
+  .panel--settings .panel__title {
+    font-size: 26px;
+  }
+
+  .tutorial,
+  .settings {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .tutorial li {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .tutorial__icon {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+
+  .setting {
+    min-height: 44px;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 15px;
+  }
+
+  .setting__note,
+  .settings__about {
+    font-size: 12px;
+  }
+
+  .panel--settings {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .panel--settings .panel__title {
+    grid-area: 1 / 1;
+    justify-self: start;
+  }
+
+  .panel--settings [data-dismiss-settings] {
+    grid-area: 1 / 2;
+  }
+
+  .settings {
+    grid-area: 2 / 1 / auto / -1;
+  }
+
+  .settings__about {
+    align-self: center;
+  }
+
+  .dialog .cta {
     width: auto;
-    margin: 2rem 3rem 2rem 0;
-  }
-
-  .panel__link {
-    display: none;
+    min-width: 12rem;
+    min-height: 44px;
+    padding-block: 8px;
+    font-size: 15px;
   }
 }
 
@@ -1394,5 +1656,10 @@ kbd {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* The sign is simply on, without the stutter. */
+  .logo__lit {
+    animation: none !important;
   }
 }

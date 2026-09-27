@@ -25,6 +25,19 @@ const test = base.extend({
 const status = (page) => page.locator('[data-game-status]');
 const board = (page) => page.locator('[data-game-canvas]');
 const playButton = (page) => page.getByRole('button', { name: 'Play', exact: true });
+const settings = (page) => page.getByRole('dialog', { name: 'Settings' });
+
+/** Opens the settings from the menu, where every switch but sound lives. */
+async function openSettings(page) {
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await expect(settings(page)).toBeVisible();
+  return settings(page);
+}
+
+async function closeSettings(page) {
+  await settings(page).getByRole('button', { name: 'Done' }).click();
+  await expect(settings(page)).toBeHidden();
+}
 
 /**
  * Reads the player paddle's center, in board units, from the canvas pixels: the paddle's
@@ -122,7 +135,7 @@ test('Play, Space and the menus drive the match state machine', async ({ page })
 
   await page.goto('/');
 
-  await expect(page.getByRole('heading', { name: 'Ping Pong Architecture Lab' })).toBeAttached();
+  await expect(page.getByRole('heading', { name: 'Paddle Noir' })).toBeAttached();
   await expect(board(page)).toBeVisible();
   await expect(status(page)).toHaveText('First to 7. Start when ready.');
 
@@ -571,26 +584,68 @@ test('the mode and the power-up switch survive a reload', async ({ page }) => {
   await page.goto('/');
 
   await page.getByRole('button', { name: /2P/ }).click();
-  await page.getByRole('button', { name: 'Power-ups' }).click();
+  await (await openSettings(page)).getByRole('button', { name: 'Power-ups' }).click();
+  await closeSettings(page);
   await page.reload();
 
   await expect(page.getByRole('button', { name: /2P/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.getByRole('button', { name: 'Power-ups' })).toHaveAttribute('aria-pressed', 'false');
+  await expect((await openSettings(page)).getByRole('button', { name: 'Power-ups' })).toHaveAttribute('aria-pressed', 'false');
 });
 
-test('the Supers switch survives a reload, and a Rush run has none', async ({ page }) => {
+test('the Supers switch says where it applies and survives a reload', async ({ page }) => {
   await page.goto('/');
 
-  const supers = page.getByRole('button', { name: 'Supers' });
+  const supers = (await openSettings(page)).getByRole('button', { name: 'Supers' });
+  await expect(supers).toHaveAccessibleDescription('Every mode but Rush');
   await expect(supers).toHaveAttribute('aria-pressed', 'true');
   await supers.click();
   await page.reload();
-  await expect(supers).toHaveAttribute('aria-pressed', 'false');
 
-  await page.getByRole('button', { name: /Rush/ }).click();
-  await expect(supers).toBeHidden();
-  await page.getByRole('button', { name: /Career/ }).click();
-  await expect(supers).toBeVisible();
+  await openSettings(page);
+  await expect(supers).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('the settings open over the menu as a dialog, and closing them starts nothing', async ({ page }) => {
+  await page.goto('/');
+  const phase = () => page.locator('[data-arena]').getAttribute('data-phase');
+
+  await openSettings(page);
+  await expect(settings(page).getByRole('button', { name: 'Sound' })).toBeFocused();
+
+  // Space belongs to the dialog: it flips the focused switch, and no match starts behind it.
+  await page.keyboard.press('Space');
+  await expect(settings(page).getByRole('button', { name: 'Sound' })).toHaveAttribute('aria-pressed', 'false');
+  expect(await phase()).toBe('ready');
+
+  await page.keyboard.press('Escape');
+  await expect(settings(page)).toBeHidden();
+  expect(await phase()).toBe('ready');
+  await expect(page.getByRole('button', { name: 'Settings' })).toBeFocused();
+
+  await openSettings(page);
+  await closeSettings(page);
+  expect(await phase()).toBe('ready');
+});
+
+test('the title screen keeps the score, the pause button and the thumb rail for the match', async ({ page, hasTouch }) => {
+  await page.goto('/');
+  const courtBefore = await board(page).boundingBox();
+
+  await expect(page.locator('[data-scoreboard]')).toBeHidden();
+  await expect(page.locator('[data-hud-pause]')).toBeHidden();
+  await expect(page.locator('.rail')).toBeHidden();
+  await expect(page.locator('.help__keys')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Sound' }).first()).toBeVisible();
+
+  await playButton(page).click();
+  await expect(page.locator('[data-scoreboard]')).toBeVisible();
+  await expect(page.locator('[data-hud-pause]')).toBeVisible();
+  await expect(page.locator(hasTouch ? '.rail' : '.help__keys')).toBeVisible();
+  expect(await board(page).boundingBox(), 'the court stays where it was').toEqual(courtBefore);
+
+  await page.keyboard.press('Escape');
+  await page.locator('[data-overlay="pause"]').getByRole('button', { name: 'Menu' }).click();
+  await expect(page.locator('[data-scoreboard]')).toBeHidden();
 });
 
 /**
@@ -628,7 +683,8 @@ test('with supers on the player\'s meter sits in the corner of the court; with t
 
   await page.keyboard.press('Escape');
   await page.locator('[data-overlay="pause"]').getByRole('button', { name: 'Menu' }).click();
-  await page.getByRole('button', { name: 'Supers' }).click();
+  await (await openSettings(page)).getByRole('button', { name: 'Supers' }).click();
+  await closeSettings(page);
   await playButton(page).click();
   await expect.poll(() => readMeterCorner(page)).toBeLessThan(10);
 });
@@ -848,12 +904,12 @@ test('the track button cycles the music, plays a sample of each track and rememb
   });
   await page.goto('/');
 
-  const menu = page.locator('[data-overlay="menu"]');
-  const track = menu.getByRole('button', { name: /^Music track:/ });
+  const track = (await openSettings(page)).getByRole('button', { name: /^Music track:/ });
   await expect(track).toHaveAccessibleName('Music track: Neon');
 
   await track.click();
   await expect(track).toHaveAccessibleName('Music track: Arena');
+  await expect(track).toContainText('Arena');
   await expect.poll(() => page.evaluate(() => window.scheduledNotes)).toBeGreaterThan(0);
 
   for (const name of ['Anthem', 'Contender', 'Iron', 'Neon', 'Arena']) {
@@ -862,7 +918,8 @@ test('the track button cycles the music, plays a sample of each track and rememb
   }
 
   await page.reload();
-  await expect(menu.getByRole('button', { name: /^Music track:/ })).toHaveAccessibleName('Music track: Arena');
+  await expect((await openSettings(page)).getByRole('button', { name: /^Music track:/ })).toHaveAccessibleName('Music track: Arena');
+  await closeSettings(page);
 
   await playButton(page).click();
   await page.keyboard.press('Escape');

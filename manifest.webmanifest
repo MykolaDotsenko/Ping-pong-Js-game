@@ -1,7 +1,7 @@
 {
-  "name": "Ping Pong Architecture Lab",
-  "short_name": "Pong Lab",
-  "description": "A neon arcade Ping Pong for phones and desktops.",
+  "name": "Paddle Noir",
+  "short_name": "Paddle Noir",
+  "description": "Neon arcade ping pong for phones and desktops.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
