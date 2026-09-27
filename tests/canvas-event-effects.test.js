@@ -191,3 +191,25 @@ test('no finisher without the fun extras, on the player\'s defeat, or at the end
     assert.deepEqual(effects.labels, []);
   }
 });
+
+test('a boss\'s attacks are announced and land with effects of their own', () => {
+  const drip = play([{ type: 'hazard-warn', kind: 'drip', x: 100 }]);
+  assert.equal(drip.rings.length, 1);
+
+  const lag = play([{ type: 'hazard-warn', kind: 'lag', x: 250 }]);
+  assert.equal(lag.labels[0].text, 'PING 999');
+
+  const beam = play([{ type: 'hazard-warn', kind: 'beam', x: 250 }]);
+  assert.ok(beam.active);
+
+  const splashed = play([{ type: 'hazard-hit', kind: 'drip', x: 120, y: 744 }]);
+  assert.equal(splashed.labels[0].text, 'SHRUNK!');
+  assert.ok(splashed.particles.length > 0);
+  assert.equal(splashed.flashAlpha, 0, 'a drip does not flash');
+
+  const zapped = play([{ type: 'hazard-hit', kind: 'beam', x: 250, y: 744 }]);
+  assert.ok(zapped.flashAlpha > 0);
+
+  const lagged = play([{ type: 'hazard-hit', kind: 'lag', x: 250, y: 400 }]);
+  assert.equal(lagged.labels[0].text, 'LAG!');
+});

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { BallTrail } from '../src/adapters/canvas/ball-trail.js';
 import { GlowSprites, paintCourt, paintGrid } from '../src/adapters/canvas/court.js';
 import { drawLabels, drawRally, drawServeCountdown } from '../src/adapters/canvas/hud.js';
-import { ballColor, drawBall, drawExtraBalls, drawGhostFog, drawPaddle, drawPickups, drawTrail, hiddenBand, isHidden } from '../src/adapters/canvas/scene.js';
+import { ballColor, drawBall, drawExtraBalls, drawGhostFog, drawHazards, drawPaddle, drawPickups, drawTrail, hiddenBand, isHidden } from '../src/adapters/canvas/scene.js';
 import { FEVER_RALLY, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, THEME } from '../src/adapters/canvas/theme.js';
 import { GAME_CONFIG } from '../src/config.js';
 import { createInitialState, GAME_PHASE, startGame } from '../src/domain/game.js';
@@ -300,4 +300,44 @@ test('the trail follows the ball in play and starts over with each serve', () =>
 
   trail.clear();
   assert.deepEqual(trail.points, []);
+});
+
+test('a drip falls with its shadow on the paddle row, darker the nearer it comes', () => {
+  const shadowAlpha = (y) => {
+    const ctx = createRecordingContext();
+    drawHazards(ctx, playing({ hazards: [{ kind: 'drip', x: 120, y, warn: 0, ttl: 0 }] }), GAME_CONFIG);
+    const shadow = callsNamed(ctx, 'ellipse')[0];
+    assert.equal(shadow.args[0], 120);
+    assert.ok(shadow.args[1] > height - paddle.inset - paddle.height, 'on the paddle row');
+    return Number(/, ([\d.]+)\)$/.exec(callsNamed(ctx, 'fill')[0].brush.fillStyle)[1]);
+  };
+
+  assert.ok(shadowAlpha(650) > shadowAlpha(200));
+
+  const drop = createRecordingContext();
+  drawHazards(drop, playing({ hazards: [{ kind: 'drip', x: 120, y: 300, warn: 0, ttl: 0 }] }), GAME_CONFIG);
+  assert.equal(callsNamed(drop, 'arc')[0].args[1], 300, 'the drop itself');
+  assert.equal(callsNamed(drop, 'fill')[1].brush.fillStyle, `rgb(${THEME.drip})`);
+});
+
+test('a beam is announced as a column that fills from the bottom, then burns bright', () => {
+  const beam = (warn) => {
+    const ctx = createRecordingContext();
+    drawHazards(ctx, playing({ hazards: [{ kind: 'beam', x: 250, y: height / 2, warn, ttl: 0.45 }] }), GAME_CONFIG);
+    return ctx;
+  };
+
+  const announced = beam(0.25);
+  const [column, filled] = callsNamed(announced, 'fillRect');
+  assert.deepEqual(column.args, [208, height / 2, 84, height / 2]);
+  assert.equal(filled.args[3], (height / 2) * 0.75, 'three quarters of the warning are over');
+  assert.equal(callsNamed(announced, 'setLineDash').length, 1);
+
+  const burning = beam(0);
+  assert.ok(callsNamed(burning, 'fillRect').every((call) => call.brush.globalCompositeOperation === 'lighter'));
+  assert.equal(callsNamed(burning, 'strokeRect').length, 0);
+
+  const lag = createRecordingContext();
+  drawHazards(lag, playing({ hazards: [{ kind: 'lag', x: 250, y: 400, warn: 0.5, ttl: 0 }] }), GAME_CONFIG);
+  assert.deepEqual(lag.calls.map((call) => call.name), ['save', 'restore'], 'lag has nothing on the court');
 });

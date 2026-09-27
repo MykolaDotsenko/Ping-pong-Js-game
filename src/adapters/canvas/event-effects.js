@@ -93,6 +93,12 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
         effects.flash(`rgb(${THEME.rose})`, 0.3);
         effects.shake(1.1);
         break;
+      case 'hazard-warn':
+        announceHazard(effects, event, config);
+        break;
+      case 'hazard-hit':
+        landHazard(effects, event, config);
+        break;
       case 'game-over': {
         const finisher = state ? finisherFor({
           winner: event.winner,
@@ -170,6 +176,53 @@ function celebrateHit(effects, event, config) {
   if (event.rally % 5 === 0 && !event.extra) {
     effects.ring({ x: width / 2, y: height / 2, color: `rgba(${THEME.amber}, 0.9)`, radius: 30, growth: 620, life: 0.7, width: 5 });
     effects.flash(`rgb(${THEME.amber})`, 0.1);
+  }
+}
+
+/**
+ * A boss's attack announced: drips break loose under the boss's paddle, a beam's column
+ * appears on the court, and PING 999 flashes up before lag.
+ *
+ * @param {Effects} effects
+ * @param {Extract<GameEvent, { type: 'hazard-warn' }>} event
+ * @param {GameConfig} config
+ */
+function announceHazard(effects, { kind, x }, config) {
+  const { width, height, paddle } = config;
+
+  if (kind === 'drip') {
+    effects.ring({ x, y: paddle.inset + paddle.height + 14, color: `rgba(${THEME.drip}, 0.9)`, radius: 4, growth: 160, life: 0.4, width: 2 });
+  } else if (kind === 'lag') {
+    effects.label({ text: 'PING 999', x: width / 2, y: height * 0.4, color: `rgb(${THEME.violet})`, life: 1.1, size: 34 });
+  } else {
+    effects.pulse(0.4);
+  }
+}
+
+/**
+ * A boss's attack landing on the player: a splash or a zap and a SHRUNK! callout at the
+ * paddle, or LAG! over the court.
+ *
+ * @param {Effects} effects
+ * @param {Extract<GameEvent, { type: 'hazard-hit' }>} event
+ * @param {GameConfig} config
+ */
+function landHazard(effects, { kind, x, y }, config) {
+  if (kind === 'lag') {
+    effects.label({ text: 'LAG!', x: config.width / 2, y: config.height * 0.4, color: `rgb(${THEME.violet})`, size: 40 });
+    effects.flash(`rgb(${THEME.violet})`, 0.12);
+    return;
+  }
+
+  const color = kind === 'drip' ? `rgb(${THEME.drip})` : `rgb(${THEME.side.opponent.rgb})`;
+
+  effects.burst({ x, y, color, count: 26, speed: 260, direction: -Math.PI / 2, spread: 2.2, life: 0.5, size: 2 });
+  effects.kick('player');
+  effects.shake(kind === 'beam' ? 0.45 : 0.25);
+  effects.label({ text: 'SHRUNK!', x, y: y - 36, color, size: 22 });
+
+  if (kind === 'beam') {
+    effects.flash(color, 0.14);
   }
 }
 

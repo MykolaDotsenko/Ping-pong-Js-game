@@ -157,6 +157,12 @@ test('every event type has a sound, and milestone rallies add a chime', () => {
     { type: 'game-over', winner: 'opponent' },
     { type: 'paused' },
     { type: 'resumed' },
+    { type: 'hazard-warn', kind: 'drip', x: 0 },
+    { type: 'hazard-warn', kind: 'beam', x: 0 },
+    { type: 'hazard-warn', kind: 'lag', x: 0 },
+    { type: 'hazard-hit', kind: 'drip', x: 0, y: 0 },
+    { type: 'hazard-hit', kind: 'beam', x: 0, y: 0 },
+    { type: 'hazard-hit', kind: 'lag', x: 0, y: 0 },
   ];
 
   for (const event of events) {

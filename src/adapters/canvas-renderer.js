@@ -3,7 +3,7 @@ import { BallTrail } from './canvas/ball-trail.js';
 import { GlowSprites, paintCourt, paintGrid } from './canvas/court.js';
 import { playEvents } from './canvas/event-effects.js';
 import { drawLabels, drawRally, drawServeCountdown } from './canvas/hud.js';
-import { drawBall, drawExtraBalls, drawGhostFog, drawPaddle, drawPickups, drawTrail } from './canvas/scene.js';
+import { drawBall, drawExtraBalls, drawGhostFog, drawHazards, drawPaddle, drawPickups, drawTrail } from './canvas/scene.js';
 import { THEME } from './canvas/theme.js';
 import { Effects } from './effects.js';
 
@@ -16,6 +16,8 @@ import { Effects } from './effects.js';
 const MAX_PIXEL_RATIO = 2;
 const MAX_SHAKE = 9;
 const MAX_FRAME_SECONDS = 0.05;
+// Under the Lag boss's attack the balls are redrawn about seven times a second.
+const LAG_FRAME_MS = 140;
 
 /**
  * Draws the game as a neon arcade board and plays the visual side of game events. This
@@ -61,6 +63,8 @@ export class CanvasRenderer {
     this.lastFrameTime = null;
     /** @type {number | null} */
     this.effectsFrame = null;
+    /** @type {{ time: number, ball: GameState['ball'], extraBalls: GameState['extraBalls'] } | null} what Lag shows */
+    this.lagSnapshot = null;
     this.background = this.createLayer();
     this.gridLayer = this.createLayer();
     /** @type {ResizeObserver | null} */
@@ -146,6 +150,28 @@ export class CanvasRenderer {
   paintLayers() {
     paintCourt(this.prepareLayer(this.background), this.config);
     paintGrid(this.prepareLayer(this.gridLayer), this.config, THEME.gridPulse, THEME.gridPulse);
+  }
+
+  /**
+   * While the Lag boss's attack lasts, the balls are drawn where they were at the latest of a
+   * few snapshots a second, so they move in fits and starts. Only the picture lags: the game
+   * underneath runs on smoothly.
+   *
+   * @param {GameState} state
+   * @param {number} now milliseconds
+   * @returns {GameState}
+   */
+  lagged(state, now) {
+    if (!(state.modifiers.player.lag > 0)) {
+      this.lagSnapshot = null;
+      return state;
+    }
+
+    if (!this.lagSnapshot || now - this.lagSnapshot.time >= LAG_FRAME_MS || now < this.lagSnapshot.time) {
+      this.lagSnapshot = { time: now, ball: state.ball, extraBalls: state.extraBalls };
+    }
+
+    return { ...state, ball: this.lagSnapshot.ball, extraBalls: this.lagSnapshot.extraBalls };
   }
 
   /**
@@ -243,10 +269,19 @@ export class CanvasRenderer {
     drawGhostFog(ctx, state, config);
     drawRally(ctx, state, config, effects.popAmount);
     drawPickups(ctx, state, config, now, glows);
-    drawTrail(ctx, this.trail.points, state, config);
+    drawHazards(ctx, state, config);
+
+    // Under the Lag boss's attack the balls show where they were a moment ago, with no trail
+    // to give them away.
+    const shown = this.lagged(state, now);
+
+    if (shown === state) {
+      drawTrail(ctx, this.trail.points, state, config);
+    }
+
     effects.draw(ctx);
-    drawExtraBalls(ctx, state, config, glows);
-    drawBall(ctx, state, config, now, glows);
+    drawExtraBalls(ctx, shown, config, glows);
+    drawBall(ctx, shown, config, now, glows);
 
     // A paddle a finisher has destroyed is its flying pieces now, drawn with the effects.
     for (const side of /** @type {const} */ (['opponent', 'player'])) {

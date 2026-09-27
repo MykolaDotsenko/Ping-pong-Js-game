@@ -1,4 +1,5 @@
-import { GAME_CONFIG, MATCH_CATALOG, RUSH_LIVES } from './src/config.js';
+import { MATCH_CATALOG } from './src/catalog.js';
+import { GAME_CONFIG, RUSH_LIVES } from './src/config.js';
 import { AudioOutput } from './src/adapters/audio-output.js';
 import { BrowserDevice } from './src/adapters/browser-device.js';
 import { BrowserFrameScheduler } from './src/adapters/browser-frame-scheduler.js';

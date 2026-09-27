@@ -9,6 +9,7 @@ import {
   startGame,
   togglePause,
 } from '../domain/game.js';
+import { EASE_AFTER, easedConfig, starsFor, unlockedRival } from './career.js';
 import { FixedStepLoop } from './game-loop.js';
 import { interpolateState } from './interpolation.js';
 import { nicknameFor } from './nicknames.js';
@@ -17,6 +18,7 @@ import { GAME_COMMAND } from './ports.js';
 /**
  * @import { GameConfig, GameState } from '../domain/types.js'
  * @import {
+ *   CareerView,
  *   FeedbackPort,
  *   FrameScheduler,
  *   GameCommand,
@@ -41,10 +43,11 @@ const DRAMA_TIME_SCALE = 0.45;
 const DRAMA_MIN_SPEED_SHARE = 0.55;
 
 /**
- * Builds the tuning for the next match from the player's choices.
+ * Builds the tuning for the next match from the player's choices. A career rival plays as it
+ * always does, power-ups included, unless it has beaten the player twice in a row.
  *
  * @param {MatchCatalog} catalog
- * @param {{ mode: Mode, difficulty: string, powerUps: boolean }} choices
+ * @param {{ mode: Mode, difficulty: string, powerUps: boolean, rival?: number, losses?: number }} choices
  * @returns {GameConfig}
  */
 export function buildMatchConfig(catalog, choices) {
@@ -53,6 +56,11 @@ export function buildMatchConfig(catalog, choices) {
 
   if (choices.mode === 'rush') {
     return catalog.rush;
+  }
+
+  if (choices.mode === 'career') {
+    const { config } = catalog.career[choices.rival ?? 0] ?? catalog.career[0];
+    return (choices.losses ?? 0) >= EASE_AFTER ? easedConfig(config) : config;
   }
 
   if (choices.mode === 'duo') {
@@ -87,6 +95,8 @@ export class GameController {
     this.feedback = feedback;
     this.seed = seed;
     this.mode = preferences.get().mode;
+    /** The career rival of the current match, or of the next one in the menu. */
+    this.rival = this.rivalIndex();
     this.config = this.selectedConfig();
     /** The seed the current match started from; the computer's nickname is drawn from it. */
     this.matchSeed = seed();
@@ -95,6 +105,8 @@ export class GameController {
     this.previousState = this.state;
     this.newBest = false;
     this.newBestRush = false;
+    /** Stars the career match just finished earned. */
+    this.careerEarned = 0;
     this.recorded = false;
 
     this.loop = new FixedStepLoop({
@@ -208,6 +220,7 @@ export class GameController {
     this.applyChoices();
     this.newBest = false;
     this.newBestRush = false;
+    this.careerEarned = 0;
     this.recorded = false;
 
     // The menu already shows the rival drawn for the next match; a restart draws a new one.
@@ -228,13 +241,25 @@ export class GameController {
 
   applyChoices() {
     this.mode = this.preferences.get().mode;
+    this.rival = this.rivalIndex();
     this.config = this.selectedConfig();
     this.input.configure({ players: this.mode === 'duo' ? 2 : 1 });
   }
 
   selectedConfig() {
-    const { mode, difficulty, powerUps } = this.preferences.get();
-    return buildMatchConfig(this.catalog, { mode, difficulty, powerUps });
+    const { mode, difficulty, powerUps, careerLosses } = this.preferences.get();
+    return buildMatchConfig(this.catalog, { mode, difficulty, powerUps, rival: this.rival, losses: careerLosses[this.rival] ?? 0 });
+  }
+
+  /**
+   * The career rival chosen for the next match, kept to the part of the ladder that is open.
+   *
+   * @returns {number}
+   */
+  rivalIndex() {
+    const { rival, careerStars } = this.preferences.get();
+    const open = unlockedRival(careerStars, this.catalog.career.length);
+    return Number.isInteger(rival) ? Math.min(Math.max(0, rival), open) : 0;
   }
 
   /**
@@ -334,6 +359,33 @@ export class GameController {
     if (this.mode === 'solo') {
       this.recordSoloResult(getWinner(state) === 'player');
     }
+
+    if (this.mode === 'career') {
+      this.recordCareerResult(state);
+    }
+  }
+
+  /**
+   * Keeps the best stars earned against the rival and counts losses in a row to it. A win
+   * moves the ladder on, so the next match is against the next rival.
+   *
+   * @param {GameState} state
+   */
+  recordCareerResult(state) {
+    const { careerStars, careerLosses } = this.preferences.get();
+    const count = this.catalog.career.length;
+    const earned = starsFor(state.score);
+    const stars = Array.from({ length: count }, (_, index) => careerStars[index] ?? 0);
+    const losses = Array.from({ length: count }, (_, index) => careerLosses[index] ?? 0);
+
+    stars[this.rival] = Math.max(stars[this.rival], earned);
+    losses[this.rival] = earned > 0 ? 0 : losses[this.rival] + 1;
+    this.careerEarned = earned;
+    this.preferences.set({
+      careerStars: stars,
+      careerLosses: losses,
+      rival: earned > 0 ? Math.min(this.rival + 1, count - 1) : this.rival,
+    });
   }
 
   /**
@@ -368,22 +420,27 @@ export class GameController {
   }
 
   /**
-   * Who the player faces. With the fun extras on, the computer signs in under one of its
-   * arcade-club nicknames, the same one for the whole match.
+   * Who the player faces. A career rival goes by its own name; elsewhere, with the fun extras
+   * on, the computer signs in under one of its arcade-club nicknames, the same for the whole match.
    *
    * @returns {OpponentName}
    */
   opponentName() {
     if (this.mode === 'duo') {
-      return { label: 'P2', name: 'Player 2', nickname: false };
+      return { label: 'P2', name: 'Player 2', proper: false };
+    }
+
+    if (this.mode === 'career') {
+      const { short, name } = this.catalog.career[this.rival];
+      return { label: short, name, proper: true };
     }
 
     if (this.preferences.get().jokes === true) {
       const nickname = nicknameFor(this.matchSeed);
-      return { label: nickname, name: nickname, nickname: true };
+      return { label: nickname, name: nickname, proper: true };
     }
 
-    return { label: 'CPU', name: 'Computer', nickname: false };
+    return { label: 'CPU', name: 'Computer', proper: false };
   }
 
   /** @returns {Presentation} */
@@ -412,6 +469,31 @@ export class GameController {
       modifiers,
       stats,
       winner: getWinner(this.state),
+      career: this.careerView(),
+    };
+  }
+
+  /** @returns {CareerView | null} */
+  careerView() {
+    if (this.mode !== 'career') {
+      return null;
+    }
+
+    const { rival: chosen, careerStars, careerLosses } = this.preferences.get();
+    const { name, short, story, boss } = this.catalog.career[this.rival];
+    const over = this.state.phase === GAME_PHASE.GAME_OVER;
+
+    return {
+      index: this.rival,
+      count: this.catalog.career.length,
+      unlocked: unlockedRival(careerStars, this.catalog.career.length),
+      rival: { name, short, story, boss },
+      stars: careerStars[this.rival] ?? 0,
+      earned: over ? this.careerEarned : 0,
+      eased: (careerLosses[this.rival] ?? 0) >= EASE_AFTER,
+      next: over && chosen !== this.rival ? this.catalog.career[chosen]?.name ?? null : null,
+      totalStars: careerStars.reduce((sum, stars) => sum + stars, 0),
+      beaten: careerStars.filter((stars) => stars > 0).length,
     };
   }
 
@@ -420,11 +502,17 @@ export class GameController {
     const { rules } = this.config;
     const rush = rules.kind === 'rush';
     const opponent = this.opponentName();
-    // "computer" and "player 2" read as common nouns mid-sentence; a nickname keeps its case.
-    const opponentName = opponent.nickname ? opponent.name : opponent.name.toLowerCase();
+    // "computer" and "player 2" read as common nouns mid-sentence; a proper name keeps its case.
+    const opponentName = opponent.proper ? opponent.name : opponent.name.toLowerCase();
 
     if (phase === GAME_PHASE.READY) {
-      return rush ? 'Rush: survive as long as you can.' : `First to ${rules.winningScore}. Start when ready.`;
+      if (rush) {
+        return 'Rush: survive as long as you can.';
+      }
+
+      return this.mode === 'career'
+        ? `Career, ${this.rival + 1} of ${this.catalog.career.length}: ${opponent.name}. First to ${rules.winningScore}.`
+        : `First to ${rules.winningScore}. Start when ready.`;
     }
 
     if (phase === GAME_PHASE.PAUSED) {

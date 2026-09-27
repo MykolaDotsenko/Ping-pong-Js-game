@@ -21,6 +21,9 @@ const DEFAULTS = Object.freeze({
   bestRally: 0,
   bestRush: 0,
   stats: NO_STATS,
+  rival: 0,
+  careerStars: Object.freeze([]),
+  careerLosses: Object.freeze([]),
 });
 
 /**
@@ -33,6 +36,20 @@ const bool = (value, fallback) => (typeof value === 'boolean' ? value : fallback
  * @param {unknown} value
  */
 const count = (value) => (Number.isInteger(value) && Number(value) >= 0 ? Number(value) : 0);
+
+// A career ladder is far shorter; the cap only keeps a corrupted entry small.
+const MAX_LADDER = 32;
+
+/**
+ * A list of counts, one per career rival; anything malformed in it counts as 0.
+ *
+ * @param {unknown} value
+ * @param {number} [max]
+ * @returns {number[]}
+ */
+const counts = (value, max = Infinity) => (
+  Array.isArray(value) ? value.slice(0, MAX_LADDER).map((entry) => Math.min(count(entry), max)) : []
+);
 
 /**
  * @param {unknown} value
@@ -67,6 +84,9 @@ function sanitize(stored) {
     bestRally: count(stored.bestRally),
     bestRush: count(stored.bestRush),
     stats: sanitizeStats(stored.stats),
+    rival: count(stored.rival),
+    careerStars: counts(stored.careerStars, 3),
+    careerLosses: counts(stored.careerLosses),
   };
 }
 

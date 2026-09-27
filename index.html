@@ -67,6 +67,7 @@
             ></canvas>
 
             <p class="match-point" data-match-point hidden>Match point</p>
+            <p class="rival-banner" data-rival-banner aria-hidden="true" hidden></p>
 
             <div class="overlay overlay--menu" data-overlay="menu" role="region" aria-label="Game menu">
               <div class="panel panel--menu">
@@ -81,18 +82,30 @@
                 </div>
                 <div class="panel__main">
                   <div class="segmented segmented--modes" role="group" aria-label="Mode">
-                    <button type="button" data-mode="solo" aria-pressed="true"><strong>Solo</strong><small>vs computer</small></button>
+                    <button type="button" data-mode="solo" aria-pressed="true"><strong>Solo</strong><small>vs CPU</small></button>
                     <button type="button" data-mode="rush" aria-pressed="false"><strong>Rush</strong><small data-rush-lives>3 lives</small></button>
-                    <button type="button" data-mode="duo" aria-pressed="false"><strong>2P</strong><small>one screen</small></button>
+                    <button type="button" data-mode="duo" aria-pressed="false"><strong>2P</strong><small>1 screen</small></button>
+                    <button type="button" data-mode="career" aria-pressed="false"><strong>Career</strong><small>9 rivals</small></button>
                   </div>
                   <div class="segmented" role="group" aria-label="Difficulty" data-solo-only>
                     <button type="button" data-difficulty="easy" aria-pressed="false">Easy</button>
                     <button type="button" data-difficulty="normal" aria-pressed="true">Normal</button>
                     <button type="button" data-difficulty="hard" aria-pressed="false">Hard</button>
                   </div>
+                  <div class="rival" role="group" aria-label="Rival" data-career-only hidden>
+                    <button type="button" class="rival__step" data-rival-step="-1" aria-label="Previous rival">‹</button>
+                    <p class="rival__card">
+                      <span class="rival__place" data-rival-place>1/9</span>
+                      <strong class="rival__name" data-rival-name>Rookie Roma</strong>
+                      <span class="rival__boss" data-rival-boss hidden>Boss</span>
+                      <span class="rival__tired" data-rival-tired hidden>Tired</span>
+                      <span class="stars" data-rival-stars></span>
+                    </p>
+                    <button type="button" class="rival__step" data-rival-step="1" aria-label="Next rival">›</button>
+                  </div>
                   <button type="button" class="cta" data-command="start">Play</button>
                   <div class="toggles">
-                    <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-not-rush>Power-ups</button>
+                    <button type="button" class="toggle" data-setting="powerUps" aria-pressed="true" data-power-ups-choice>Power-ups</button>
                     <button type="button" class="toggle" data-setting="music" aria-pressed="true">Music</button>
                     <button type="button" class="track" data-track aria-label="Music track: Neon">Neon</button>
                   </div>
@@ -142,6 +155,7 @@
                 <p class="result-score" data-over-score>0 : 0</p>
                 <p class="panel__meta" data-over-meta>Longest rally <strong data-over-rally>0</strong></p>
                 <div class="result-notes">
+                  <p class="stars stars--result" data-over-stars hidden></p>
                   <p class="badge" data-over-best hidden>New best rally!</p>
                   <p class="badge" data-over-best-rush hidden>New Rush record!</p>
                   <p class="continue" data-continue aria-hidden="true" hidden></p>

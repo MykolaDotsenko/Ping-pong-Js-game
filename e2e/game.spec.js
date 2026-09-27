@@ -600,7 +600,7 @@ test('the computer signs in under an arcade-club nickname, until the Fun switch 
 // Runs the paused clock in small steps until the match is over, so the test sees the moment
 // it ends rather than some time after.
 async function runUntilMatchOver(page) {
-  for (let elapsed = 0; elapsed < 15_000; elapsed += 100) {
+  for (let elapsed = 0; elapsed < 20_000; elapsed += 100) {
     if ((await status(page).textContent()).startsWith('Match complete')) {
       return;
     }
@@ -663,6 +663,110 @@ test('a tap or a key skips the Pongality to the result screen, and starts nothin
   await page.clock.runFor(2000);
   await expect(status(page)).toHaveText('Match complete — player 2 won.');
   await expect(result).toBeVisible();
+});
+
+/** The width of the player's paddle, in board units, measured on its core stripe like readPlayerX. */
+function readPlayerWidth(page) {
+  const { width, height, paddle } = GAME_CONFIG;
+  const rowY = height - paddle.inset - paddle.height / 2;
+
+  return board(page).evaluate((canvas, { boardWidth, boardRowY }) => {
+    const scale = canvas.width / boardWidth;
+    const row = canvas.getContext('2d').getImageData(0, Math.round(boardRowY * scale), canvas.width, 1).data;
+    let first = -1;
+    let last = -1;
+
+    for (let x = 0; x < canvas.width; x += 1) {
+      if (row[x * 4] > 135 && row[x * 4] < 195 && row[x * 4 + 1] > 225 && row[x * 4 + 2] > 235) {
+        first = first < 0 ? x : first;
+        last = x;
+      }
+    }
+
+    return first < 0 ? 0 : (last - first) / scale;
+  }, { boardWidth: width, boardRowY: rowY });
+}
+
+test.describe('the career', () => {
+  // The first three rivals are beaten, so the ladder is open up to the first boss.
+  test.use({ stored: { mode: 'career', careerStars: [3, 2, 1] } });
+
+  test('opens the ladder as far as the rivals beaten, and names the rival as a match starts', async ({ page, hasTouch }) => {
+    const press = (locator) => (hasTouch ? locator.tap() : locator.click());
+    const next = page.getByRole('button', { name: 'Next rival' });
+
+    await page.goto('/');
+    await expect(page.getByRole('group', { name: 'Difficulty' })).toBeHidden();
+    await expect(page.locator('[data-rival-name]')).toHaveText('Rookie Roma');
+    await expect(page.getByRole('button', { name: 'Previous rival' })).toBeDisabled();
+    await expect(page.locator('[data-rival-stars]')).toContainText('3 of 3 stars');
+
+    for (const name of ['Aunt Halyna', 'Twisty Taras', 'The Janitor']) {
+      await press(next);
+      await expect(page.locator('[data-rival-name]')).toHaveText(name);
+    }
+
+    await expect(next).toBeDisabled();
+    await expect(page.locator('[data-rival-boss]')).toBeVisible();
+    await expect(page.locator('[data-menu-meta]')).toContainText('bucket');
+
+    await press(playButton(page));
+    await expect(status(page)).toHaveText('You 0 — 0 The Janitor');
+    await expect(page.locator('[data-label="opponent"]')).toHaveText('Janitor');
+    await expect(page.locator('[data-rival-banner]')).toContainText('The Janitor');
+  });
+
+  test.describe('against the first boss', () => {
+    test.use({ stored: { mode: 'career', careerStars: [3, 2, 1], rival: 3 } });
+
+    test('a drip from the boss shrinks the paddle of a player who stands still', async ({ page, hasTouch }) => {
+      // A fixed seed makes the match replay the same way: a point clears drips still falling,
+      // so the seed decides which volley lands.
+      await page.addInitScript(() => {
+        Math.random = () => 0.5;
+      });
+      await freezeTime(page);
+      await (hasTouch ? playButton(page).tap() : playButton(page).click());
+
+      // Stand still in the middle: one drip of every attack is aimed at the player.
+      const surface = hasTouch ? page.locator('.rail') : board(page);
+      const middle = await pointOn(surface, 0.5);
+      await (hasTouch ? surface.tap(middle) : surface.hover(middle));
+      await page.clock.runFor(3000);
+
+      const normal = await readPlayerWidth(page);
+      expect(normal).toBeGreaterThan(80);
+
+      // The first attack comes seven to ten seconds into play, after any serve pauses, and a
+      // drip takes over a second to fall; with this seed the first volley lands.
+      let shrunk = normal;
+
+      for (let elapsed = 0; elapsed < 27_000 && shrunk > normal * 0.8; elapsed += 250) {
+        await page.clock.runFor(250);
+        shrunk = await readPlayerWidth(page);
+      }
+
+      expect(shrunk).toBeLessThan(normal * 0.8);
+    });
+  });
+
+  test('a lost career match counts down to game over, and the same rival waits for a rematch', async ({ page, hasTouch }) => {
+    await freezeTime(page);
+    await (hasTouch ? playButton(page).tap() : playButton(page).click());
+
+    // Park the paddle in a corner; Rookie Roma's slow ball scores seven points in about 40 seconds.
+    const surface = hasTouch ? page.locator('.rail') : board(page);
+    const corner = await pointOn(surface, 0.01);
+    await (hasTouch ? surface.tap(corner) : surface.hover(corner));
+    await page.clock.runFor(30_000);
+    await runUntilMatchOver(page);
+
+    await expect(page.getByRole('heading', { name: 'Defeat' })).toBeVisible();
+    await expect(page.locator('[data-over-difficulty]')).toHaveText('Career 1/9 · vs Rookie Roma');
+    await expect(page.locator('[data-continue]')).toBeVisible();
+    await expect(page.locator('[data-over-stars]')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Play again' })).toBeVisible();
+  });
 });
 
 test('Escape and the pause screen expose music and sound switches', async ({ page }) => {

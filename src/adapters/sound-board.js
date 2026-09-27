@@ -138,6 +138,25 @@ export class SoundBoard {
       case 'life-lost':
         this.tone({ frequency: 200, endFrequency: 60, duration: 0.5, type: 'sawtooth', volume: 0.3 });
         break;
+      case 'hazard-warn':
+        // A drip's plink, a beam charging up, or the chirp of a dial-up connection before lag.
+        if (event.kind === 'drip') {
+          this.tone({ frequency: 1500, endFrequency: 1100, duration: 0.08, type: 'sine', volume: 0.2 });
+        } else if (event.kind === 'beam') {
+          this.tone({ frequency: 160, endFrequency: 900, duration: 0.9, type: 'sawtooth', volume: 0.12 });
+        } else {
+          this.arpeggio([NOTE.C6, NOTE.G6, NOTE.C6, NOTE.G6], 0.06, 'square', 0.12);
+        }
+        break;
+      case 'hazard-hit':
+        if (event.kind === 'lag') {
+          this.tone({ frequency: 95, duration: 0.3, type: 'square', volume: 0.22 });
+        } else if (event.kind === 'beam') {
+          this.tone({ frequency: 1200, endFrequency: 140, duration: 0.24, type: 'sawtooth', volume: 0.3 });
+        } else {
+          this.tone({ frequency: 420, endFrequency: 90, duration: 0.2, type: 'triangle', volume: 0.3 });
+        }
+        break;
       case 'paddle-hit': {
         // Pitch climbs with the rally, so a long exchange audibly builds tension.
         const base = event.side === 'player' ? 520 : 390;

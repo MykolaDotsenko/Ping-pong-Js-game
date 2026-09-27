@@ -1,4 +1,5 @@
 import { GAME_PHASE } from '../../domain/game.js';
+import { BEAM_HALF_WIDTH, DRIP_RADIUS } from '../../domain/hazards.js';
 import { paddleWidth } from '../../domain/power-ups.js';
 import { FEVER_RALLY, FONT, mixRgb, PICKUP_STYLE, roundedRect, speedIntensity, THEME } from './theme.js';
 
@@ -258,6 +259,69 @@ export function drawExtraBalls(ctx, state, config, glows) {
     ctx.beginPath();
     ctx.arc(extra.x, extra.y, radius, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
+  }
+}
+
+/**
+ * A boss's attacks. A drip falls with its shadow on the paddle row, darker the nearer it is,
+ * so the player sees where it will land. A beam is announced as a faint column over the
+ * player's half that fills from the bottom, then burns bright. Lag has nothing on the court.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {GameState} state
+ * @param {GameConfig} config
+ */
+export function drawHazards(ctx, state, config) {
+  const { width, height, paddle } = config;
+  const warning = config.boss?.warning ?? 1;
+  const face = height - paddle.inset - paddle.height;
+  const half = height / 2;
+
+  for (const hazard of state.hazards) {
+    ctx.save();
+
+    if (hazard.kind === 'drip') {
+      const near = Math.min(1, Math.max(0, hazard.y / face));
+      const r = DRIP_RADIUS;
+
+      ctx.fillStyle = `rgba(${THEME.drip}, ${0.1 + 0.35 * near})`;
+      ctx.beginPath();
+      ctx.ellipse(hazard.x, face + paddle.height / 2, r * (0.8 + 0.8 * near), r * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // A drop: round below, pointed above.
+      ctx.fillStyle = `rgb(${THEME.drip})`;
+      ctx.beginPath();
+      ctx.moveTo(hazard.x, hazard.y - r * 2.2);
+      ctx.lineTo(hazard.x + r * 0.86, hazard.y - r * 0.5);
+      ctx.arc(hazard.x, hazard.y, r, -Math.PI / 6, Math.PI + Math.PI / 6);
+      ctx.closePath();
+      ctx.fill();
+    } else if (hazard.kind === 'beam') {
+      const left = Math.max(0, hazard.x - BEAM_HALF_WIDTH);
+      const beamWidth = Math.min(width, hazard.x + BEAM_HALF_WIDTH) - left;
+      const color = THEME.side.opponent.rgb;
+
+      if (hazard.warn > 0) {
+        const filled = (height - half) * (1 - hazard.warn / warning);
+
+        ctx.fillStyle = `rgba(${color}, 0.08)`;
+        ctx.fillRect(left, half, beamWidth, height - half);
+        ctx.fillStyle = `rgba(${color}, 0.2)`;
+        ctx.fillRect(left, height - filled, beamWidth, filled);
+        ctx.strokeStyle = `rgba(${color}, 0.6)`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 8]);
+        ctx.strokeRect(left, half, beamWidth, height - half);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = `rgba(${color}, 0.45)`;
+        ctx.fillRect(left, half, beamWidth, height - half);
+        ctx.fillStyle = 'rgba(255, 240, 250, 0.85)';
+        ctx.fillRect(hazard.x - 6, half, 12, height - half);
+      }
+    }
+
     ctx.restore();
   }
 }

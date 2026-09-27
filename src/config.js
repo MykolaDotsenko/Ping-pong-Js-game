@@ -1,6 +1,6 @@
 /**
  * @import { GameConfig } from './domain/types.js'
- * @import { Difficulty, MatchCatalog } from './application/ports.js'
+ * @import { Difficulty } from './application/ports.js'
  */
 
 /** Misses a Rush run allows; the menu names it on the Rush button. */
@@ -114,11 +114,4 @@ export const RUSH_CONFIG = tuned(GAME_CONFIG, {
 // Two people on one screen, each steering their own end of the court.
 export const TWO_PLAYER_CONFIG = tuned(GAME_CONFIG, {
   opponent: { controller: 'human' },
-});
-
-/** @type {MatchCatalog} */
-export const MATCH_CATALOG = Object.freeze({
-  difficulties: DIFFICULTY_CONFIGS,
-  rush: RUSH_CONFIG,
-  duo: TWO_PLAYER_CONFIG,
 });

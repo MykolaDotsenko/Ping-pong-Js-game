@@ -25,6 +25,7 @@ export const THEME = Object.freeze({
   rose: '251, 113, 133',
   red: '239, 68, 68',
   lime: '163, 230, 53',
+  drip: '125, 211, 252',
   side: Object.freeze({
     player: Object.freeze({ rgb: '34, 211, 238', body: '#22d3ee', core: '#a5f3fc' }),
     opponent: Object.freeze({ rgb: '244, 114, 182', body: '#f472b6', core: '#fbcfe8' }),

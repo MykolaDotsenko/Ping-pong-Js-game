@@ -438,7 +438,8 @@ kbd {
 
 .panel--menu .logo { order: 1; }
 .panel--menu .segmented--modes { order: 2; }
-.panel--menu [data-solo-only] { order: 3; }
+.panel--menu [data-solo-only],
+.panel--menu [data-career-only] { order: 3; }
 .panel--menu .cta { order: 4; }
 .panel--menu .panel__meta { order: 5; }
 .panel--menu .panel__stats { order: 6; }
@@ -703,6 +704,164 @@ kbd {
   display: none;
 }
 
+/* Stars: earned ones in amber; the glyphs are decoration, the words beside them are read. */
+.stars {
+  font-size: max(12px, calc(3.6 * var(--u)));
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  color: var(--amber);
+  text-shadow: 0 0 calc(1.6 * var(--u)) rgba(251, 191, 36, 0.55);
+}
+
+.stars[hidden] {
+  display: none;
+}
+
+.stars--result {
+  margin: 0;
+  font-size: max(20px, calc(7 * var(--u)));
+  line-height: 1;
+}
+
+/* The career rival picker: steps either side of a card with the rival's name, its place on
+   the ladder, a boss tag and the best stars earned against it. */
+.rival {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--u));
+  width: min(100%, 24rem);
+}
+
+.rival[hidden] {
+  display: none;
+}
+
+.rival__step {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--text);
+  background: rgba(15, 18, 40, 0.6);
+}
+
+.rival__step:disabled {
+  cursor: default;
+  opacity: 0.3;
+}
+
+.rival__card {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  column-gap: calc(2 * var(--u));
+  min-width: 0;
+  margin: 0;
+  padding: calc(1.2 * var(--u)) calc(2 * var(--u));
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  text-align: center;
+  background: rgba(10, 12, 28, 0.75);
+}
+
+.rival__name {
+  flex-basis: 100%;
+  overflow: hidden;
+  font-size: max(14px, calc(4.2 * var(--u)));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rival__place {
+  font-size: max(11px, calc(3 * var(--u)));
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.rival__boss {
+  padding: 0 calc(1.4 * var(--u));
+  border-radius: 999px;
+  font-size: max(10px, calc(2.6 * var(--u)));
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #1a0410;
+  background: var(--opponent);
+}
+
+.rival__tired {
+  padding: 0 calc(1.4 * var(--u));
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: max(10px, calc(2.6 * var(--u)));
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.rival__boss[hidden],
+.rival__tired[hidden] {
+  display: none;
+}
+
+/* A career rival's name over the court as a match against it starts, gone before the serve. */
+.rival-banner {
+  position: absolute;
+  top: 28%;
+  left: 50%;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: calc(1 * var(--u));
+  margin: 0;
+  transform: translateX(-50%);
+  font-size: calc(7.5 * var(--u));
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--text);
+  text-shadow: 0 0 calc(3 * var(--u)) rgba(var(--opponent-rgb), 0.9), 0 0 calc(8 * var(--u)) rgba(var(--violet-rgb), 0.5);
+  pointer-events: none;
+  animation: banner 2.2s ease-out both;
+}
+
+.rival-banner[hidden] {
+  display: none;
+}
+
+.rival-banner small {
+  padding: 0 calc(2 * var(--u));
+  border-radius: 999px;
+  font-size: 0.42em;
+  letter-spacing: 0.4em;
+  color: #1a0410;
+  text-shadow: none;
+  background: var(--opponent);
+}
+
+@keyframes banner {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1.25);
+  }
+  14%,
+  78% {
+    opacity: 1;
+    transform: translateX(-50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) scale(1);
+  }
+}
+
 /* The record badges and the "Continue?" line: rows of their own on the result screen, or
    one row where the screen is short. With all of them hidden they take no room at all. */
 .result-notes {
@@ -844,12 +1003,18 @@ kbd {
   gap: clamp(4px, 2cqw, 8px);
 }
 
+/* Four modes share the row evenly, so it fits a 320px-wide phone. */
+.segmented--modes {
+  width: min(100%, 26rem);
+}
+
 .segmented--modes button {
   display: grid;
+  flex: 1 1 0;
   align-content: center;
   gap: calc(0.4 * var(--u));
-  min-width: calc(24 * var(--u));
-  padding: calc(1.2 * var(--u)) calc(2.6 * var(--u));
+  min-width: 0;
+  padding: calc(1.2 * var(--u)) calc(1.2 * var(--u));
   line-height: 1.1;
 }
 

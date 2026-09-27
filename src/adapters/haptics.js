@@ -15,6 +15,8 @@ function patternFor(event) {
       return event.side === 'player' ? 6 : null;
     case 'point':
       return event.scorer === 'player' ? [18, 40, 18] : 45;
+    case 'hazard-hit':
+      return 35;
     case 'game-over':
       return event.winner === 'player' ? [30, 60, 30, 60, 120] : [160];
     default:

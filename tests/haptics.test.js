@@ -41,3 +41,11 @@ test('devices without vibration are left alone', () => {
   assert.equal(haptics.supported, false);
   assert.doesNotThrow(() => haptics.handle([{ type: 'point', scorer: 'player', x: 0, y: 0 }]));
 });
+
+test('a boss\'s attack that lands is felt too', () => {
+  const { haptics, calls } = setup();
+
+  haptics.handle([{ type: 'hazard-warn', kind: 'drip', x: 0 }, { type: 'hazard-hit', kind: 'drip', x: 0, y: 0 }]);
+
+  assert.deepEqual(calls, [35]);
+});

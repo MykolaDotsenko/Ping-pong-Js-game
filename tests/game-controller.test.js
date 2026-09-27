@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { buildMatchConfig, GameController } from '../src/application/game-controller.js';
 import { NICKNAMES } from '../src/application/nicknames.js';
 import { GAME_COMMAND } from '../src/application/ports.js';
-import { DIFFICULTY_CONFIGS, GAME_CONFIG, MATCH_CATALOG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
+import { MATCH_CATALOG, RIVALS } from '../src/catalog.js';
+import { DIFFICULTY_CONFIGS, GAME_CONFIG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
 import { GAME_PHASE } from '../src/domain/game.js';
 
 function createFrameScheduler() {
@@ -61,6 +62,9 @@ function createPreferences(initial = {}) {
     bestRally: 0,
     bestRush: 0,
     stats: DEFAULT_STATS,
+    rival: 0,
+    careerStars: [],
+    careerLosses: [],
     ...initial,
   };
 
@@ -166,7 +170,7 @@ test('connecting draws the ready screen, sets up one player, and leaves the loop
     mode: 'solo',
     difficulty: 'normal',
     rules: GAME_CONFIG.rules,
-    opponent: { label: 'CPU', name: 'Computer', nickname: false },
+    opponent: { label: 'CPU', name: 'Computer', proper: false },
     status: 'First to 7. Start when ready.',
     score: { player: 0, opponent: 0 },
     hits: { player: 0, opponent: 0 },
@@ -182,6 +186,7 @@ test('connecting draws the ready screen, sets up one player, and leaves the loop
     modifiers: { player: { wide: 0, tiny: 0, ghost: 0, lag: 0 }, opponent: { wide: 0, tiny: 0, ghost: 0, lag: 0 } },
     stats: DEFAULT_STATS,
     winner: null,
+    career: null,
   });
   assert.equal(scheduler.pending.size, 0);
 });
@@ -647,7 +652,7 @@ test('with the fun extras on, the computer signs in under a nickname for the who
   const { controller, view, input } = setup({ jokes: true });
 
   const first = controller.presentation().opponent;
-  assert.equal(first.nickname, true);
+  assert.equal(first.proper, true);
   assert.ok(NICKNAMES.includes(first.name), first.name);
   assert.equal(first.label, first.name);
 
@@ -670,10 +675,10 @@ test('with the fun extras on, the computer signs in under a nickname for the who
 
 test('a second person and the plain computer keep their usual names', () => {
   const duo = setup({ jokes: true, mode: 'duo' });
-  assert.deepEqual(duo.controller.presentation().opponent, { label: 'P2', name: 'Player 2', nickname: false });
+  assert.deepEqual(duo.controller.presentation().opponent, { label: 'P2', name: 'Player 2', proper: false });
 
   const plain = setup({ jokes: false });
-  assert.deepEqual(plain.controller.presentation().opponent, { label: 'CPU', name: 'Computer', nickname: false });
+  assert.deepEqual(plain.controller.presentation().opponent, { label: 'CPU', name: 'Computer', proper: false });
   plain.view.handler(GAME_COMMAND.START);
   assert.equal(plain.controller.statusText(), 'You 0 — 0 Computer');
 });
@@ -700,4 +705,129 @@ test('disconnect stops the loop and releases every adapter', () => {
 
   assert.equal(scheduler.pending.size, 0);
   assert.ok(!renderer.connected && !view.connected && !input.connected);
+});
+
+// The career: a ladder of rivals, stars, and rivals that play tired after two wins in a row.
+
+/** Plays the current career match to its last point, won 7 to `conceded` or lost 0 to 7. */
+function finishCareerMatch({ controller, scheduler }, { won, conceded = 0 }) {
+  inPlay(controller, won
+    ? { score: { player: 6, opponent: conceded }, ball: { x: 250, y: -GAME_CONFIG.ball.radius - 1, vx: 0, vy: -300, spin: 0 } }
+    : { score: { player: 0, opponent: 6 }, ball: { x: 250, y: GAME_CONFIG.height + GAME_CONFIG.ball.radius + 1, vx: 0, vy: 300, spin: 0 } });
+  scheduler.flush(1000);
+  scheduler.flush(1020);
+}
+
+test('a career match is built from the chosen rival, which plays tired after beating the player twice', () => {
+  const choose = (choices) => buildMatchConfig(MATCH_CATALOG, { mode: 'career', difficulty: 'hard', powerUps: false, ...choices });
+
+  assert.strictEqual(choose({ rival: 3 }), RIVALS[3].config);
+  assert.strictEqual(choose({}), RIVALS[0].config);
+  assert.strictEqual(choose({ rival: 99 }), RIVALS[0].config);
+  assert.strictEqual(choose({ rival: 3, losses: 1 }), RIVALS[3].config);
+  assert.ok(choose({ rival: 3, losses: 2 }).opponent.maxSpeed < RIVALS[3].config.opponent.maxSpeed);
+});
+
+test('the career menu names the rival and shows where the player stands on the ladder', () => {
+  const { controller, renderer, view } = setup({ mode: 'career', rival: 1, careerStars: [3], careerLosses: [0, 2] });
+  const presentation = lastOf(view.presentations);
+
+  assert.strictEqual(lastOf(renderer.frames).config.opponent.maxSpeed, RIVALS[1].config.opponent.maxSpeed * 0.9, 'tired');
+  assert.deepEqual(presentation.opponent, { label: 'Halyna', name: 'Aunt Halyna', proper: true });
+  assert.equal(presentation.status, 'Career, 2 of 9: Aunt Halyna. First to 7.');
+  assert.deepEqual(presentation.career, {
+    index: 1,
+    count: 9,
+    unlocked: 1,
+    rival: { name: 'Aunt Halyna', short: 'Halyna', story: RIVALS[1].story, boss: false },
+    stars: 0,
+    earned: 0,
+    eased: true,
+    next: null,
+    totalStars: 3,
+    beaten: 1,
+  });
+  assert.equal(controller.presentation().rules, RIVALS[1].config.rules);
+});
+
+test('the ladder stays closed past the first rival not yet beaten', () => {
+  const { view } = setup({ mode: 'career', rival: 7, careerStars: [2, 1] });
+
+  assert.equal(lastOf(view.presentations).career.index, 2);
+  assert.equal(lastOf(view.presentations).opponent.name, RIVALS[2].name);
+});
+
+test('a career win earns stars, keeps the best, and moves the ladder on to the next rival', () => {
+  const context = setup({ mode: 'career', rival: 0, careerStars: [1], careerLosses: [1] });
+
+  context.view.handler(GAME_COMMAND.START);
+  finishCareerMatch(context, { won: true, conceded: 1 });
+
+  assert.deepEqual(lastOf(context.preferences.writes), {
+    careerStars: [3, 0, 0, 0, 0, 0, 0, 0, 0],
+    careerLosses: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    rival: 1,
+  });
+
+  const result = lastOf(context.view.presentations);
+  assert.equal(result.status, 'Match complete — you won.');
+  assert.equal(result.career.earned, 3);
+  assert.equal(result.career.next, 'Aunt Halyna');
+  assert.equal(result.career.index, 0, 'the result is about the match just played');
+
+  // Play again takes on the next rival.
+  context.view.handler(GAME_COMMAND.START);
+  assert.equal(lastOf(context.view.presentations).opponent.name, 'Aunt Halyna');
+  assert.equal(lastOf(context.view.presentations).career.next, null);
+});
+
+test('a career loss earns nothing, counts toward a tired rival, and keeps the rival', () => {
+  const context = setup({ mode: 'career', rival: 1, careerStars: [2], careerLosses: [0, 1] });
+
+  context.view.handler(GAME_COMMAND.START);
+  finishCareerMatch(context, { won: false });
+
+  assert.deepEqual(lastOf(context.preferences.writes), {
+    careerStars: [2, 0, 0, 0, 0, 0, 0, 0, 0],
+    careerLosses: [0, 2, 0, 0, 0, 0, 0, 0, 0],
+    rival: 1,
+  });
+  assert.equal(lastOf(context.view.presentations).status, 'Match complete — Aunt Halyna won.');
+  assert.equal(lastOf(context.view.presentations).career.eased, true);
+  assert.equal(lastOf(context.view.presentations).career.next, null);
+
+  // The next match is against the same rival, now tired.
+  context.view.handler(GAME_COMMAND.START);
+  assert.equal(context.controller.config.opponent.maxSpeed, RIVALS[1].config.opponent.maxSpeed * 0.9);
+});
+
+test('a replayed win keeps the better stars, and beating the final boss leaves it chosen', () => {
+  const beaten = [3, 3, 3, 3, 3, 3, 3, 3, 1];
+  const context = setup({ mode: 'career', rival: 8, careerStars: beaten });
+
+  context.view.handler(GAME_COMMAND.START);
+  finishCareerMatch(context, { won: true, conceded: 5 });
+
+  assert.deepEqual(lastOf(context.preferences.writes).careerStars, beaten, 'one star does not replace a better result');
+  assert.equal(lastOf(context.preferences.writes).rival, 8);
+  assert.equal(lastOf(context.view.presentations).career.next, null);
+});
+
+test('the career keeps its own records: no Solo streak, no best rally, and leaving costs nothing', () => {
+  const context = setup({ mode: 'career', stats: { matches: 3, wins: 3, streak: 3, bestStreak: 3 }, bestRally: 2 });
+
+  context.view.handler(GAME_COMMAND.START);
+  inPlay(context.controller, { score: { player: 2, opponent: 3 }, rally: 9, longestRally: 9 });
+  context.scheduler.flush(1000);
+  context.view.handler(GAME_COMMAND.RESET);
+
+  assert.deepEqual(context.preferences.get().stats, { matches: 3, wins: 3, streak: 3, bestStreak: 3 });
+  assert.equal(context.preferences.get().bestRally, 2);
+  assert.deepEqual(context.preferences.get().careerLosses, []);
+});
+
+test('in a career match the Fun switch never renames the rival', () => {
+  const { view } = setup({ mode: 'career', jokes: true, rival: 0 });
+
+  assert.deepEqual(lastOf(view.presentations).opponent, { label: 'Roma', name: 'Rookie Roma', proper: true });
 });
