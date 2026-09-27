@@ -584,6 +584,74 @@ test('the computer signs in under an arcade-club nickname, until the Fun switch 
   await expect(label).toHaveText('CPU', { timeout: 5000 });
 });
 
+// Runs the paused clock in small steps until the match is over, so the test sees the moment
+// it ends rather than some time after.
+async function runUntilMatchOver(page) {
+  for (let elapsed = 0; elapsed < 15_000; elapsed += 100) {
+    if ((await status(page).textContent()).startsWith('Match complete')) {
+      return;
+    }
+
+    await page.clock.runFor(100);
+  }
+
+  throw new Error(`the match is still on: ${await status(page).textContent()}`);
+}
+
+// A two-player match in which nobody moves: every serve beats the paddle it heads for, the
+// points alternate, and Player 2 wins 6 : 7 after about 27 seconds. Either winner of a
+// two-player match gets the finisher.
+async function playIdleDuo(page, hasTouch) {
+  const press = (locator) => (hasTouch ? locator.tap() : locator.click());
+
+  await freezeTime(page);
+  await press(page.getByRole('button', { name: /2P/ }));
+  await press(playButton(page));
+  await page.clock.runFor(26_000);
+  await runUntilMatchOver(page);
+  await expect(status(page)).toHaveText('Match complete — player 2 won.');
+}
+
+test('a won match ends with a Pongality before the result screen, and the next match brings the paddle back', async ({ page, hasTouch }) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const result = page.locator('[data-overlay="over"]');
+  const playAgain = page.getByRole('button', { name: 'Play again' });
+
+  await playIdleDuo(page, hasTouch);
+  await expect(result).toBeHidden();
+  await expect(page.locator('[data-hud-pause]')).toBeDisabled();
+
+  await page.clock.runFor(1200);
+  await expect(result).toBeVisible();
+  await expect(playAgain).toBeFocused();
+
+  // Once the pieces and the fireworks are gone, the loser's paddle is gone with them.
+  await page.clock.runFor(6000);
+  expect(await readPlayerX(page)).toBeNull();
+  expect(await readOpponentX(page)).toBeCloseTo(GAME_CONFIG.width / 2, -1);
+
+  await (hasTouch ? playAgain.tap() : playAgain.click());
+  await page.clock.runFor(1000);
+  expect(await readPlayerX(page)).toBeCloseTo(GAME_CONFIG.width / 2, -1);
+  expect(errors).toEqual([]);
+});
+
+test('a tap or a key skips the Pongality to the result screen, and starts nothing else', async ({ page, hasTouch }) => {
+  const result = page.locator('[data-overlay="over"]');
+
+  await playIdleDuo(page, hasTouch);
+  await expect(result).toBeHidden();
+  await (hasTouch ? board(page).tap() : page.keyboard.press('Space'));
+  await expect(result).toBeVisible();
+
+  // Space at the result screen means Play again, but the press that skipped the finisher
+  // must not count as one: the match stays over.
+  await page.clock.runFor(2000);
+  await expect(status(page)).toHaveText('Match complete — player 2 won.');
+  await expect(result).toBeVisible();
+});
+
 test('Escape and the pause screen expose music and sound switches', async ({ page }) => {
   await page.goto('/');
   await playButton(page).click();

@@ -101,8 +101,10 @@ function setup(preferenceValues) {
   });
   const feedback = {
     received: [],
-    handle(events, state) {
+    configs: [],
+    handle(events, state, config) {
       this.received.push({ types: events.map((event) => event.type), phase: state.phase });
+      this.configs.push(config);
     },
   };
   let nextSeed = 100;
@@ -331,6 +333,7 @@ test('events reach every feedback adapter once, from commands and from simulatio
     { types: ['paddle-hit'], phase: GAME_PHASE.RUNNING },
     { types: ['paused'], phase: GAME_PHASE.PAUSED },
   ]);
+  assert.ok(feedback.configs.every((config) => config === controller.config), 'each with the match\'s tuning');
 });
 
 test('frames blend the last two simulation steps', () => {

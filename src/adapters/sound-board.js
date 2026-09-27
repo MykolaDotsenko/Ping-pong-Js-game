@@ -1,5 +1,7 @@
+import { finisherApplies } from './finisher.js';
+
 /**
- * @import { GameEvent } from '../domain/types.js'
+ * @import { GameConfig, GameEvent, GameState } from '../domain/types.js'
  * @import { FeedbackPort, PreferencesPort } from '../application/ports.js'
  * @import { AudioOutput } from './audio-output.js'
  */
@@ -51,15 +53,42 @@ export class SoundBoard {
     this.master = null;
   }
 
-  /** @param {readonly GameEvent[]} events */
-  handle(events) {
+  /**
+   * @param {readonly GameEvent[]} events
+   * @param {GameState} [state]
+   * @param {GameConfig} [config]
+   */
+  handle(events, state, config) {
     if (!this.preferences.get().sound || !this.ensureContext()) {
       return;
     }
 
     for (const event of events) {
       this.play(event);
+
+      if (event.type === 'game-over' && config && this.finishes(event.winner, config)) {
+        this.crunch();
+      }
     }
+  }
+
+  /**
+   * @param {GameState['lastPoint']} winner
+   * @param {GameConfig} config
+   */
+  finishes(winner, config) {
+    return finisherApplies({
+      winner,
+      twoPlayers: config.opponent.controller === 'human',
+      rush: config.rules.kind === 'rush',
+      jokes: this.preferences.get().jokes === true,
+    });
+  }
+
+  /** The finisher landing: a low crack and a falling whine over the victory fanfare. */
+  crunch() {
+    this.tone({ frequency: 110, endFrequency: 28, duration: 0.4, type: 'sawtooth', volume: 0.5 });
+    this.tone({ frequency: 1600, endFrequency: 180, duration: 0.22, type: 'square', volume: 0.22, delay: 0.03 });
   }
 
   /** @returns {boolean} whether sound can play */

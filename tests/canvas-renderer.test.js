@@ -7,11 +7,11 @@ import { GAME_CONFIG } from '../src/config.js';
 import { createInitialState, GAME_PHASE, startGame } from '../src/domain/game.js';
 import { callsNamed, createFrameScheduler, createRendererWindow, FakeCanvas } from './support/fake-canvas.js';
 
-function setup({ clientWidth = 400, devicePixelRatio = 1, reducedMotion = false } = {}) {
+function setup({ clientWidth = 400, devicePixelRatio = 1, reducedMotion = false, jokes = false } = {}) {
   const canvas = new FakeCanvas({ clientWidth });
   const window = createRendererWindow({ devicePixelRatio, reducedMotion });
   const scheduler = createFrameScheduler();
-  const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CONFIG, random: () => 0.5 });
+  const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CONFIG, preferences: { get: () => ({ jokes }) }, random: () => 0.5 });
   return { canvas, window, scheduler, renderer, ctx: () => canvas.contexts[0] };
 }
 
@@ -191,4 +191,23 @@ test('drawing before any state has arrived does nothing', () => {
   renderer.draw();
 
   assert.equal(canvas.calls.length, 0);
+});
+
+test('while the finisher plays, the destroyed paddle is not drawn, and the next match brings it back', () => {
+  const { renderer, canvas } = setup({ jokes: true });
+  const over = { ...running(), phase: GAME_PHASE.GAME_OVER };
+  const opponentCoreDrawn = () => canvas.contexts[0].calls.some((call) => call.name === 'fill' && call.brush.fillStyle === THEME.side.opponent.core);
+
+  renderer.render(over, GAME_CONFIG);
+  renderer.handle([{ type: 'game-over', winner: 'player' }], over);
+  clearCalls(canvas);
+  renderer.draw();
+  assert.equal(opponentCoreDrawn(), false, 'the computer\'s paddle is in pieces');
+  assert.ok(canvas.contexts[0].calls.some((call) => call.name === 'fillRect' && call.brush.fillStyle === THEME.side.opponent.body) || renderer.effects.particles.length > 50);
+
+  renderer.handle([{ type: 'match-start' }], running());
+  renderer.render(running(), GAME_CONFIG);
+  clearCalls(canvas);
+  renderer.draw();
+  assert.equal(opponentCoreDrawn(), true);
 });

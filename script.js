@@ -36,7 +36,7 @@ const canvas = requireElement('[data-game-canvas]', HTMLCanvasElement);
 const preferences = new LocalPreferences(window);
 preferences.connect();
 const scheduler = new BrowserFrameScheduler(window);
-const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CONFIG });
+const renderer = new CanvasRenderer({ canvas, window, scheduler, config: GAME_CONFIG, preferences });
 const haptics = new Haptics({ navigator: window.navigator, preferences });
 const device = new BrowserDevice({ navigator: window.navigator, document, location: window.location });
 const audio = new AudioOutput(window);
@@ -49,7 +49,7 @@ const controller = new GameController({
   input: new InputController({ surface: arena, board: canvas, window, document, config: GAME_CONFIG }),
   view: new DomGameView({
     root: arena, board: canvas, preferences, canVibrate: haptics.supported, device, rushLives: RUSH_LIVES,
-    tracks: MUSIC_TRACKS, previewTrack: (track) => music.preview(track),
+    tracks: MUSIC_TRACKS, previewTrack: (track) => music.preview(track), timers: window,
   }),
   scheduler,
   feedback: [

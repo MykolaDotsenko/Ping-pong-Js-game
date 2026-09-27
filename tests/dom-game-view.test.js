@@ -161,7 +161,7 @@ function createRoot({ modalDialogs = true } = {}) {
     ...byName,
     board,
     document,
-    root: {
+    root: Object.assign(new EventTarget(), {
       dataset: {},
       scrolls: [],
       ownerDocument: document,
@@ -171,7 +171,7 @@ function createRoot({ modalDialogs = true } = {}) {
       contains: (element) => element === board || all.includes(element),
       querySelector: (selector) => all.find((element) => element.matches(selector)) ?? null,
       querySelectorAll: (selector) => all.filter((element) => element.matches(selector)),
-    },
+    }),
   };
 }
 
@@ -220,10 +220,32 @@ function createDevice(overrides = {}) {
 
 const TRACKS = [{ id: 'neon', label: 'Neon' }, { id: 'arena', label: 'Arena' }, { id: 'iron', label: 'Iron' }];
 
+function createTimers() {
+  const pending = new Map();
+  let nextId = 1;
+
+  return {
+    pending,
+    setTimeout(callback, ms) {
+      pending.set(nextId, { callback, ms });
+      return nextId++;
+    },
+    clearTimeout(id) {
+      pending.delete(id);
+    },
+    fire() {
+      const due = [...pending.values()];
+      pending.clear();
+      due.forEach(({ callback }) => callback());
+    },
+  };
+}
+
 function setup({ canVibrate = true, preferences = createPreferences(), device = createDevice(), modalDialogs = true } = {}) {
   const dom = createRoot({ modalDialogs });
   const { board } = dom;
   const previews = [];
+  const timers = createTimers();
   const view = new DomGameView({
     root: dom.root,
     board,
@@ -233,13 +255,14 @@ function setup({ canVibrate = true, preferences = createPreferences(), device = 
     rushLives: 3,
     tracks: TRACKS,
     previewTrack: (track) => previews.push(track),
+    timers,
   });
   const commands = [];
 
   view.onCommand((command) => commands.push({ command, focusedBefore: board.focusCalls.length }));
   view.connect();
 
-  return { view, dom, board, commands, preferences, device, previews };
+  return { view, dom, board, commands, preferences, device, previews, timers };
 }
 
 const click = (element) => element.dispatchEvent(new Event('click'));
@@ -300,7 +323,7 @@ test('command buttons hand focus back to the board before sending their command'
 const tutorialOpen = (dom) => dom.tutorial.hasAttribute('open');
 
 test('overlays and the pause button follow the match phase', () => {
-  const { view, dom } = setup();
+  const { view, dom, timers } = setup();
   const visible = () => ['menu', 'pause', 'over'].filter((name) => !dom[name].hidden)
     .concat(tutorialOpen(dom) ? ['tutorial'] : []);
 
@@ -319,8 +342,9 @@ test('overlays and the pause button follow the match phase', () => {
   assert.equal(dom.hudPause.getAttribute('aria-label'), 'Resume');
 
   view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }));
+  assert.ok(dom.hudPause.attributes.has('disabled'), 'disabled already while the finisher plays');
+  timers.fire();
   assert.deepEqual(visible(), ['over']);
-  assert.ok(dom.hudPause.attributes.has('disabled'));
 });
 
 test('mode buttons choose the next match, show the right options, and refresh the menu', () => {
@@ -705,4 +729,120 @@ test('a missing element is reported by name', () => {
     () => new DomGameView({ root: incomplete, board: { focus() {} }, preferences: createPreferences(), canVibrate: true, device: createDevice() }),
     /\[data-game-status\] is missing/,
   );
+});
+
+test('a won match keeps the result screen back while the finisher plays, then brings it with focus', () => {
+  const { view, dom, timers } = setup();
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }));
+
+  assert.equal(dom.over.hidden, true);
+  assert.equal(timers.pending.size, 1);
+  assert.ok([...timers.pending.values()][0].ms <= 1200);
+
+  timers.fire();
+  assert.equal(dom.over.hidden, false);
+  assert.equal(dom.playAgain.focusCalls.length, 1);
+});
+
+/** A key press as the court sees it, recording whether the view kept it from going further. */
+function keyPress(overrides = {}) {
+  const event = Object.assign(new Event('keydown', { cancelable: true }), {
+    code: 'Space', repeat: false, ctrlKey: false, metaKey: false, altKey: false, ...overrides,
+  });
+  event.stopped = false;
+  event.stopPropagation = () => {
+    event.stopped = true;
+  };
+  return event;
+}
+
+function finishing() {
+  const context = setup();
+  context.view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  context.view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }));
+  return context;
+}
+
+test('a tap on the court or a key skips the finisher and shows the result at once', () => {
+  for (const event of [() => new Event('click'), () => keyPress()]) {
+    const { dom, timers } = finishing();
+    const type = event().type;
+
+    dom.root.dispatchEvent(event());
+    assert.equal(dom.over.hidden, false, type);
+    assert.equal(timers.pending.size, 0, `${type} cancels the wait`);
+    assert.equal(dom.playAgain.focusCalls.length, 1, `${type} hands focus to Play again`);
+
+    dom.root.dispatchEvent(event());
+    assert.equal(dom.playAgain.focusCalls.length, 1, 'a second one changes nothing');
+  }
+});
+
+test('a key that skips the finisher goes no further, so Space cannot also start the next match', () => {
+  const { dom } = finishing();
+  const space = keyPress();
+
+  dom.root.dispatchEvent(space);
+  assert.equal(space.defaultPrevented, true);
+  assert.equal(space.stopped, true);
+
+  // Once the result screen is up, keys mean what they always do.
+  const next = keyPress();
+  dom.root.dispatchEvent(next);
+  assert.equal(next.defaultPrevented, false);
+  assert.equal(next.stopped, false);
+});
+
+test('a held key and shortcuts with a modifier do not skip the finisher', () => {
+  for (const overrides of [{ repeat: true, code: 'ArrowLeft' }, { ctrlKey: true, code: 'KeyR' }, { metaKey: true }, { altKey: true }]) {
+    const { dom, timers } = finishing();
+    const key = keyPress(overrides);
+
+    dom.root.dispatchEvent(key);
+    assert.equal(dom.over.hidden, true, JSON.stringify(overrides));
+    assert.equal(timers.pending.size, 1);
+    assert.equal(key.defaultPrevented, false);
+    assert.equal(key.stopped, false);
+  }
+});
+
+test('the result comes at once when no finisher plays: a defeat, a Rush run, or the fun extras off', () => {
+  const cases = [
+    [createPreferences(), presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent' })],
+    [createPreferences({ mode: 'rush' }), presentation({ phase: GAME_PHASE.GAME_OVER, mode: 'rush', winner: 'opponent' })],
+    [createPreferences({ jokes: false }), presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' })],
+  ];
+
+  for (const [preferences, result] of cases) {
+    const { view, dom, timers } = setup({ preferences });
+    view.render(presentation({ phase: GAME_PHASE.RUNNING, mode: result.mode }));
+    view.render(result);
+    assert.equal(dom.over.hidden, false);
+    assert.equal(timers.pending.size, 0);
+  }
+
+  // Between two people the second player's win is finished too.
+  const duo = { mode: 'duo', opponent: { label: 'P2', name: 'Player 2', nickname: false } };
+  const { view, dom, timers } = setup({ preferences: createPreferences({ mode: 'duo' }) });
+  view.render(presentation({ ...duo, phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ ...duo, phase: GAME_PHASE.GAME_OVER, winner: 'opponent' }));
+  assert.equal(dom.over.hidden, true);
+  assert.equal(timers.pending.size, 1);
+});
+
+test('leaving for the menu during the finisher drops the wait, so the result never pops up over the menu', () => {
+  const { view, dom, timers } = setup();
+
+  view.render(presentation({ phase: GAME_PHASE.RUNNING }));
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'player' }));
+  view.render(presentation({ phase: GAME_PHASE.READY }));
+
+  assert.equal(timers.pending.size, 0);
+  assert.equal(dom.over.hidden, true);
+  assert.equal(dom.menu.hidden, false);
+
+  view.disconnect();
+  assert.equal(timers.pending.size, 0);
 });

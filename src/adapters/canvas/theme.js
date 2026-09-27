@@ -21,6 +21,7 @@ export const THEME = Object.freeze({
   violet: '167, 139, 250',
   amber: '251, 191, 36',
   rose: '251, 113, 133',
+  red: '239, 68, 68',
   lime: '163, 230, 53',
   side: Object.freeze({
     player: Object.freeze({ rgb: '34, 211, 238', body: '#22d3ee', core: '#a5f3fc' }),

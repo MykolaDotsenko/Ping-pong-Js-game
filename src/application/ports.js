@@ -114,7 +114,8 @@ export const TRACK_IDS = Object.freeze(['neon', 'arena', 'anthem', 'contender', 
  * @property {() => void} disconnect
  *
  * @typedef {object} FeedbackPort Turns game events into sound, vibration or visual effects.
- * @property {(events: readonly GameEvent[], state: GameState) => void} handle
+ * @property {(events: readonly GameEvent[], state: GameState, config: GameConfig) => void} handle
+ *   the events of one transition, with the state they produced and the match's tuning
  *
  * @typedef {object} FrameScheduler
  * @property {(callback: (timestamp: number) => void) => number} request

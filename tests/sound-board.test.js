@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { AudioOutput } from '../src/adapters/audio-output.js';
 import { MusicPlayer } from '../src/adapters/music-player.js';
 import { SoundBoard } from '../src/adapters/sound-board.js';
+import { GAME_CONFIG, RUSH_CONFIG } from '../src/config.js';
 
 function fakeParam(value = 0) {
   const param = {
@@ -66,11 +67,11 @@ class FakeAudioContext {
   }
 }
 
-function setup({ sound = true, withAudio = true } = {}) {
+function setup({ sound = true, withAudio = true, jokes = false } = {}) {
   FakeAudioContext.created = [];
   const board = new SoundBoard({
     audio: new AudioOutput(withAudio ? { AudioContext: FakeAudioContext } : {}),
-    preferences: { get: () => ({ sound }) },
+    preferences: { get: () => ({ sound, jokes }) },
   });
   return { board, contexts: FakeAudioContext.created };
 }
@@ -181,4 +182,20 @@ test('sound effects and music share one audio context', () => {
 
   assert.equal(FakeAudioContext.created.length, 1);
   assert.strictEqual(board.context, music.context);
+});
+
+test('the finisher lands with a crunch on top of the fanfare, only where a finisher plays', () => {
+  const won = { type: 'game-over', winner: 'player' };
+  const lost = { type: 'game-over', winner: 'opponent' };
+  const count = (options, event, config) => {
+    const { board, contexts } = setup(options);
+    board.handle([event], undefined, config);
+    return contexts[0].oscillators.length;
+  };
+
+  const fanfare = count({ jokes: false }, won, GAME_CONFIG);
+  assert.equal(count({ jokes: true }, won, GAME_CONFIG), fanfare + 2);
+  assert.equal(count({ jokes: true }, lost, GAME_CONFIG), count({ jokes: false }, lost, GAME_CONFIG));
+  assert.equal(count({ jokes: true }, lost, RUSH_CONFIG), count({ jokes: false }, lost, RUSH_CONFIG));
+  assert.equal(count({ jokes: true }, won), fanfare, 'without the match config it cannot tell, so it stays quiet');
 });

@@ -1,5 +1,6 @@
 import { DIFFICULTIES, GAME_COMMAND, MODES } from '../application/ports.js';
 import { GAME_PHASE } from '../domain/game.js';
+import { finisherApplies, FINISHER_SECONDS } from './finisher.js';
 
 /**
  * @import { GamePhase, Side } from '../domain/types.js'
@@ -53,8 +54,9 @@ export class DomGameView {
    * @param {number} options.rushLives shown on the Rush button before that mode is chosen
    * @param {readonly { id: TrackId, label: string }[]} options.tracks the music tracks, in the order the track button cycles
    * @param {(track: TrackId) => void} options.previewTrack plays a short sample of the chosen track
+   * @param {{ setTimeout: typeof setTimeout, clearTimeout: typeof clearTimeout }} options.timers
    */
-  constructor({ root, board, preferences, canVibrate, device, rushLives, tracks, previewTrack }) {
+  constructor({ root, board, preferences, canVibrate, device, rushLives, tracks, previewTrack, timers }) {
     this.root = root;
     this.board = board;
     this.preferences = preferences;
@@ -63,6 +65,10 @@ export class DomGameView {
     this.rushLives = rushLives;
     this.tracks = tracks;
     this.previewTrack = previewTrack;
+    this.timers = timers;
+    /** While the finisher plays, the result screen waits; a tap or key brings it at once. */
+    /** @type {ReturnType<typeof setTimeout> | null} */
+    this.resultDelay = null;
     this.status = this.find('[data-game-status]');
     this.scores = { player: this.find('[data-score="player"]'), opponent: this.find('[data-score="opponent"]') };
     this.overlays = {
@@ -76,6 +82,9 @@ export class DomGameView {
     this.matchPoint = this.find('[data-match-point]');
     /** @type {Presentation | null} */
     this.rendered = null;
+    /** The presentation being rendered right now, for the phase change it may bring. */
+    /** @type {Presentation | null} */
+    this.pending = null;
     /** @type {Presentation | null} */
     this.lastResult = null;
     /** @type {Array<[HTMLElement, string, EventListener]>} */
@@ -163,6 +172,12 @@ export class DomGameView {
       this.listen(button, () => this.nextTrack());
     }
 
+    // While the finisher plays, a tap anywhere on the court brings the result screen. On the
+    // click rather than the press: a press that brought the screen up could land its click
+    // on the button that appears under the finger.
+    this.listen(this.root, () => this.revealResult());
+    this.listen(this.root, (event) => this.skipFinisherByKey(/** @type {KeyboardEvent} */ (event)), 'keydown');
+
     for (const button of this.findAll('[data-show-tutorial]')) {
       this.listen(button, () => this.showTutorial(true));
     }
@@ -210,6 +225,7 @@ export class DomGameView {
       target.removeEventListener(type, listener);
     }
     this.listeners = [];
+    this.cancelResultDelay();
   }
 
   /**
@@ -359,6 +375,7 @@ export class DomGameView {
     // render() runs every frame during a match. Only touch the DOM when something changed:
     // the status element is an aria-live region, and rewriting it could spam screen readers.
     const previous = this.rendered;
+    this.pending = presentation;
 
     if (presentation.phase !== previous?.phase || presentation.mode !== previous?.mode) {
       this.showPhase(presentation.phase, presentation.mode);
@@ -416,6 +433,56 @@ export class DomGameView {
   }
 
   /**
+   * Whether the match that just ended gets a finisher, which the result screen waits for.
+   *
+   * @param {Presentation} presentation
+   */
+  finishes({ winner, mode }) {
+    return finisherApplies({
+      winner,
+      twoPlayers: mode === 'duo',
+      rush: mode === 'rush',
+      jokes: this.preferences.get().jokes === true,
+    });
+  }
+
+  /**
+   * A key pressed during the finisher only brings the result screen, so Space or Enter
+   * cannot also start the next match unseen; the keyboard input listens beyond the court,
+   * on the window, so the key stops here. A held key's repeats and shortcuts with a
+   * modifier are no request to skip.
+   *
+   * @param {KeyboardEvent} event
+   */
+  skipFinisherByKey(event) {
+    if (this.resultDelay === null || event.repeat || event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.revealResult();
+  }
+
+  /** Shows the result screen now, ending any wait for the finisher. */
+  revealResult() {
+    if (this.resultDelay === null) {
+      return;
+    }
+
+    this.cancelResultDelay();
+    this.overlays.over.hidden = false;
+    this.guideFocus(GAME_PHASE.GAME_OVER);
+  }
+
+  cancelResultDelay() {
+    if (this.resultDelay !== null) {
+      this.timers.clearTimeout(this.resultDelay);
+      this.resultDelay = null;
+    }
+  }
+
+  /**
    * @param {GamePhase} phase
    * @param {Mode} mode
    */
@@ -425,11 +492,18 @@ export class DomGameView {
 
     this.root.dataset.phase = phase;
     this.root.dataset.mode = mode;
+    // The finisher plays on the board first; the result screen follows, or comes at a tap.
+    const finishing = phase === GAME_PHASE.GAME_OVER && phaseChanged && this.rendered !== null
+      && this.finishes(/** @type {Presentation} */ (this.pending));
+
     this.overlays.menu.hidden = phase !== GAME_PHASE.READY;
     this.overlays.pause.hidden = phase !== GAME_PHASE.PAUSED;
-    this.overlays.over.hidden = phase !== GAME_PHASE.GAME_OVER;
+    this.overlays.over.hidden = phase !== GAME_PHASE.GAME_OVER || finishing;
+    this.cancelResultDelay();
 
-    if (phaseChanged && this.rendered !== null) {
+    if (finishing) {
+      this.resultDelay = this.timers.setTimeout(() => this.revealResult(), FINISHER_SECONDS * 1000);
+    } else if (phaseChanged && this.rendered !== null) {
       this.guideFocus(phase);
     }
     this.pauseButton.toggleAttribute('disabled', !inMatch);

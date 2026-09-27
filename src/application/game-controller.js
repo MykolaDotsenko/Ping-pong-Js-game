@@ -248,7 +248,7 @@ export class GameController {
     }
 
     for (const feedback of this.feedback) {
-      feedback.handle(state.events, state);
+      feedback.handle(state.events, state, this.config);
     }
   }
 

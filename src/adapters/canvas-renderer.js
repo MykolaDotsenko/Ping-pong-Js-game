@@ -33,9 +33,10 @@ export class CanvasRenderer {
    * @param {Window & typeof globalThis} options.window
    * @param {FrameScheduler} options.scheduler runs effects after a match ends, when the game loop is idle
    * @param {GameConfig} options.config the court geometry; the match config arrives with each frame
+   * @param {{ get: () => { jokes: boolean } }} [options.preferences] the preferences, for the fun extras switch
    * @param {() => number} [options.random]
    */
-  constructor({ canvas, window, scheduler, config, random = Math.random }) {
+  constructor({ canvas, window, scheduler, config, preferences = { get: () => ({ jokes: false }) }, random = Math.random }) {
     const context = canvas.getContext('2d', { alpha: false });
 
     if (!context) {
@@ -46,6 +47,7 @@ export class CanvasRenderer {
     this.window = window;
     this.scheduler = scheduler;
     this.config = config;
+    this.preferences = preferences;
     this.context = context;
     this.random = random;
     this.reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -146,13 +148,21 @@ export class CanvasRenderer {
     paintGrid(this.prepareLayer(this.gridLayer), this.config, THEME.gridPulse, THEME.gridPulse);
   }
 
-  /** @param {readonly GameEvent[]} events */
-  handle(events) {
+  /**
+   * @param {readonly GameEvent[]} events
+   * @param {GameState} [state] the state the events came with
+   */
+  handle(events, state) {
     if (events.some((event) => event.type === 'match-start')) {
       this.trail.clear();
     }
 
-    playEvents(this.effects, events, { config: this.config, random: this.random });
+    playEvents(this.effects, events, {
+      config: this.config,
+      random: this.random,
+      jokes: this.preferences.get().jokes === true,
+      state,
+    });
     this.ensureEffectsLoop();
   }
 
@@ -236,8 +246,14 @@ export class CanvasRenderer {
     drawTrail(ctx, this.trail.points, state, config);
     effects.draw(ctx);
     drawBall(ctx, state, config, now, glows);
-    drawPaddle(ctx, state, 'opponent', config, effects.squash.opponent, glows);
-    drawPaddle(ctx, state, 'player', config, effects.squash.player, glows);
+
+    // A paddle a finisher has destroyed is its flying pieces now, drawn with the effects.
+    for (const side of /** @type {const} */ (['opponent', 'player'])) {
+      if (effects.hiddenPaddle !== side) {
+        drawPaddle(ctx, state, side, config, effects.squash[side], glows);
+      }
+    }
+
     drawServeCountdown(ctx, state, config);
     drawLabels(ctx, effects.labels);
 
