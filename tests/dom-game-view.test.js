@@ -23,6 +23,7 @@ class FakeElement extends EventTarget {
     this.classList = {
       add: (name) => this.classes.add(name),
       remove: (name) => this.classes.delete(name),
+      toggle: (name, force) => (force ? this.classes.add(name) : this.classes.delete(name)),
     };
 
     for (const [name, value] of this.attributes) {
@@ -99,6 +100,7 @@ class FakeDialog extends FakeElement {
 function createRoot({ modalDialogs = true } = {}) {
   const elements = [
     ['status', { 'data-game-status': '' }],
+    ['scoreboard', { 'data-scoreboard': '' }],
     ['playerScore', { 'data-score': 'player' }],
     ['opponentScore', { 'data-score': 'opponent' }],
     ['playerLabel', { 'data-label': 'player' }],
@@ -118,6 +120,7 @@ function createRoot({ modalDialogs = true } = {}) {
     ['pauseTrack', { 'data-track': '' }],
     ['powerUps', { 'data-setting': 'powerUps', 'data-not-rush': '' }],
     ['vibration', { 'data-setting': 'vibration' }],
+    ['jokes', { 'data-setting': 'jokes' }],
     ['solo', { 'data-mode': 'solo' }],
     ['rush', { 'data-mode': 'rush' }],
     ['duo', { 'data-mode': 'duo' }],
@@ -182,6 +185,7 @@ function createPreferences(initial = {}) {
     sound: true,
     music: true,
     track: 'neon',
+    jokes: true,
     vibration: true,
     tutorialSeen: true,
     bestRally: 0,
@@ -247,6 +251,7 @@ function presentation(overrides = {}) {
     mode: 'solo',
     difficulty: 'normal',
     rules: { kind: 'match', winningScore: 7 },
+    opponent: { label: 'CPU', name: 'Computer', nickname: false },
     status: 'First to 7. Start when ready.',
     score: { player: 0, opponent: 0 },
     hits: { player: 0, opponent: 0 },
@@ -366,9 +371,31 @@ test('setting toggles flip the preference and every matching switch', () => {
   click(dom.music);
   click(dom.powerUps);
   click(dom.vibration);
+  click(dom.jokes);
   assert.equal(preferences.get().music, false);
   assert.equal(preferences.get().powerUps, false);
   assert.equal(preferences.get().vibration, false);
+  assert.equal(preferences.get().jokes, false);
+  assert.equal(dom.jokes.getAttribute('aria-pressed'), 'false');
+});
+
+test('the scoreboard names the rival: a nickname in its own style, else CPU or P2', () => {
+  const { view, dom } = setup();
+  const nick = { label: 'Vitalik95', name: 'Vitalik95', nickname: true };
+
+  view.render(presentation({ opponent: nick }));
+  assert.equal(dom.opponentLabel.textContent, 'Vitalik95');
+  assert.ok(dom.opponentLabel.classes.has('scoreboard__label--nick'));
+  assert.ok(dom.scoreboard.classes.has('scoreboard--nick'), 'the scoreboard makes room');
+
+  view.render(presentation({ mode: 'duo', opponent: { label: 'P2', name: 'Player 2', nickname: false } }));
+  assert.equal(dom.opponentLabel.textContent, 'P2');
+  assert.equal(dom.playerLabel.textContent, 'P1');
+  assert.equal(dom.opponentLabel.classes.has('scoreboard__label--nick'), false);
+  assert.equal(dom.scoreboard.classes.has('scoreboard--nick'), false);
+
+  view.render(presentation({ phase: GAME_PHASE.GAME_OVER, winner: 'opponent', opponent: nick }));
+  assert.equal(dom.overDifficulty.textContent, 'Normal · vs Vitalik95');
 });
 
 test('the track button shows the saved track and every tap moves on, turns music on and plays a sample', () => {

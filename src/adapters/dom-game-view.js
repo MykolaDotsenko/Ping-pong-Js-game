@@ -23,7 +23,7 @@ const MODE_TIPS = Object.freeze({
   rush: 'The ball only gets faster. Curve it past the computer to keep your lives.',
   duo: 'Player 1 steers from the bottom half, Player 2 from the top.',
 });
-const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps']);
+const TOGGLE_SETTINGS = /** @type {const} */ (['sound', 'music', 'vibration', 'powerUps', 'jokes']);
 
 /**
  * @typedef {typeof TOGGLE_SETTINGS[number]} ToggleSetting
@@ -368,6 +368,10 @@ export class DomGameView {
       this.status.textContent = presentation.status;
     }
 
+    if (presentation.opponent.label !== previous?.opponent.label || presentation.mode !== previous?.mode) {
+      this.showLabels(presentation);
+    }
+
     for (const side of /** @type {Side[]} */ (['player', 'opponent'])) {
       const score = presentation.mode === 'rush' ? presentation.hits : presentation.score;
       const value = score[side];
@@ -430,12 +434,25 @@ export class DomGameView {
     }
     this.pauseButton.toggleAttribute('disabled', !inMatch);
     this.pauseButton.setAttribute('aria-label', phase === GAME_PHASE.PAUSED ? 'Resume' : 'Pause');
-    this.find('[data-label="opponent"]').textContent = mode === 'duo' ? 'P2' : 'CPU';
-    this.find('[data-label="player"]').textContent = { solo: 'You', rush: 'Hits', duo: 'P1' }[mode];
 
     if (phase !== GAME_PHASE.READY) {
       this.find('[data-share-note]').textContent = '';
     }
+  }
+
+  /**
+   * The scoreboard's side labels. A nickname is set in its own case and letter-spacing, and
+   * clipped with an ellipsis rather than pushing the scoreboard into the buttons.
+   *
+   * @param {Presentation} presentation
+   */
+  showLabels({ mode, opponent }) {
+    const label = this.find('[data-label="opponent"]');
+
+    label.textContent = opponent.label;
+    label.classList.toggle('scoreboard__label--nick', opponent.nickname);
+    this.find('[data-scoreboard]').classList.toggle('scoreboard--nick', opponent.nickname);
+    this.find('[data-label="player"]').textContent = { solo: 'You', rush: 'Hits', duo: 'P1' }[mode];
   }
 
   /**
@@ -507,16 +524,17 @@ export class DomGameView {
 
   /** @param {Presentation} presentation */
   showResult(presentation) {
-    const { winner, score, hits, longestRally, newBest, newBestRush, mode, difficulty } = presentation;
+    const { winner, score, hits, longestRally, newBest, newBestRush, mode, difficulty, opponent } = presentation;
     const title = this.find('[data-over-title]');
     const rush = mode === 'rush';
+    const setting = rush ? 'Rush' : mode === 'duo' ? 'Two players' : DIFFICULTY_LABELS[difficulty];
 
     this.lastResult = presentation;
     title.textContent = rush ? 'Run over' : winner === 'player' ? 'Victory' : 'Defeat';
     title.dataset.winner = rush ? 'opponent' : (winner ?? '');
     this.find('[data-over-score]').textContent = rush ? `${hits.player} hits` : `${score.player} : ${score.opponent}`;
     this.find('[data-over-rally]').textContent = String(longestRally);
-    this.find('[data-over-difficulty]').textContent = rush ? 'Rush' : mode === 'duo' ? 'Two players' : DIFFICULTY_LABELS[difficulty];
+    this.find('[data-over-difficulty]').textContent = opponent.nickname ? `${setting} · vs ${opponent.name}` : setting;
     this.find('[data-over-best]').hidden = !newBest;
     this.find('[data-over-best-rush]').hidden = !newBestRush;
   }

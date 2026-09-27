@@ -1,20 +1,23 @@
 import { expect, test as base } from '@playwright/test';
 
+import { NICKNAMES } from '../src/application/nicknames.js';
 import { GAME_CONFIG } from '../src/config.js';
 
 // A first visit opens the tutorial over the menu. Most tests model a returning player, so
 // they store that choice before the page loads; the tutorial has a test of its own.
 const test = base.extend({
   tutorialSeen: [true, { option: true }],
-  context: async ({ context, tutorialSeen }, use) => {
+  /** Other preferences to store before the page loads, such as `{ jokes: false }`. */
+  stored: [{}, { option: true }],
+  context: async ({ context, tutorialSeen, stored }, use) => {
     // Runs before every page load, so it must not overwrite choices a test has since made.
-    await context.addInitScript((seen) => {
+    await context.addInitScript((preferences) => {
       const key = 'ping-pong-lab:preferences';
 
       if (window.localStorage.getItem(key) === null) {
-        window.localStorage.setItem(key, JSON.stringify({ tutorialSeen: seen }));
+        window.localStorage.setItem(key, JSON.stringify(preferences));
       }
-    }, tutorialSeen);
+    }, { tutorialSeen, ...stored });
     await use(context);
   },
 });
@@ -342,7 +345,8 @@ test('the chosen difficulty and sound setting survive a reload', async ({ page }
 });
 
 test.describe('with full motion', () => {
-  test.use({ reducedMotion: 'no-preference' });
+  // The plain computer, so the status lines can be checked word for word.
+  test.use({ reducedMotion: 'no-preference', stored: { jokes: false } });
 
   test('a lost match ends on the result screen, and Play again starts a new one', async ({ page, hasTouch }) => {
     const errors = [];
@@ -558,6 +562,26 @@ test('the mode and the power-up switch survive a reload', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: /2P/ })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: 'Power-ups' })).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('the computer signs in under an arcade-club nickname, until the Fun switch is turned off', async ({ page }) => {
+  await page.goto('/');
+
+  const label = page.locator('[data-label="opponent"]');
+  const nickname = await label.textContent();
+  expect(NICKNAMES).toContain(nickname);
+
+  await playButton(page).click();
+  await expect(status(page)).toHaveText(`You 0 — 0 ${nickname}`);
+  await page.keyboard.press('Escape');
+  await page.locator('[data-overlay="pause"]').getByRole('button', { name: 'Fun' }).click();
+  // The switch takes effect as play goes on.
+  await page.keyboard.press('Escape');
+
+  await expect(label).toHaveText('CPU');
+  await expect(status(page)).toHaveText('You 0 — 0 Computer');
+  await page.reload();
+  await expect(label).toHaveText('CPU', { timeout: 5000 });
 });
 
 test('Escape and the pause screen expose music and sound switches', async ({ page }) => {

@@ -12,6 +12,7 @@ const DEFAULTS = {
   sound: true,
   music: true,
   track: 'neon',
+  jokes: true,
   vibration: true,
   tutorialSeen: false,
   bestRally: 0,
@@ -42,6 +43,7 @@ test('restores stored choices', () => {
     sound: false,
     music: false,
     track: 'iron',
+    jokes: false,
     vibration: false,
     tutorialSeen: true,
     bestRally: 17,
@@ -54,7 +56,7 @@ test('restores stored choices', () => {
 });
 
 test('ignores malformed or outdated stored values', () => {
-  const stored = { mode: 'battle-royale', difficulty: 'impossible', track: 'polka', sound: 'yes', vibration: null, bestRally: -3, bestRush: '12', stats: 'lots' };
+  const stored = { mode: 'battle-royale', difficulty: 'impossible', track: 'polka', sound: 'yes', jokes: 'lots', vibration: null, bestRally: -3, bestRush: '12', stats: 'lots' };
   const preferences = new LocalPreferences({ localStorage: createStorage({ [KEY]: JSON.stringify(stored) }) });
 
   assert.deepEqual(preferences.get(), DEFAULTS);

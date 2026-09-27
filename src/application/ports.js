@@ -52,6 +52,7 @@ export const TRACK_IDS = Object.freeze(['neon', 'arena', 'anthem', 'contender', 
  * @property {boolean} sound
  * @property {boolean} music
  * @property {TrackId} track the backing track the next match plays
+ * @property {boolean} jokes the fun extras: the computer's nicknames, finishers and the CONTINUE? countdown
  * @property {boolean} vibration
  * @property {boolean} tutorialSeen
  * @property {number} bestRally longest rally ever played
@@ -67,11 +68,17 @@ export const TRACK_IDS = Object.freeze(['neon', 'arena', 'anthem', 'contender', 
  * @property {GameConfig} rush
  * @property {GameConfig} duo
  *
+ * @typedef {object} OpponentName Who the player faces, as the interface names them.
+ * @property {string} label the short form on the scoreboard: CPU, P2 or a nickname
+ * @property {string} name the full form in sentences: Computer, Player 2 or a nickname
+ * @property {boolean} nickname whether this is one of the computer's arcade-club nicknames
+ *
  * @typedef {object} Presentation What the view shows around the board.
  * @property {GamePhase} phase
  * @property {Mode} mode
  * @property {Difficulty} difficulty
  * @property {Rules} rules how the match is won, so the view never repeats them from memory
+ * @property {OpponentName} opponent
  * @property {string} status
  * @property {Record<Side, number>} score
  * @property {Record<Side, number>} hits

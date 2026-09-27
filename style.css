@@ -172,9 +172,16 @@ canvas:focus-visible {
   }
 }
 
-/* The colors already tell the sides apart: cyan is yours at the bottom, pink theirs on top. */
+/* The colors already tell the sides apart: cyan is yours at the bottom, pink theirs on top.
+   A nickname needs more room than "CPU", so with one the labels go a size earlier. */
 @container hud (max-width: 290px) {
   .scoreboard__label {
+    display: none;
+  }
+}
+
+@container hud (max-width: 330px) {
+  .scoreboard--nick .scoreboard__label {
     display: none;
   }
 }
@@ -249,6 +256,18 @@ canvas:focus-visible {
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+/* The computer's nickname keeps its own case, a size smaller, and is capped at the room left
+   between the score and the buttons: 67px on a 360px phone, where every nickname just fits. */
+.scoreboard__label--nick {
+  max-width: calc(100cqw - 273px);
+  overflow: hidden;
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
 }
 
 .scoreboard__score {

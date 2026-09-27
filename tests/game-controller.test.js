@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { buildMatchConfig, GameController } from '../src/application/game-controller.js';
+import { NICKNAMES } from '../src/application/nicknames.js';
 import { GAME_COMMAND } from '../src/application/ports.js';
 import { DIFFICULTY_CONFIGS, GAME_CONFIG, MATCH_CATALOG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
 import { GAME_PHASE } from '../src/domain/game.js';
@@ -163,6 +164,7 @@ test('connecting draws the ready screen, sets up one player, and leaves the loop
     mode: 'solo',
     difficulty: 'normal',
     rules: GAME_CONFIG.rules,
+    opponent: { label: 'CPU', name: 'Computer', nickname: false },
     status: 'First to 7. Start when ready.',
     score: { player: 0, opponent: 0 },
     hits: { player: 0, opponent: 0 },
@@ -636,6 +638,41 @@ test('a short first rally is saved as the record without being celebrated', () =
   assert.deepEqual(preferences.writes, [{ bestRally: 1 }]);
   assert.equal(lastOf(view.presentations).bestRally, 1);
   assert.equal(lastOf(view.presentations).newBest, false);
+});
+
+test('with the fun extras on, the computer signs in under a nickname for the whole match', () => {
+  const { controller, view, input } = setup({ jokes: true });
+
+  const first = controller.presentation().opponent;
+  assert.equal(first.nickname, true);
+  assert.ok(NICKNAMES.includes(first.name), first.name);
+  assert.equal(first.label, first.name);
+
+  view.handler(GAME_COMMAND.START);
+  controller.state = { ...controller.state, score: { player: 1, opponent: 2 } };
+  assert.deepEqual(controller.presentation().opponent, first, 'the same rival all match');
+  assert.equal(controller.statusText(), `You 1 — 2 ${first.name}`);
+
+  controller.state = { ...controller.state, phase: GAME_PHASE.GAME_OVER, score: { player: 1, opponent: 7 } };
+  assert.equal(controller.statusText(), `Match complete — ${first.name} won.`);
+
+  // Over a run of matches the rival changes: the nickname comes from the seed.
+  const seen = new Set([first.name]);
+  for (let match = 0; match < 40; match += 1) {
+    input.handler(GAME_COMMAND.RESTART);
+    seen.add(controller.presentation().opponent.name);
+  }
+  assert.ok(seen.size >= 5, `saw ${seen.size} nicknames`);
+});
+
+test('a second person and the plain computer keep their usual names', () => {
+  const duo = setup({ jokes: true, mode: 'duo' });
+  assert.deepEqual(duo.controller.presentation().opponent, { label: 'P2', name: 'Player 2', nickname: false });
+
+  const plain = setup({ jokes: false });
+  assert.deepEqual(plain.controller.presentation().opponent, { label: 'CPU', name: 'Computer', nickname: false });
+  plain.view.handler(GAME_COMMAND.START);
+  assert.equal(plain.controller.statusText(), 'You 0 — 0 Computer');
 });
 
 test('the status line reports the live score, match point, and a Rush run', () => {

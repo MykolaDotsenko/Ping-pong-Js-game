@@ -11,6 +11,7 @@ import {
 } from '../domain/game.js';
 import { FixedStepLoop } from './game-loop.js';
 import { interpolateState } from './interpolation.js';
+import { nicknameFor } from './nicknames.js';
 import { GAME_COMMAND } from './ports.js';
 
 /**
@@ -22,6 +23,7 @@ import { GAME_COMMAND } from './ports.js';
  *   InputPort,
  *   MatchCatalog,
  *   Mode,
+ *   OpponentName,
  *   PreferencesPort,
  *   Presentation,
  *   RendererPort,
@@ -86,7 +88,9 @@ export class GameController {
     this.seed = seed;
     this.mode = preferences.get().mode;
     this.config = this.selectedConfig();
-    this.state = createInitialState(this.config, seed());
+    /** The seed the current match started from; the computer's nickname is drawn from it. */
+    this.matchSeed = seed();
+    this.state = createInitialState(this.config, this.matchSeed);
     /** The state before the latest simulation step, used to interpolate rendering. */
     this.previousState = this.state;
     this.newBest = false;
@@ -205,14 +209,21 @@ export class GameController {
     this.newBest = false;
     this.newBestRush = false;
     this.recorded = false;
-    return startGame(createInitialState(this.config, this.seed()), this.config);
+
+    // The menu already shows the rival drawn for the next match; a restart draws a new one.
+    if (this.state.phase !== GAME_PHASE.READY) {
+      this.matchSeed = this.seed();
+    }
+
+    return startGame(createInitialState(this.config, this.matchSeed), this.config);
   }
 
   /** @returns {GameState} */
   menu() {
     this.recordForfeit();
     this.applyChoices();
-    return resetGame(this.config, this.seed());
+    this.matchSeed = this.seed();
+    return resetGame(this.config, this.matchSeed);
   }
 
   applyChoices() {
@@ -356,6 +367,25 @@ export class GameController {
     });
   }
 
+  /**
+   * Who the player faces. With the fun extras on, the computer signs in under one of its
+   * arcade-club nicknames, the same one for the whole match.
+   *
+   * @returns {OpponentName}
+   */
+  opponentName() {
+    if (this.mode === 'duo') {
+      return { label: 'P2', name: 'Player 2', nickname: false };
+    }
+
+    if (this.preferences.get().jokes === true) {
+      const nickname = nicknameFor(this.matchSeed);
+      return { label: nickname, name: nickname, nickname: true };
+    }
+
+    return { label: 'CPU', name: 'Computer', nickname: false };
+  }
+
   /** @returns {Presentation} */
   presentation() {
     const { phase, score, hits, lives, rally, longestRally, modifiers } = this.state;
@@ -366,6 +396,7 @@ export class GameController {
       mode: this.mode,
       difficulty,
       rules: this.config.rules,
+      opponent: this.opponentName(),
       status: this.statusText(),
       score,
       hits,
@@ -388,7 +419,9 @@ export class GameController {
     const { phase, score, hits } = this.state;
     const { rules } = this.config;
     const rush = rules.kind === 'rush';
-    const opponentName = this.mode === 'duo' ? 'Player 2' : 'Computer';
+    const opponent = this.opponentName();
+    // "computer" and "player 2" read as common nouns mid-sentence; a nickname keeps its case.
+    const opponentName = opponent.nickname ? opponent.name : opponent.name.toLowerCase();
 
     if (phase === GAME_PHASE.READY) {
       return rush ? 'Rush: survive as long as you can.' : `First to ${rules.winningScore}. Start when ready.`;
@@ -405,11 +438,11 @@ export class GameController {
 
       return getWinner(this.state) === 'player'
         ? 'Match complete — you won.'
-        : `Match complete — ${opponentName.toLowerCase()} won.`;
+        : `Match complete — ${opponentName} won.`;
     }
 
     return rush
       ? `${hits.player} hits, ${this.state.lives} lives left`
-      : `You ${score.player} — ${score.opponent} ${opponentName}`;
+      : `You ${score.player} — ${score.opponent} ${opponent.name}`;
   }
 }
