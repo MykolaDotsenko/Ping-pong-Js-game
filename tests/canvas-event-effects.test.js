@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { calloutFor, CURVE_SPIN, EDGE_OFFSET, playEvents } from '../src/adapters/canvas/event-effects.js';
-import { THEME } from '../src/adapters/canvas/theme.js';
+import { calloutFor, CURVE_SPIN, EDGE_OFFSET, finish, playEvents } from '../src/adapters/canvas/event-effects.js';
+import { SUPER_STYLE, THEME } from '../src/adapters/canvas/theme.js';
 import { Effects } from '../src/adapters/effects.js';
+import { COMIC_TITLES, FINISHER_KINDS, FINISHER_SECONDS, finisherFor, SUPER_FINISHERS } from '../src/adapters/finisher.js';
 import { GAME_CONFIG, RUSH_CONFIG, TWO_PLAYER_CONFIG } from '../src/config.js';
 import { createInitialState } from '../src/domain/game.js';
 
@@ -133,10 +134,26 @@ test('the sparks of a point spray into the court, away from the goal line', () =
   assert.ok(atBottom.particles.every((particle) => particle.vy < 0), 'up from the bottom goal');
 });
 
-const over = (seed = 1) => ({ ...createInitialState(GAME_CONFIG, seed), phase: 'game-over', opponent: { x: 250, vx: 0 }, player: { x: 120, vx: 0 } });
-const finished = (winner, { config = GAME_CONFIG, jokes = true, seed = 1 } = {}) => {
+/** The first match seed whose finisher, for the player's win, passes the test. */
+function seedFor(test) {
+  for (let seed = 0; ; seed += 1) {
+    const finisher = finisherFor({ winner: 'player', twoPlayers: false, rush: false, jokes: true, seed });
+    if (finisher && test(finisher)) return seed;
+  }
+}
+
+const SHATTER = seedFor((finisher) => finisher.kind === 'shatter');
+const over = (seed = SHATTER, score = { player: 7, opponent: 3 }) => ({
+  ...createInitialState(GAME_CONFIG, 1),
+  seed,
+  score,
+  phase: 'game-over',
+  opponent: { x: 250, vx: 0 },
+  player: { x: 120, vx: 0 },
+});
+const finished = (winner, { config = GAME_CONFIG, jokes = true, seed = SHATTER, event = {}, score } = {}) => {
   const effects = new Effects({ random: () => 0.5 });
-  playEvents(effects, [{ type: 'game-over', winner }], { config, random: () => 0.5, jokes, state: over(seed) });
+  playEvents(effects, [{ type: 'game-over', winner, ...event }], { config, random: () => 0.5, jokes, state: over(seed, score) });
   return effects;
 };
 
@@ -153,25 +170,106 @@ test('with the fun extras on, the player\'s win destroys the computer\'s paddle 
   assert.equal(effects.scheduled.length, 7, 'then they are on their way');
 });
 
-test('every kind of finisher comes apart in its own way, at the loser\'s paddle', () => {
-  const seen = new Set();
+/** Plays one finisher to its end and records what the board showed along the way. */
+function playFinisher(kind, { loser = 'opponent', superKind = null, perfect = false } = {}) {
+  const effects = new Effects({ random: () => 0.5 });
+  const state = over();
+  const title = COMIC_TITLES[kind] ?? 'PONGALITY';
+  const paddle = { x: state[loser].x, y: loser === 'player' ? 752 : 48 };
+  const frames = [];
+  let nearPaddle = false;
 
-  for (let seed = 0; seed < 40; seed += 1) {
-    const effects = finished('player', { seed });
-    const shards = effects.shards;
-    const kind = shards.length > 4 ? 'shatter' : shards.length === 2 ? 'slice' : shards.length === 1 ? 'launch' : 'vaporize';
-    seen.add(kind);
+  finish(effects, { kind, loser, title, super: superKind, perfect }, state, GAME_CONFIG);
 
-    for (const shard of shards) {
-      assert.ok(Math.abs(shard.x - 250) <= 60 && Math.abs(shard.y - (GAME_CONFIG.paddle.inset + 8)) < 1, `${kind} starts at the top paddle`);
-    }
-
-    if (kind === 'launch') {
-      assert.ok(shards[0].vy < 0, 'the top paddle is launched off the top');
-    }
+  for (let elapsed = 0; elapsed <= FINISHER_SECONDS + 1e-9; elapsed += 0.05) {
+    frames.push(`${effects.shards.length}/${effects.bolts.length}/${effects.particles.length}/${effects.rings.length}/${effects.labels.length}`);
+    nearPaddle ||= [...effects.shards, ...effects.particles, ...effects.rings]
+      .some((thing) => Math.abs(thing.x - paddle.x) < 70 && Math.abs(thing.y - paddle.y) < 70);
+    effects.update(0.05);
   }
 
-  assert.deepEqual([...seen].sort(), ['launch', 'shatter', 'slice', 'vaporize']);
+  return { effects, signature: frames.join(' '), nearPaddle };
+}
+
+test('every kind of finisher comes apart in its own way, at the loser\'s paddle, within the agreed time', () => {
+  const signatures = new Map();
+
+  for (const kind of FINISHER_KINDS) {
+    const { effects, signature, nearPaddle } = playFinisher(kind);
+
+    assert.equal(effects.hiddenPaddle, 'opponent', `${kind} takes the paddle`);
+    assert.ok(nearPaddle, `${kind} happens at the paddle`);
+    assert.ok(!signatures.has(signature), `${kind} looks like ${signatures.get(signature)}`);
+    signatures.set(signature, kind);
+    assert.equal(effects.scheduled.length, 0, `${kind} is over within ${FINISHER_SECONDS} s`);
+  }
+});
+
+test('a launched paddle leaves the court by its own end', () => {
+  for (const [loser, direction] of [['opponent', -1], ['player', 1]]) {
+    const effects = new Effects({ random: () => 0.5 });
+    finish(effects, { kind: 'launch', loser, title: 'PONGALITY', super: null, perfect: false }, over(), GAME_CONFIG);
+
+    assert.equal(effects.shards.length, 1);
+    assert.equal(Math.sign(effects.shards[0].vy), direction, loser);
+  }
+});
+
+test('a meteor lands before the paddle goes, and the ice holds before it shatters', () => {
+  const meteor = new Effects({ random: () => 0.5 });
+  finish(meteor, { kind: 'meteor', loser: 'opponent', title: 'PONGALITY', super: null, perfect: false }, over(), GAME_CONFIG);
+  assert.equal(meteor.hiddenPaddle, null, 'the paddle is still there as the rock comes in');
+  meteor.update(0.31);
+  assert.equal(meteor.hiddenPaddle, 'opponent');
+
+  const freeze = new Effects({ random: () => 0.5 });
+  finish(freeze, { kind: 'freeze', loser: 'opponent', title: 'PONGALITY', super: null, perfect: false }, over(), GAME_CONFIG);
+  assert.equal(freeze.shards.length, 1, 'one block of ice');
+  freeze.update(0.46);
+  assert.ok(freeze.shards.length > 1, 'then its pieces');
+});
+
+test('a match won with a super ends in its own finisher, under SUPER in its color', () => {
+  for (const [superKind, kind] of Object.entries(SUPER_FINISHERS)) {
+    const effects = finished('player', { event: { super: superKind } });
+    const expected = playFinisher(kind, { superKind }).effects;
+
+    assert.deepEqual(effects.labels.map((label) => label.text), ['PONGALITY', 'SUPER']);
+    assert.equal(effects.labels[1].color, `rgb(${SUPER_STYLE[superKind].rgb})`);
+    assert.equal(expected.hiddenPaddle, 'opponent');
+  }
+
+  const bolts = new Effects({ random: () => 0.5 });
+  finish(bolts, { kind: 'electrocute', loser: 'opponent', title: 'PONGALITY', super: 'thunder', perfect: false }, over(), GAME_CONFIG);
+  bolts.update(0.2);
+  assert.equal(bolts.bolts.length, 3, 'three bolts of lightning');
+});
+
+test('the comic finishers go by their own titles in amber, each with an aside by the paddle', () => {
+  const tiny = finished('player', { seed: seedFor((finisher) => finisher.kind === 'tiny') });
+  const snooze = finished('player', { seed: seedFor((finisher) => finisher.kind === 'snooze') });
+
+  assert.deepEqual(tiny.labels.map((label) => label.text), ['TINYALITY']);
+  assert.equal(tiny.labels[0].color, `rgb(${THEME.amber})`);
+  tiny.update(0.4);
+  assert.deepEqual(tiny.labels.map((label) => label.text), ['TINYALITY', 'WAAAH!']);
+  assert.ok(tiny.labels[1].y > 48, 'on the court, by the top paddle');
+
+  assert.deepEqual(snooze.labels.map((label) => label.text), ['SNOOZALITY', 'Zzz']);
+});
+
+test('a win to nil is PERFECT!, a moment after the title', () => {
+  const perfect = finished('player', { score: { player: 7, opponent: 0 } });
+
+  assert.deepEqual(perfect.labels.map((label) => label.text), ['PONGALITY']);
+  perfect.update(0.31);
+  assert.deepEqual(perfect.labels.map((label) => label.text), ['PONGALITY', 'PERFECT!']);
+  assert.ok(perfect.labels[1].y > perfect.labels[0].y);
+  assert.ok(perfect.labels[1].life <= FINISHER_SECONDS - 0.3);
+
+  const close = finished('player', { score: { player: 7, opponent: 6 } });
+  close.update(0.31);
+  assert.deepEqual(close.labels.map((label) => label.text), ['PONGALITY']);
 });
 
 test('between two people the winner finishes the other, and the bottom paddle goes off the bottom', () => {

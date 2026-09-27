@@ -264,3 +264,81 @@ test('pieces are drawn as rotated solid rectangles, before the additive light', 
   assert.ok(Math.abs(context.calls.find(([name]) => name === 'rotate')[1] - 1) < 1e-9);
   assert.deepEqual(context.calls.find(([name]) => name === 'fillRect').slice(1), [-15, -4, 30, 8]);
 });
+
+test('a shrinking piece is drawn smaller as its life runs out', () => {
+  const effects = new Effects({ random: seededRandom() });
+  const context = createContext();
+
+  effects.shard({ x: 0, y: 0, vx: 0, vy: 0, width: 100, height: 10, color: '#f472b6', life: 1, shrink: 0.9 });
+  effects.update(0.5);
+  effects.draw(context);
+
+  const [, x, y, width, height] = context.calls.find(([name]) => name === 'fillRect');
+  assert.ok(Math.abs(width - 55) < 1e-9 && Math.abs(height - 5.5) < 1e-9, 'lost half of 90% of its size');
+  assert.ok(Math.abs(x + width / 2) < 1e-9 && Math.abs(y + height / 2) < 1e-9, 'still centered');
+});
+
+test('an implosion starts on a circle and rushes to its center as it fades', () => {
+  const effects = new Effects({ random: seededRandom() });
+
+  effects.implode({ x: 100, y: 200, color: '#a78bfa', count: 20, radius: 80, life: 0.5 });
+
+  assert.equal(effects.particles.length, 20);
+  for (const particle of effects.particles) {
+    const distance = Math.hypot(particle.x - 100, particle.y - 200);
+    assert.ok(distance >= 80 * 0.6 - 1e-9 && distance <= 80 + 1e-9);
+    // Heading straight in, fast enough to arrive as it fades.
+    const arrival = { x: particle.x + particle.vx * particle.maxLife, y: particle.y + particle.vy * particle.maxLife };
+    assert.ok(Math.hypot(arrival.x - 100, arrival.y - 200) < 1e-6);
+  }
+
+  const calm = new Effects({ random: seededRandom(), reducedMotion: true });
+  calm.implode({ x: 0, y: 0, color: '#a78bfa', count: 20, radius: 80 });
+  assert.equal(calm.particles.length, 8);
+});
+
+test('a bolt of lightning runs jagged from one point to the other, then fades and is gone', () => {
+  const effects = new Effects({ random: seededRandom() });
+  const context = createContext();
+
+  effects.bolt({ x1: 0, y1: 0, x2: 0, y2: 300, color: '#bfdbfe', segments: 6, jag: 20, life: 0.3 });
+
+  const [bolt] = effects.bolts;
+  assert.equal(bolt.points.length, 7);
+  assert.deepEqual([bolt.points[0], bolt.points[6]], [{ x: 0, y: 0 }, { x: 0, y: 300 }]);
+  assert.ok(bolt.points.every((point) => Math.abs(point.x) <= 20 + 1e-9), 'strays no further than its jag');
+  assert.ok(bolt.points.some((point) => point.x !== 0), 'and is jagged');
+  assert.ok(effects.active);
+
+  effects.draw(context);
+  assert.equal(context.calls.filter(([name]) => name === 'lineTo').length, 6);
+
+  effects.update(0.31);
+  assert.equal(effects.bolts.length, 0);
+
+  effects.bolt({ x1: 0, y1: 0, x2: 10, y2: 10, color: '#fff' });
+  effects.clear();
+  assert.equal(effects.bolts.length, 0);
+});
+
+test('a callout can join the one showing instead of replacing it', () => {
+  const effects = new Effects({ random: seededRandom() });
+
+  effects.label({ text: 'PONGALITY', x: 250, y: 400, color: 'red' });
+  effects.label({ text: 'PERFECT!', x: 250, y: 450, color: 'gold', stack: true });
+  assert.deepEqual(effects.labels.map((label) => label.text), ['PONGALITY', 'PERFECT!']);
+
+  effects.label({ text: 'CURVE!', x: 0, y: 0, color: 'lime' });
+  assert.deepEqual(effects.labels.map((label) => label.text), ['CURVE!']);
+});
+
+test('a shrinking ring never reaches the canvas with a negative radius', () => {
+  const effects = new Effects({ random: seededRandom() });
+  const context = createContext();
+
+  effects.ring({ x: 0, y: 0, color: 'violet', radius: 10, growth: -100, life: 0.5 });
+  effects.update(0.2);
+  effects.draw(context);
+
+  assert.equal(context.calls.find(([name]) => name === 'arc')[3], 0);
+});

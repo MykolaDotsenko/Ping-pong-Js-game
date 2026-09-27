@@ -1,14 +1,14 @@
 import { matchPointSide } from '../../domain/game.js';
 import { paddleWidth } from '../../domain/power-ups.js';
 import { CURVE_SPIN, EDGE_OFFSET, isLoaded } from '../../domain/supers.js';
-import { finisherFor } from '../finisher.js';
+import { COMIC_TITLES, finisherAt, FINISHER_SECONDS } from '../finisher.js';
 import { meterBox } from './hud.js';
 import { PICKUP_STYLE, speedIntensity, SUPER_STYLE, THEME } from './theme.js';
 
 /**
  * @import { GameConfig, GameEvent, GameState, Side } from '../../domain/types.js'
  * @import { Effects } from '../effects.js'
- * @import { Finisher } from '../finisher.js'
+ * @import { Finisher, FinisherKind } from '../finisher.js'
  *
  * @typedef {object} EventContext
  * @property {GameConfig} config the match being played
@@ -115,13 +115,7 @@ export function playEvents(effects, events, { config, random, jokes = false, sta
         landHazard(effects, event, config);
         break;
       case 'game-over': {
-        const finisher = state ? finisherFor({
-          winner: event.winner,
-          twoPlayers: config.opponent.controller === 'human',
-          rush: config.rules.kind === 'rush',
-          jokes,
-          seed: state.seed,
-        }) : null;
+        const finisher = state ? finisherAt(event, state, config, jokes) : null;
 
         if (finisher && state) {
           finish(effects, finisher, state, config);
@@ -318,47 +312,276 @@ function celebrate(effects, winner, config, random) {
 }
 
 /**
- * The finisher: the loser's paddle goes to pieces, is launched off the court, is sliced in
- * two or boils away, under a red callout. The paddle itself is not drawn meanwhile.
+ * @typedef {object} Target the loser's paddle, as a finisher sees it
+ * @property {Side} side
+ * @property {number} x center
+ * @property {number} y
+ * @property {number} width
+ * @property {number} height
+ * @property {string} color
+ * @property {1 | -1} outward off the court: down for the paddle at the bottom, up for the one at the top
+ * @property {GameConfig} config
+ */
+
+// Ice for the freeze, and the frost it throws off.
+const ICE = '#bae6fd';
+const FROST = '#e0f2fe';
+// Ash from an incinerated paddle, and the light of an electrocuted one.
+const ASH = '#57534e';
+const CHARGED = '#bfdbfe';
+
+/**
+ * The finisher, under its callout: PONGALITY in red, with SUPER above it in the color of the
+ * super that won the match, or a comic finisher's own title in amber; a win to nil adds
+ * PERFECT! below. The loser's paddle is not drawn meanwhile, only what becomes of it.
  *
  * @param {Effects} effects
  * @param {Finisher} finisher
  * @param {GameState} state
  * @param {GameConfig} config
  */
-function finish(effects, { kind, loser }, state, config) {
-  const { paddle, height, width: courtWidth } = config;
+export function finish(effects, finisher, state, config) {
+  const { paddle, height, width } = config;
+  const { loser } = finisher;
   const top = loser === 'player' ? height - paddle.inset - paddle.height : paddle.inset;
-  const x = state[loser].x;
-  const y = top + paddle.height / 2;
-  const width = paddleWidth(state, loser, config);
-  const color = THEME.side[loser].body;
-  // Off the court: down for the player's paddle at the bottom, up for the one at the top.
-  const outward = loser === 'player' ? 1 : -1;
+  const comic = finisher.kind in COMIC_TITLES;
+  /** @type {Target} */
+  const target = {
+    side: loser,
+    x: state[loser].x,
+    y: top + paddle.height / 2,
+    width: paddleWidth(state, loser, config),
+    height: paddle.height,
+    color: THEME.side[loser].body,
+    outward: loser === 'player' ? 1 : -1,
+    config,
+  };
 
-  effects.hidePaddle(loser);
-  effects.flash(`rgb(${THEME.red})`, 0.4);
-  effects.shake(1.2);
-  effects.label({ text: 'PONGALITY', x: courtWidth / 2, y: height / 2, color: `rgb(${THEME.red})`, life: 1.2, size: 44 });
+  effects.label({ text: finisher.title, x: width / 2, y: height / 2, color: `rgb(${comic ? THEME.amber : THEME.red})`, life: FINISHER_SECONDS, size: 44 });
 
-  switch (kind) {
-    case 'shatter':
-      effects.shatter({ x, y, width, height: paddle.height, color, count: 12, speed: 320 });
-      effects.burst({ x, y, color: THEME.spark, count: 30, speed: 380, life: 0.6, size: 2 });
-      break;
-    case 'launch':
-      effects.shard({ x, y, vx: (state[loser].x < courtWidth / 2 ? 1 : -1) * 90, vy: outward * 900, width, height: paddle.height, color, spin: 9, life: 1.2 });
-      effects.burst({ x, y, color, count: 24, speed: 260, direction: outward * Math.PI / 2, spread: 1.2, life: 0.5, size: 2.2 });
-      break;
-    case 'slice':
-      effects.shard({ x: x - width / 4, y, vx: -140, vy: outward * 120, width: width / 2, height: paddle.height, color, spin: -5, life: 1.2, gravity: outward * 700 });
-      effects.shard({ x: x + width / 4, y, vx: 140, vy: outward * 120, width: width / 2, height: paddle.height, color, spin: 5, life: 1.2, gravity: outward * 700 });
-      effects.ring({ x, y, color: THEME.spark, radius: 4, growth: 900, life: 0.4, width: 4 });
-      break;
-    case 'vaporize':
-    default:
-      effects.burst({ x, y, color, count: 90, speed: 140, direction: -Math.PI / 2, spread: 2.6, life: 1, size: 2.6, gravity: -160, drag: 1.2 });
-      effects.burst({ x, y, color: THEME.spark, count: 20, speed: 240, life: 0.6, size: 1.6 });
-      break;
+  if (finisher.super) {
+    effects.label({ text: 'SUPER', x: width / 2, y: height / 2 - 42, color: `rgb(${SUPER_STYLE[finisher.super].rgb})`, life: FINISHER_SECONDS, size: 24, stack: true });
   }
+
+  if (finisher.perfect) {
+    effects.schedule(0.3, () => {
+      effects.label({ text: 'PERFECT!', x: width / 2, y: height / 2 + 48, color: `rgb(${THEME.amber})`, life: FINISHER_SECONDS - 0.3, size: 30, stack: true });
+    });
+  }
+
+  FINISHES[finisher.kind](effects, target);
 }
+
+/**
+ * The paddle goes at once: it is hidden, and the board flashes and shakes.
+ *
+ * @param {Effects} effects
+ * @param {Target} target
+ * @param {string} [rgb]
+ */
+function strike(effects, target, rgb = THEME.red) {
+  effects.hidePaddle(target.side);
+  effects.flash(`rgb(${rgb})`, 0.4);
+  effects.shake(1.2);
+}
+
+/**
+ * A comic finisher's aside, by the paddle, kept on the court.
+ *
+ * @param {Effects} effects
+ * @param {Target} target
+ * @param {string} text
+ * @param {string} rgb
+ * @param {number} life
+ */
+function aside(effects, target, text, rgb, life) {
+  const x = Math.min(Math.max(target.x, 60), target.config.width - 60);
+  effects.label({ text, x, y: target.y - target.outward * 42, color: `rgb(${rgb})`, life, size: 24, stack: true });
+}
+
+/**
+ * How each finisher destroys the paddle.
+ *
+ * @type {Readonly<Record<FinisherKind, (effects: Effects, target: Target) => void>>}
+ */
+const FINISHES = Object.freeze({
+  shatter(effects, t) {
+    strike(effects, t);
+    effects.shatter({ x: t.x, y: t.y, width: t.width, height: t.height, color: t.color, count: 12, speed: 320 });
+    effects.burst({ x: t.x, y: t.y, color: THEME.spark, count: 30, speed: 380, life: 0.6, size: 2 });
+  },
+  launch(effects, t) {
+    strike(effects, t);
+    effects.shard({ x: t.x, y: t.y, vx: (t.x < t.config.width / 2 ? 1 : -1) * 90, vy: t.outward * 900, width: t.width, height: t.height, color: t.color, spin: 9, life: 1.2 });
+    effects.burst({ x: t.x, y: t.y, color: t.color, count: 24, speed: 260, direction: t.outward * Math.PI / 2, spread: 1.2, life: 0.5, size: 2.2 });
+  },
+  slice(effects, t) {
+    strike(effects, t);
+    effects.shard({ x: t.x - t.width / 4, y: t.y, vx: -140, vy: t.outward * 120, width: t.width / 2, height: t.height, color: t.color, spin: -5, life: 1.2, gravity: t.outward * 700 });
+    effects.shard({ x: t.x + t.width / 4, y: t.y, vx: 140, vy: t.outward * 120, width: t.width / 2, height: t.height, color: t.color, spin: 5, life: 1.2, gravity: t.outward * 700 });
+    effects.ring({ x: t.x, y: t.y, color: THEME.spark, radius: 4, growth: 900, life: 0.4, width: 4 });
+  },
+  vaporize(effects, t) {
+    strike(effects, t);
+    effects.burst({ x: t.x, y: t.y, color: t.color, count: 90, speed: 140, direction: -Math.PI / 2, spread: 2.6, life: 1, size: 2.6, gravity: -160, drag: 1.2 });
+    effects.burst({ x: t.x, y: t.y, color: THEME.spark, count: 20, speed: 240, life: 0.6, size: 1.6 });
+  },
+  meteor(effects, t) {
+    // A rock streaks down from high over the court behind a tail of fire, and lands on the paddle.
+    const fall = 0.3;
+    const from = { x: t.x + (t.x < t.config.width / 2 ? 150 : -150), y: t.side === 'player' ? t.config.height * 0.3 : -80 };
+    const velocity = { x: (t.x - from.x) / fall, y: (t.y - from.y) / fall };
+    const fire = `rgb(${SUPER_STYLE.fireball.rgb})`;
+
+    effects.shard({ x: from.x, y: from.y, vx: velocity.x, vy: velocity.y, width: 20, height: 20, color: '#9a3412', spin: 6, life: fall });
+
+    for (let tick = 0; tick < 6; tick += 1) {
+      const at = tick * (fall / 6);
+      effects.schedule(at, () => {
+        effects.burst({ x: from.x + velocity.x * at, y: from.y + velocity.y * at, color: fire, count: 8, speed: 70, life: 0.35, size: 2.4 });
+      });
+    }
+
+    effects.schedule(fall, () => {
+      strike(effects, t, SUPER_STYLE.fireball.rgb);
+      effects.shatter({ x: t.x, y: t.y, width: t.width, height: t.height, color: t.color, count: 12, speed: 360 });
+      effects.burst({ x: t.x, y: t.y, color: fire, count: 50, speed: 420, life: 0.6, size: 2.4 });
+      effects.ring({ x: t.x, y: t.y, color: fire, radius: 10, growth: 800, life: 0.45, width: 6 });
+    });
+  },
+  blackhole(effects, t) {
+    // A void opens at the paddle and draws it in, piece by piece, then snaps shut.
+    const violet = `rgb(${THEME.violet})`;
+
+    effects.hidePaddle(t.side);
+    effects.shake(0.6);
+    effects.ring({ x: t.x, y: t.y, color: `rgba(${THEME.violet}, 0.9)`, radius: 80, growth: -150, life: 0.5, width: 4 });
+    effects.implode({ x: t.x, y: t.y, color: t.color, count: 50, radius: 90, life: 0.5 });
+    effects.implode({ x: t.x, y: t.y, color: violet, count: 30, radius: 120, life: 0.55 });
+
+    for (let piece = 0; piece < 6; piece += 1) {
+      const x = t.x - t.width / 2 + (t.width * (piece + 0.5)) / 6;
+      effects.shard({ x, y: t.y, vx: (t.x - x) / 0.4, vy: 0, width: t.width / 6, height: t.height, color: t.color, spin: piece % 2 ? 10 : -10, life: 0.4, shrink: 0.9 });
+    }
+
+    effects.schedule(0.5, () => {
+      effects.flash(violet, 0.3);
+      effects.burst({ x: t.x, y: t.y, color: violet, count: 26, speed: 260, life: 0.5, size: 2 });
+      effects.ring({ x: t.x, y: t.y, color: violet, radius: 4, growth: 420, life: 0.35, width: 3 });
+    });
+  },
+  freeze(effects, t) {
+    // The paddle freezes solid in a block of ice, which shatters a moment later.
+    effects.hidePaddle(t.side);
+    effects.flash(`rgb(${THEME.drip})`, 0.25);
+    effects.shard({ x: t.x, y: t.y, vx: 0, vy: 0, width: t.width + 6, height: t.height + 6, color: ICE, life: 0.45 });
+    effects.burst({ x: t.x, y: t.y, color: FROST, count: 26, speed: 90, life: 0.5, size: 1.6 });
+
+    effects.schedule(0.45, () => {
+      effects.shake(1);
+      effects.shatter({ x: t.x, y: t.y, width: t.width + 6, height: t.height + 6, color: ICE, count: 14, speed: 300 });
+      effects.burst({ x: t.x, y: t.y, color: FROST, count: 30, speed: 340, life: 0.5, size: 1.8 });
+      effects.ring({ x: t.x, y: t.y, color: `rgba(${THEME.drip}, 0.9)`, radius: 6, growth: 500, life: 0.4, width: 3 });
+    });
+  },
+  incinerate(effects, t) {
+    // A fireball's finisher: the paddle goes up in flames, and its ash drifts away.
+    strike(effects, t, SUPER_STYLE.fireball.rgb);
+
+    for (const [rgb, count] of /** @type {const} */ ([[SUPER_STYLE.fireball.rgb, 60], [THEME.amber, 40], [THEME.red, 20]])) {
+      effects.burst({ x: t.x, y: t.y, color: `rgb(${rgb})`, count, speed: 160, direction: -Math.PI / 2, spread: 1.8, life: 0.9, size: 2.6, gravity: -380, drag: 1.4 });
+    }
+
+    for (let flake = 0; flake < 8; flake += 1) {
+      effects.shard({
+        x: t.x - t.width / 2 + (t.width * (flake + 0.5)) / 8,
+        y: t.y,
+        vx: (flake - 3.5) * 22,
+        vy: -60 - 20 * (flake % 3),
+        width: 6,
+        height: 6,
+        color: ASH,
+        spin: flake % 2 ? 4 : -4,
+        life: 1.1,
+        gravity: 160,
+      });
+    }
+  },
+  shred(effects, t) {
+    // A zigzag's finisher: one zigzag cut, and the paddle falls apart in strips.
+    const yellow = `rgb(${SUPER_STYLE.zigzag.rgb})`;
+
+    strike(effects, t, SUPER_STYLE.zigzag.rgb);
+    effects.bolt({ x1: t.x - t.width / 2 - 10, y1: t.y, x2: t.x + t.width / 2 + 10, y2: t.y, color: yellow, segments: 8, jag: 14, life: 0.35, width: 3 });
+    effects.shatter({ x: t.x, y: t.y, width: t.width, height: t.height, color: t.color, count: 16, speed: 280 });
+    effects.burst({ x: t.x, y: t.y, color: yellow, count: 30, speed: 300, life: 0.45, size: 1.8 });
+  },
+  derez(effects, t) {
+    // A phantom's finisher: the paddle breaks up into pixels that drift off and blink out.
+    const pixel = 6;
+    const columns = Math.max(4, Math.round(t.width / pixel));
+    const rows = Math.max(1, Math.round(t.height / pixel));
+
+    effects.hidePaddle(t.side);
+    effects.flash(`rgb(${SUPER_STYLE.phantom.rgb})`, 0.25);
+    effects.ring({ x: t.x, y: t.y, color: `rgba(${SUPER_STYLE.phantom.rgb}, 0.8)`, radius: 8, growth: 300, life: 0.5, width: 2 });
+
+    for (let column = 0; column < columns; column += 1) {
+      for (let row = 0; row < rows; row += 1) {
+        // A fixed scatter, so every pixel drifts and blinks out in its own time.
+        const n = column * 7 + row * 13;
+        effects.shard({
+          x: t.x - t.width / 2 + ((column + 0.5) * t.width) / columns,
+          y: t.y - t.height / 2 + ((row + 0.5) * t.height) / rows,
+          vx: ((n * 53) % 60) - 30,
+          vy: -(30 + ((n * 29) % 70)),
+          width: pixel,
+          height: pixel,
+          color: (column + row) % 3 === 0 ? `rgb(${SUPER_STYLE.phantom.rgb})` : t.color,
+          life: 0.35 + (((n * 37) % 100) / 100) * 0.8,
+        });
+      }
+    }
+  },
+  electrocute(effects, t) {
+    // Thunder's finisher: lightning from the middle of the court lights the paddle up, and it bursts.
+    const blue = `rgb(${SUPER_STYLE.thunder.rgb})`;
+
+    effects.hidePaddle(t.side);
+    effects.flash(blue, 0.3);
+    effects.shake(0.8);
+    effects.shard({ x: t.x, y: t.y, vx: 0, vy: 0, width: t.width, height: t.height, color: CHARGED, life: 0.3 });
+
+    [-40, 0, 40].forEach((offset, index) => {
+      effects.schedule(index * 0.08, () => {
+        effects.bolt({ x1: t.x + offset * 1.6, y1: t.config.height / 2, x2: t.x + offset * 0.4, y2: t.y, color: CHARGED, segments: 9, jag: 22, life: 0.28, width: 3 });
+      });
+    });
+
+    effects.schedule(0.3, () => {
+      effects.shake(1);
+      effects.shatter({ x: t.x, y: t.y, width: t.width, height: t.height, color: t.color, count: 10, speed: 300 });
+      effects.burst({ x: t.x, y: t.y, color: blue, count: 36, speed: 360, life: 0.5, size: 2 });
+      effects.ring({ x: t.x, y: t.y, color: blue, radius: 6, growth: 600, life: 0.4, width: 4 });
+    });
+  },
+  tiny(effects, t) {
+    // TINYALITY: the paddle shrinks away to nothing, in tears.
+    effects.hidePaddle(t.side);
+    effects.shard({ x: t.x, y: t.y, vx: 0, vy: 0, width: t.width, height: t.height, color: t.color, life: 1.1, shrink: 0.94 });
+
+    effects.schedule(0.35, () => {
+      aside(effects, t, 'WAAAH!', THEME.drip, 0.8);
+
+      for (const side of [-1, 1]) {
+        effects.burst({ x: t.x + side * 6, y: t.y, color: `rgb(${THEME.drip})`, count: 6, speed: 60, direction: -Math.PI / 2, spread: 1, life: 0.6, size: 2.4, gravity: 500 });
+      }
+    });
+  },
+  snooze(effects, t) {
+    // SNOOZALITY: the paddle nods off and tips over the edge of the court.
+    effects.hidePaddle(t.side);
+    effects.shard({ x: t.x, y: t.y, vx: 0, vy: t.outward * 20, width: t.width, height: t.height, color: t.color, spin: 0.9, life: 1.2, gravity: t.outward * 90 });
+    aside(effects, t, 'Zzz', THEME.violet, 1.1);
+  },
+});

@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { AudioOutput } from '../src/adapters/audio-output.js';
 import { MusicPlayer } from '../src/adapters/music-player.js';
 import { SoundBoard } from '../src/adapters/sound-board.js';
+import { finisherFor } from '../src/adapters/finisher.js';
 import { GAME_CONFIG, RUSH_CONFIG } from '../src/config.js';
+import { createInitialState } from '../src/domain/game.js';
 
 function fakeParam(value = 0) {
   const param = {
@@ -74,6 +76,14 @@ function setup({ sound = true, withAudio = true, jokes = false } = {}) {
     preferences: { get: () => ({ sound, jokes }) },
   });
   return { board, contexts: FakeAudioContext.created };
+}
+
+/** The first match seed whose finisher, for the player's win, passes the test. */
+function seedFor(test) {
+  for (let seed = 0; ; seed += 1) {
+    const finisher = finisherFor({ winner: 'player', twoPlayers: false, rush: false, jokes: true, seed });
+    if (finisher && test(finisher)) return seed;
+  }
 }
 
 const hit = (rally, side = 'player') => ({ type: 'paddle-hit', side, x: 0, y: 0, speed: 500, spin: 0, rally });
@@ -220,9 +230,13 @@ test('sound effects and music share one audio context', () => {
 test('the finisher lands with a crunch on top of the fanfare, only where a finisher plays', () => {
   const won = { type: 'game-over', winner: 'player' };
   const lost = { type: 'game-over', winner: 'opponent' };
-  const count = (options, event, config) => {
+  // A match whose seed draws a finisher that crunches, not a comic one.
+  const seed = seedFor((finisher) => finisher.kind === 'shatter');
+  const over = { ...createInitialState(GAME_CONFIG, 1), seed, score: { player: 7, opponent: 3 } };
+  // A null state stands for none at all.
+  const count = (options, event, config, state = over) => {
     const { board, contexts } = setup(options);
-    board.handle([event], undefined, config);
+    board.handle([event], state ?? undefined, config);
     return contexts[0].oscillators.length;
   };
 
@@ -230,5 +244,24 @@ test('the finisher lands with a crunch on top of the fanfare, only where a finis
   assert.equal(count({ jokes: true }, won, GAME_CONFIG), fanfare + 2);
   assert.equal(count({ jokes: true }, lost, GAME_CONFIG), count({ jokes: false }, lost, GAME_CONFIG));
   assert.equal(count({ jokes: true }, lost, RUSH_CONFIG), count({ jokes: false }, lost, RUSH_CONFIG));
-  assert.equal(count({ jokes: true }, won), fanfare, 'without the match config it cannot tell, so it stays quiet');
+  assert.equal(count({ jokes: true }, won, undefined), fanfare, 'without the match config it cannot tell, so it stays quiet');
+  assert.equal(count({ jokes: true }, won, GAME_CONFIG, null), fanfare, 'nor without the final state');
+});
+
+test('a super\'s finisher sounds the super again, and the comic ones sob or snore instead of crunching', () => {
+  const won = { type: 'game-over', winner: 'player' };
+  const sounds = (event, seed) => {
+    const { board, contexts } = setup({ jokes: true });
+    board.handle([event], { ...createInitialState(GAME_CONFIG, 1), seed, score: { player: 7, opponent: 2 } }, GAME_CONFIG);
+    return contexts[0].oscillators.map((oscillator) => `${oscillator.type}@${oscillator.frequency.events[0][1]}`);
+  };
+  const plain = sounds(won, seedFor((finisher) => finisher.kind === 'shatter'));
+  const superWin = sounds({ ...won, super: 'thunder' }, 1);
+  const tiny = sounds(won, seedFor((finisher) => finisher.kind === 'tiny'));
+  const snooze = sounds(won, seedFor((finisher) => finisher.kind === 'snooze'));
+
+  assert.equal(superWin.length, plain.length + 2, 'thunder\'s crack and rumble after the crunch');
+  assert.notDeepEqual(tiny, plain);
+  assert.notDeepEqual(snooze, plain);
+  assert.notDeepEqual(tiny, snooze);
 });

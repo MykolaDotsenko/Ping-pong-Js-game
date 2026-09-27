@@ -49,6 +49,14 @@
  * @property {number} maxLife
  * @property {string} color
  * @property {number} gravity
+ * @property {number} shrink share of its size it has lost by the end of its life
+ *
+ * @typedef {object} Bolt A jagged line of lightning, drawn at once and fading.
+ * @property {ReadonlyArray<{ x: number, y: number }>} points
+ * @property {string} color
+ * @property {number} width
+ * @property {number} life seconds left
+ * @property {number} maxLife
  *
  * @typedef {object} ShardOptions
  * @property {number} x center of the piece
@@ -61,6 +69,7 @@
  * @property {number} [spin]
  * @property {number} [life]
  * @property {number} [gravity]
+ * @property {number} [shrink]
  *
  * @typedef {object} Label A short word that pops up, drifts and fades: "CURVE!", "SMASH!".
  * @property {string} text
@@ -104,6 +113,8 @@ export class Effects {
     this.labels = [];
     /** @type {Shard[]} */
     this.shards = [];
+    /** @type {Bolt[]} */
+    this.bolts = [];
     /** A paddle the renderer must not draw, because its pieces are flying about instead. */
     /** @type {Side | null} */
     this.hiddenPaddle = null;
@@ -122,6 +133,7 @@ export class Effects {
     return this.particles.length > 0
       || this.rings.length > 0
       || this.shards.length > 0
+      || this.bolts.length > 0
       || this.labels.length > 0
       || this.scheduled.length > 0
       || this.flashAlpha > SETTLED
@@ -171,8 +183,74 @@ export class Effects {
   }
 
   /** @param {ShardOptions} options */
-  shard({ x, y, vx, vy, width, height, color, spin = 0, life = 1, gravity = 0 }) {
-    this.shards.push({ x, y, vx, vy, angle: 0, spin, width, height, life, maxLife: life, color, gravity });
+  shard({ x, y, vx, vy, width, height, color, spin = 0, life = 1, gravity = 0, shrink = 0 }) {
+    this.shards.push({ x, y, vx, vy, angle: 0, spin, width, height, life, maxLife: life, color, gravity, shrink });
+  }
+
+  /**
+   * Sparks that start on a circle and rush in to its center, arriving as they fade: something
+   * being sucked away.
+   *
+   * @param {object} options
+   * @param {number} options.x the center they rush to
+   * @param {number} options.y
+   * @param {string} options.color
+   * @param {number} options.count
+   * @param {number} options.radius how far out they start
+   * @param {number} [options.life]
+   * @param {number} [options.size]
+   */
+  implode({ x, y, color, count, radius, life = 0.5, size = 2 }) {
+    const total = this.reducedMotion ? Math.ceil(count * 0.4) : count;
+
+    for (let i = 0; i < total && this.particles.length < this.maxParticles; i += 1) {
+      const angle = this.random() * Math.PI * 2;
+      const distance = radius * (0.6 + this.random() * 0.4);
+      const maxLife = life * (0.7 + this.random() * 0.3);
+
+      this.particles.push({
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
+        vx: (-Math.cos(angle) * distance) / maxLife,
+        vy: (-Math.sin(angle) * distance) / maxLife,
+        life: maxLife,
+        maxLife,
+        size: size * (0.6 + this.random() * 0.8),
+        color,
+        drag: 0,
+        gravity: 0,
+      });
+    }
+  }
+
+  /**
+   * A bolt of lightning from one point to another, jagged at random.
+   *
+   * @param {object} options
+   * @param {number} options.x1
+   * @param {number} options.y1
+   * @param {number} options.x2
+   * @param {number} options.y2
+   * @param {string} options.color
+   * @param {number} [options.segments]
+   * @param {number} [options.jag] how far a joint may stray from the straight line
+   * @param {number} [options.life]
+   * @param {number} [options.width]
+   */
+  bolt({ x1, y1, x2, y2, color, segments = 7, jag = 18, life = 0.3, width = 3 }) {
+    const points = [{ x: x1, y: y1 }];
+    const length = Math.hypot(x2 - x1, y2 - y1) || 1;
+    // Across the line, for the joints to stray sideways.
+    const across = { x: -(y2 - y1) / length, y: (x2 - x1) / length };
+
+    for (let joint = 1; joint < segments; joint += 1) {
+      const along = joint / segments;
+      const stray = (this.random() * 2 - 1) * jag;
+      points.push({ x: x1 + (x2 - x1) * along + across.x * stray, y: y1 + (y2 - y1) * along + across.y * stray });
+    }
+
+    points.push({ x: x2, y: y2 });
+    this.bolts.push({ points, color, width, life, maxLife: life });
   }
 
   /**
@@ -226,10 +304,12 @@ export class Effects {
    * @param {string} options.color
    * @param {number} [options.life]
    * @param {number} [options.size]
+   * @param {boolean} [options.stack] joins the callouts showing instead of replacing them
    */
-  label({ text, x, y, color, life = 0.9, size = 30 }) {
-    // One callout at a time reads best; a new one replaces the old.
-    this.labels = [{ text, x, y, color, life, maxLife: life, size }];
+  label({ text, x, y, color, life = 0.9, size = 30, stack = false }) {
+    // One callout at a time reads best; a new one replaces the old, unless it belongs with it.
+    const label = { text, x, y, color, life, maxLife: life, size };
+    this.labels = stack ? [...this.labels, label] : [label];
   }
 
   clearLabels() {
@@ -278,6 +358,7 @@ export class Effects {
     this.particles = [];
     this.rings = [];
     this.shards = [];
+    this.bolts = [];
     this.hiddenPaddle = null;
     this.labels = [];
     this.scheduled = [];
@@ -324,9 +405,14 @@ export class Effects {
       label.life -= deltaSeconds;
     }
 
+    for (const bolt of this.bolts) {
+      bolt.life -= deltaSeconds;
+    }
+
     this.particles = this.particles.filter((particle) => particle.life > 0);
     this.rings = this.rings.filter((ring) => ring.life > 0);
     this.shards = this.shards.filter((shard) => shard.life > 0);
+    this.bolts = this.bolts.filter((bolt) => bolt.life > 0);
     this.labels = this.labels.filter((label) => label.life > 0);
     this.flashAlpha = settle(this.flashAlpha * Math.exp(-DECAY.flash * deltaSeconds));
     this.shakeAmount = settle(this.shakeAmount * Math.exp(-DECAY.shake * deltaSeconds));
@@ -356,7 +442,7 @@ export class Effects {
    * @param {EffectsContext} context
    */
   draw(context) {
-    if (this.particles.length === 0 && this.rings.length === 0 && this.shards.length === 0) {
+    if (this.particles.length === 0 && this.rings.length === 0 && this.shards.length === 0 && this.bolts.length === 0) {
       return;
     }
 
@@ -364,17 +450,28 @@ export class Effects {
 
     // Paddle pieces are solid, drawn plainly so they read as the paddle they were.
     for (const shard of this.shards) {
+      const scale = 1 - shard.shrink * (1 - shard.life / shard.maxLife);
+
       context.save();
       context.globalAlpha = Math.min(1, shard.life / 0.3);
       context.translate(shard.x, shard.y);
       context.rotate(shard.angle);
       context.fillStyle = shard.color;
-      context.fillRect(-shard.width / 2, -shard.height / 2, shard.width, shard.height);
+      context.fillRect((-shard.width / 2) * scale, (-shard.height / 2) * scale, shard.width * scale, shard.height * scale);
       context.restore();
     }
 
     context.globalCompositeOperation = 'lighter';
     context.lineCap = 'round';
+
+    for (const bolt of this.bolts) {
+      context.globalAlpha = bolt.life / bolt.maxLife;
+      context.strokeStyle = bolt.color;
+      context.lineWidth = bolt.width;
+      context.beginPath();
+      bolt.points.forEach((point, index) => (index === 0 ? context.moveTo(point.x, point.y) : context.lineTo(point.x, point.y)));
+      context.stroke();
+    }
 
     for (const particle of this.particles) {
       const fade = particle.life / particle.maxLife;
@@ -393,7 +490,8 @@ export class Effects {
       context.strokeStyle = ring.color;
       context.lineWidth = ring.width * fade + 0.5;
       context.beginPath();
-      context.arc(ring.x, ring.y, ring.radius, 0, Math.PI * 2);
+      // A ring that shrinks, as a black hole's does, never passes a negative radius to the canvas.
+      context.arc(ring.x, ring.y, Math.max(0, ring.radius), 0, Math.PI * 2);
       context.stroke();
     }
 

@@ -1,9 +1,10 @@
-import { finisherApplies } from './finisher.js';
+import { finisherAt } from './finisher.js';
 
 /**
  * @import { GameConfig, GameEvent, GameState, SuperKind } from '../domain/types.js'
  * @import { FeedbackPort, PreferencesPort } from '../application/ports.js'
  * @import { AudioOutput } from './audio-output.js'
+ * @import { Finisher } from './finisher.js'
  */
 
 // Equal-tempered note frequencies in Hz.
@@ -66,26 +67,45 @@ export class SoundBoard {
     for (const event of events) {
       this.play(event);
 
-      if (event.type === 'game-over' && config && this.finishes(event.winner, config)) {
-        this.crunch();
+      const finisher = event.type === 'game-over' && state && config
+        ? finisherAt(event, state, config, this.preferences.get().jokes === true)
+        : null;
+
+      if (finisher) {
+        this.finish(finisher);
       }
     }
   }
 
   /**
-   * @param {GameState['lastPoint']} winner
-   * @param {GameConfig} config
+   * The finisher's sound over the victory fanfare: a crunch as the paddle goes, a super's own
+   * sound again for the finisher it names, and for the comic ones a sob or a snore instead.
+   *
+   * @param {Finisher} finisher
    */
-  finishes(winner, config) {
-    return finisherApplies({
-      winner,
-      twoPlayers: config.opponent.controller === 'human',
-      rush: config.rules.kind === 'rush',
-      jokes: this.preferences.get().jokes === true,
-    });
+  finish(finisher) {
+    if (finisher.kind === 'tiny') {
+      // A sad little trombone.
+      this.arpeggio([NOTE.G4, 370, 349.23], 0.16, 'sawtooth', 0.2);
+      this.tone({ frequency: NOTE.E4, endFrequency: 300, duration: 0.5, type: 'sawtooth', volume: 0.2, delay: 0.48 });
+      return;
+    }
+
+    if (finisher.kind === 'snooze') {
+      // A snore, in and out.
+      this.tone({ frequency: 70, endFrequency: 95, duration: 0.45, type: 'sawtooth', volume: 0.16 });
+      this.tone({ frequency: 95, endFrequency: 60, duration: 0.5, type: 'sawtooth', volume: 0.12, delay: 0.5 });
+      return;
+    }
+
+    this.crunch();
+
+    if (finisher.super) {
+      this.superShot(finisher.super);
+    }
   }
 
-  /** The finisher landing: a low crack and a falling whine over the victory fanfare. */
+  /** The finisher landing: a low crack and a falling whine. */
   crunch() {
     this.tone({ frequency: 110, endFrequency: 28, duration: 0.4, type: 'sawtooth', volume: 0.5 });
     this.tone({ frequency: 1600, endFrequency: 180, duration: 0.22, type: 'square', volume: 0.22, delay: 0.03 });
