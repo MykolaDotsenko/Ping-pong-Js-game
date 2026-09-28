@@ -1,12 +1,12 @@
 # Paddle Noir
 
-[![Quality](https://github.com/MykolaDotsenko/Ping-pong-Js-game/actions/workflows/quality.yml/badge.svg)](https://github.com/MykolaDotsenko/Ping-pong-Js-game/actions/workflows/quality.yml)
+[![Quality](https://github.com/MykolaDotsenko/paddle-noir/actions/workflows/quality.yml/badge.svg)](https://github.com/MykolaDotsenko/paddle-noir/actions/workflows/quality.yml)
 
 **Paddle Noir** is a neon arcade ping pong game for phones and desktops, built without dependencies as a compact **software architecture case study**.
 
 The project deliberately stays on Vanilla JavaScript, Canvas and Web Audio so the engineering decisions remain visible: explicit dependency direction, browser-agnostic core logic, deterministic simulation, replaceable adapters, and automated verification.
 
-**[Play the live demo](https://mykoladotsenko.github.io/Ping-pong-Js-game/)**. On a phone, add it to your home screen for full-screen play.
+**[Play the live demo](https://mykoladotsenko.github.io/paddle-noir/)**. On a phone, add it to your home screen for full-screen play.
 
 ![The Paddle Noir title screen beside a live match](./docs/preview.png)
 
