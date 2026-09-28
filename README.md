@@ -8,6 +8,8 @@ The project deliberately stays on Vanilla JavaScript, Canvas and Web Audio so th
 
 **[Play the live demo](https://mykoladotsenko.github.io/paddle-noir/)**. On a phone, add it to your home screen for full-screen play.
 
+It began as a 2024 one-script Pong exercise and evolved into a testable, dependency-free arcade game.
+
 ![The Paddle Noir title screen beside a live match](./docs/preview.png)
 
 The preview shows the title screen and a real frame of a live match, both captured from the running app by `npm run docs:preview`, identically on every run.
